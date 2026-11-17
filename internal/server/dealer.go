@@ -68,6 +68,9 @@ func (g *Game) say(ev string, p *player, v banter.Vars, chance float64, prio int
 	if !g.forceSay && g.busyTalking(prio, now) {
 		return false
 	}
+	if !g.forceSay && prio < prioHigh && g.handTalk >= g.talkBudget() {
+		return false
+	}
 	if g.banter.Chance() >= chance {
 		return false
 	}
@@ -75,6 +78,7 @@ func (g *Game) say(ev string, p *player, v banter.Vars, chance float64, prio int
 	if line == "" {
 		return false
 	}
+	g.handTalk++
 	g.speak(line, prio)
 	return true
 }
@@ -145,6 +149,7 @@ func (g *Game) tellStory(p *player) bool {
 		return false
 	}
 	g.lastStory = time.Now()
+	g.handTalk++
 	g.story = &storyRun{}
 	g.sayQueue = banter.Pages(line)
 	g.sayPrio = prioLow
@@ -286,9 +291,9 @@ func (g *Game) chatter() {
 	}
 	pick := func() *player { return seated[g.banter.Intn(len(seated))] }
 	// now and then, a long story
-	gap, chance := 6*time.Minute, 0.3
+	gap, chance := 15*time.Minute, 0.15
 	if g.cfg.TurboMode {
-		gap, chance = 12*time.Minute, 0.2
+		gap, chance = 25*time.Minute, 0.12
 	}
 	if len(seated) > 0 && g.story == nil && time.Since(g.lastStory) > gap && !time.Now().Before(g.speech.until) &&
 		g.banter.Chance() < chance && g.tellStory(pick()) {
@@ -302,8 +307,12 @@ func (g *Game) chatter() {
 		}
 		return
 	}
+	if len(seated) == 1 && g.banter.Chance() < 0.2 {
+		g.say(banter.EvAlone, seated[0], banter.Vars{}, 1, prioLow)
+		return
+	}
 	switch {
-	case r < 0.22 && len(seated) > 0:
+	case r < 0.16 && len(seated) > 0:
 		p := pick()
 		prof, _ := g.store.Profile(p.user)
 		rich, _ := g.store.Tops()
@@ -319,23 +328,41 @@ func (g *Game) chatter() {
 		default:
 			g.say(banter.EvInvent, p, banter.Vars{}, 1, prioLow)
 		}
-	case r < 0.44 && len(seated) > 0:
+	case r < 0.28 && len(seated) > 0:
 		g.say(banter.EvInvent, pick(), banter.Vars{}, 1, prioLow)
-	case r < 0.51:
+	case r < 0.34 && len(seated) > 0:
+		g.say(banter.EvHeadline, pick(), banter.Vars{}, 1, prioLow)
+	case r < 0.39 && len(seated) > 0:
+		g.say(banter.EvRating, pick(), banter.Vars{}, 1, prioLow)
+	case r < 0.45 && len(seated) > 0:
+		g.say(banter.EvBetOpen, pick(), banter.Vars{}, 1, prioLow)
+	case r < 0.50:
 		h := g.store.House()
 		if h.Net >= 0 {
 			g.say(banter.EvHouseUp, nil, banter.Vars{Amount: h.Net}, 1, prioLow)
 		} else {
 			g.say(banter.EvHouseDown, nil, banter.Vars{Amount: -h.Net}, 1, prioLow)
 		}
-	case r < 0.63:
+	case r < 0.58:
 		g.say(banter.EvBackstory, nil, banter.Vars{}, 1, prioLow)
-	case r < 0.75:
+	case r < 0.66:
 		g.say(banter.EvOpinion, nil, banter.Vars{}, 1, prioLow)
-	case r < 0.81:
+	case r < 0.70:
 		g.say(banter.EvCryptic, nil, banter.Vars{}, 1, prioLow)
-	case r < 0.88:
+	case r < 0.74:
 		g.say(banter.EvIdle, nil, banter.Vars{}, 1, prioLow)
+	case r < 0.79:
+		g.say(banter.EvTip, nil, banter.Vars{}, 1, prioLow)
+	case r < 0.83:
+		g.say(banter.EvPhone, nil, banter.Vars{}, 1, prioLow)
+	case r < 0.87 && len(seated) > 0:
+		g.say(banter.EvComp, pick(), banter.Vars{}, 1, prioLow)
+	case r < 0.91:
+		g.say(banter.EvRule, nil, banter.Vars{}, 1, prioLow)
+	case r < 0.94:
+		g.say(banter.EvAffirm, nil, banter.Vars{}, 1, prioLow)
+	case r < 0.97:
+		g.say(banter.EvSong, nil, banter.Vars{}, 1, prioLow)
 	}
 }
 
@@ -363,6 +390,8 @@ func (g *Game) reactToAction(p *player, act string, h *bj.Hand, before int, soft
 	switch act {
 	case "stand":
 		switch {
+		case before >= 20 && !soft:
+			g.say(banter.EvStandGood, p, banter.Vars{Total: before}, 0.08, prioLow)
 		case before <= 11:
 			g.say(banter.EvStandTiny, p, banter.Vars{Total: before}, 0.95, prioHigh)
 		case before <= 16 && !soft && upVal >= 7:
@@ -379,12 +408,18 @@ func (g *Game) reactToAction(p *player, act string, h *bj.Hand, before int, soft
 			g.say(banter.EvBust, p, banter.Vars{Total: t}, 0.8, prioHigh)
 		case greedy:
 			g.say(banter.EvHit17, p, banter.Vars{Total: before}, 0.7, prioNormal)
+		case t == 21 && len(h.Cards) >= 3:
+			g.say(banter.EvTwentyOne, p, banter.Vars{Total: t}, 0.5, prioNormal)
+		case len(h.Cards) >= 5:
+			g.say(banter.EvFiveCard, p, banter.Vars{Total: t}, 0.6, prioNormal)
 		case act == "double":
 			g.say(banter.EvDouble, p, banter.Vars{}, 0.35, prioLow)
 		}
 	case "split":
 		if splitTens {
 			g.say(banter.EvSplitTens, p, banter.Vars{}, 0.95, prioHigh)
+		} else {
+			g.say(banter.EvSplit, p, banter.Vars{}, 0.3, prioLow)
 		}
 	case "surrender":
 		g.say(banter.EvSurrender, p, banter.Vars{}, 0.9, prioNormal)
@@ -396,6 +431,8 @@ type roundResult struct {
 	delta      int64
 	before     int64 // balance before the round (stake included)
 	doubleLost bool
+	doubleWon  bool
+	pushed     bool
 }
 
 // reactToResults picks the juiciest thing to say about a settled round.
@@ -452,6 +489,16 @@ func (g *Game) reactToResults(res []roundResult, houseDelta int64, dealerBust, d
 			return
 		}
 	}
+	// he drew out on people: dealer made 21 the hard way and won
+	if dt, _ := bj.Total(g.dealer); dt == 21 && len(g.dealer) >= 3 && houseDelta > 0 &&
+		g.say(banter.EvDealer21, nil, banter.Vars{}, 0.6, prioNormal) {
+		return
+	}
+	for _, r := range res {
+		if r.doubleWon && g.say(banter.EvDoubleWin, r.p, banter.Vars{Amount: r.delta}, 0.45, prioNormal) {
+			return
+		}
+	}
 	if winner != nil && winner.delta >= 500 && g.say(banter.EvBigWin, winner.p, banter.Vars{Amount: winner.delta}, 0.6, prioNormal) {
 		return
 	}
@@ -463,6 +510,16 @@ func (g *Game) reactToResults(res []roundResult, houseDelta int64, dealerBust, d
 			if g.say(banter.EvLoseStreak, r.p, banter.Vars{Streak: s}, 0.5, prioNormal) {
 				return
 			}
+		}
+		if s := g.store.WinStreak(r.p.user); s >= 3 {
+			if g.say(banter.EvWinStreak, r.p, banter.Vars{Streak: s}, 0.5, prioNormal) {
+				return
+			}
+		}
+	}
+	for _, r := range res {
+		if r.pushed && r.delta == 0 && g.say(banter.EvPush, r.p, banter.Vars{}, 0.35, prioLow) {
+			return
 		}
 	}
 	// nothing juicy happened: make something up about somebody

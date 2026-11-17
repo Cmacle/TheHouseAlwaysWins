@@ -48,7 +48,7 @@ func (a *App) addLog(l proto.DealerLine) {
 // logButtonRect is the little speech bubble next to the dealer that opens
 // the log.
 func logButtonRect() image.Rectangle {
-	x, y := ScreenW/2-64, 26
+	x, y := ScreenW/2-64, 26+layoutTop()
 	return image.Rect(x, y, x+22, y+16)
 }
 
@@ -101,7 +101,7 @@ func (a *App) drawLogButton(st *proto.TableState) {
 
 // drawDealerLog shows what the dealer has said lately, newest at the bottom.
 func (a *App) drawDealerLog() {
-	r := image.Rect(100, 24, 540, 340)
+	r := ovRect(440, max(316, ScreenH-80))
 	if a.overlayFrame(r, "WHAT DALE SAID") {
 		return
 	}

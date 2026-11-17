@@ -38,17 +38,18 @@ func (a *App) serverAddr() (string, bool) {
 var Version = "1.0.0"
 
 func (a *App) drawLogin() {
-	blit(a.fb, a.A.Table, 0, 0)
+	a.drawTableBG()
 	fillRect(a.fb, a.fb.Rect, a.A.C("overlay"))
 	lw := a.A.Logo.Rect.Dx()
-	blit(a.fb, a.A.Logo, ScreenW/2-lw/2, 10)
+	oy := max(0, (ScreenH-360)/2) // center the whole thing on tall screens
+	blit(a.fb, a.A.Logo, ScreenW/2-lw/2, 10+oy)
 
 	busy := a.connecting || a.tokenTry
 	var pr image.Rectangle
 	if a.loginMode == modeLogin {
-		pr = image.Rect(180, 108, 460, 306)
+		pr = image.Rect(ScreenW/2-140, 108+oy, ScreenW/2+140, 306+oy)
 	} else {
-		pr = image.Rect(170, 108, 470, 334)
+		pr = image.Rect(ScreenW/2-150, 108+oy, ScreenW/2+150, 334+oy)
 	}
 	a.panel(pr)
 	x0, x1 := pr.Min.X+16, pr.Max.X-16

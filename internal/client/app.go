@@ -169,6 +169,10 @@ type App struct {
 	sayStarts   []time.Duration
 	sayEnd      time.Duration
 	sayBlipped  int
+	L           tableLayout
+	tableBG     *image.RGBA
+	kbAsk       bool // a text field was tapped: show the keyboard (again)
+	focusRect   image.Rectangle
 	sayLog      []logEntry // what the dealer said recently, newest last
 	logID       int        // id of the last line added to sayLog
 	logUnread   bool
@@ -258,10 +262,15 @@ func (a *App) Frame(in Input) *image.RGBA {
 	a.drawToasts()
 	if ti, ok := a.P.(TextInputHost); ok {
 		on := a.focusID != "" && a.screen == scrLogin
-		if on != a.kbOn {
+		// a tap on a text box asks again, in case the keyboard was closed
+		if on != a.kbOn || (on && a.kbAsk) {
 			a.kbOn = on
 			ti.SetTextInput(on)
 		}
+	}
+	a.kbAsk = false
+	if a.focusID == "" {
+		a.focusRect = image.Rectangle{}
 	}
 	if in.Released || !in.Down {
 		if !in.Down {
@@ -688,4 +697,12 @@ func signed(n int64) string {
 		return "+" + commas(n)
 	}
 	return commas(n)
+}
+
+// FocusBottom is the bottom edge of the text box being typed in, or -1.
+func (a *App) FocusBottom() int {
+	if a.focusID == "" || a.focusRect.Empty() {
+		return -1
+	}
+	return a.focusRect.Max.Y
 }

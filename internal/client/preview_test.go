@@ -95,6 +95,12 @@ func TestPreview(t *testing.T) {
 	cfg := &Config{Server: "play.example.com:7777", Username: "You_There", RememberMe: true, Sound: true}
 	a := New(fakePlatform{}, cfg, assets)
 	a.reconnectAt = time.Time{}
+	if sz := os.Getenv("PREVIEW_SIZE"); sz != "" {
+		var w, h int
+		fmt.Sscanf(sz, "%dx%d", &w, &h)
+		a.SetSize(w, h)
+		defer a.SetSize(640, 360)
+	}
 	frame := func() *image.RGBA { return a.Frame(Input{MX: -1, MY: -1}) }
 
 	a.setStatus("Unknown username or wrong password", true)

@@ -90,6 +90,7 @@ type Assets struct {
 	Font  *Font
 
 	Table, Cards, CardBack, Chips, Dealers, Shoe, Logo, DefaultAvatar *image.RGBA
+	TableCustom                                                       bool // table.png was replaced: stretch it to fit
 	Button, ButtonHover, ButtonDown, ButtonDisabled, ButtonGold       *image.RGBA
 	ButtonGoldHover, Field, FieldFocus, Panel, Checkbox, Arrow        *image.RGBA
 	Hats, Frames                                                      *image.RGBA
@@ -193,6 +194,9 @@ func LoadAssets(dir string) (*Assets, error) {
 		a.Theme.ChipValues = defaultTheme().ChipValues
 	}
 	a.Table = a.image("table.png")
+	if b, err := a.read("table.png"); err == nil && !isDefaultAsset("table.png", b) {
+		a.TableCustom = true
+	}
 	a.Cards = a.image("cards.png")
 	a.CardBack = a.image("card_back.png")
 	a.Chips = a.image("chips.png")

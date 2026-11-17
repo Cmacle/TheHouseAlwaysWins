@@ -114,7 +114,7 @@ func (a *App) drawDealer(st *proto.TableState) {
 	spr := a.dealerSprite(st)
 	w, h := spr.Rect.Dx(), spr.Rect.Dy()
 	x := ScreenW/2 - w/2
-	y := 52 - h
+	y := a.L.dealerY - h
 	open := a.mouthOpen(st)
 	if open {
 		y--
@@ -164,7 +164,11 @@ func (a *App) drawSpeech(st *proto.TableState) {
 	}
 	mouthX := ScreenW/2 + 16
 	a.blip(st)
-	lines := a.wrap(st.DealerSay, bubbleWrap)
+	wrapW := bubbleWrap
+	if a.L.portrait {
+		wrapW = a.L.bubble.Dx() - 12
+	}
+	lines := a.wrap(st.DealerSay, wrapW)
 	if len(lines) > bubbleMaxLines {
 		lines = lines[:bubbleMaxLines]
 		lines[len(lines)-1] = strings.TrimRight(lines[len(lines)-1], ".,!? ") + "..."
@@ -183,6 +187,10 @@ func (a *App) drawSpeech(st *proto.TableState) {
 	lh := 9
 	bx := mouthX + 14
 	by := 22
+	if a.L.portrait {
+		bx = ScreenW/2 - (w+12)/2
+		by = a.L.bubble.Min.Y
+	}
 	// pop in
 	if age := a.now.Sub(a.sayAt); age < 120*time.Millisecond {
 		by += 2 - int(age/(60*time.Millisecond))
@@ -195,7 +203,23 @@ func (a *App) drawSpeech(st *proto.TableState) {
 	for _, p := range []image.Point{r.Min, {r.Max.X - 1, r.Min.Y}, {r.Min.X, r.Max.Y - 1}, {r.Max.X - 1, r.Max.Y - 1}} {
 		fillRect(a.fb, image.Rect(p.X, p.Y, p.X+1, p.Y+1), color.RGBA{})
 	}
-	// tail toward the dealer's mouth
+	if a.L.portrait {
+		// tail up toward the dealer, past his cards
+		tx := min(max(mouthX, r.Min.X+8), r.Max.X-8)
+		for i := 0; i < 5; i++ {
+			fillRect(a.fb, image.Rect(tx-i/2, r.Min.Y-i-1, tx+1, r.Min.Y-i), bub)
+			fillRect(a.fb, image.Rect(tx-i/2-1, r.Min.Y-i-1, tx-i/2, r.Min.Y-i), edge)
+			fillRect(a.fb, image.Rect(tx+1, r.Min.Y-i-1, tx+2, r.Min.Y-i), edge)
+		}
+		fillRect(a.fb, image.Rect(tx-3, r.Min.Y, tx+1, r.Min.Y+1), bub)
+	} else {
+		a.bubbleTailLeft(r, bub, edge)
+	}
+	a.drawBubbleText(r, lines, shown, lh)
+}
+
+// bubbleTailLeft draws the bubble's tail pointing left, at the dealer.
+func (a *App) bubbleTailLeft(r image.Rectangle, bub, edge color.RGBA) {
 	ty := r.Min.Y + 8
 	for i := 0; i < 5; i++ {
 		fillRect(a.fb, image.Rect(r.Min.X-i-1, ty+i/2, r.Min.X, ty+i/2+1), bub)
@@ -203,6 +227,9 @@ func (a *App) drawSpeech(st *proto.TableState) {
 	}
 	fillRect(a.fb, image.Rect(r.Min.X-6, ty+2, r.Min.X, ty+3), edge)
 	fillRect(a.fb, image.Rect(r.Min.X, ty, r.Min.X+1, ty+3), bub)
+}
+
+func (a *App) drawBubbleText(r image.Rectangle, lines []string, shown, lh int) {
 	left := shown
 	for i, l := range lines {
 		ws := strings.Fields(l)
@@ -226,14 +253,22 @@ const (
 func (a *App) drawHouse(r image.Rectangle) {
 	h := a.house
 	spr := a.dealerSprite(a.st)
+	narrow := r.Dx() < 420
 	pw, ph := spr.Rect.Dx()*2, spr.Rect.Dy()*2
 	px, py := r.Min.X+28, r.Min.Y+50
+	if narrow {
+		pw, ph = spr.Rect.Dx(), spr.Rect.Dy()
+		px, py = r.Min.X+20, r.Min.Y+56
+	}
 	fillRect(a.fb, image.Rect(px-4, py-4, px+pw+4, py+ph+4), color.RGBA{0, 0, 0, 120})
 	blitScaled(a.fb, spr, image.Rect(px, py, px+pw, py+ph))
 	a.text(px+pw/2, py+ph+10, strings.ToUpper(banter.TierNames[h.Tier]), a.A.C("gold"), alignCenter)
 
 	x := r.Min.X + 170
 	y := r.Min.Y + 64
+	if narrow {
+		x, y = px+pw+16, r.Min.Y+70
+	}
 	nc := a.A.C("text")
 	if h.Net > 0 {
 		nc = a.A.C("win")
@@ -244,9 +279,13 @@ func (a *App) drawHouse(r image.Rectangle) {
 	a.text(x, y, "LIFETIME", a.A.C("text_dim"), alignLeft)
 	a.textBig(x, y+10, signedMoney(h.Net), nc, 2, alignLeft)
 	y += 34
+	vx := r.Max.X - 30
+	if narrow {
+		x, y, vx = r.Min.X+20, max(y, py+ph+24), r.Max.X-20
+	}
 	row := func(label, val string, c color.RGBA) {
 		a.text(x, y, label, a.A.C("text_dim"), alignLeft)
-		a.text(r.Max.X-30, y, val, c, alignRight)
+		a.text(vx, y, val, c, alignRight)
 		y += 13
 	}
 	txt := a.A.C("text")
@@ -277,7 +316,7 @@ func (a *App) drawHouse(r image.Rectangle) {
 		a.text(x, y, "No hands dealt yet.", a.A.C("text_dim"), alignLeft)
 	}
 	by := y + 8
-	if lab := py + ph + 22; lab > by {
+	if lab := py + ph + 22; lab > by && !narrow {
 		by = lab
 	}
 	for _, l := range a.wrap(banter.Bio, r.Dx()-48) {

@@ -183,6 +183,7 @@ func (a *App) textField(id string, r image.Rectangle, value *string, masked bool
 			if a.focusID != id {
 				a.focusID = id
 			}
+			a.kbAsk = true
 			// place the cursor at the nearest character boundary
 			shown := shownOf(v)
 			if f.scroll > len(shown) {
@@ -205,6 +206,9 @@ func (a *App) textField(id string, r image.Rectangle, value *string, masked bool
 		}
 	}
 	focused := a.focusID == id && !a.blocked
+	if focused {
+		a.focusRect = r
+	}
 	enter := false
 	if focused {
 		moved := false

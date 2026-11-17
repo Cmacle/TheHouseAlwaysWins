@@ -136,7 +136,7 @@ func (a *App) slider(id string, r image.Rectangle, v *int) bool {
 }
 
 func (a *App) drawSettings() {
-	r := image.Rect(150, 40, 490, 320)
+	r := ovRect(340, 280)
 	if a.overlayFrame(r, "SETTINGS") {
 		a.Cfg.Save()
 		return

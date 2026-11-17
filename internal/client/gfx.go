@@ -7,12 +7,6 @@ import (
 	"strings"
 )
 
-// Virtual screen size. The window scales this up by whole pixels.
-const (
-	ScreenW = 640
-	ScreenH = 360
-)
-
 func blit(dst, src *image.RGBA, x, y int) {
 	r := image.Rect(x, y, x+src.Rect.Dx(), y+src.Rect.Dy())
 	draw.Draw(dst, r, src, src.Rect.Min, draw.Over)

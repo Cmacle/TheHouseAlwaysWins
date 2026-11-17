@@ -227,7 +227,7 @@ func forMode(s string, vulgarOn bool) string {
 }
 
 func init() {
-	for _, s := range stories {
+	for _, s := range append(stories, moreStories...) {
 		clean[EvStory] = append(clean[EvStory], forMode(s, false))
 		vulgar[EvStory] = append(vulgar[EvStory], forMode(s, true))
 	}

@@ -26,7 +26,7 @@ func (a *App) overlayFrame(r image.Rectangle, title string) bool {
 }
 
 func (a *App) drawLeaderboard() {
-	r := image.Rect(80, 20, 560, 344)
+	r := ovRect(480, max(324, ScreenH-80))
 	if a.overlayFrame(r, "LEADERBOARD") {
 		return
 	}
@@ -77,14 +77,20 @@ func (a *App) drawLeaderboard() {
 	}
 	rich := a.lbSort == "balance"
 	x0 := r.Min.X + 14
+	right := r.Max.X - 18
+	narrow := r.Dx() < 440
 	cols := []struct {
 		x     int
 		label string
 		al    align
 	}{
-		{x0 + 16, "#", alignRight}, {x0 + 48, "PLAYER", alignLeft}, {x0 + 320, "CHIPS NOW", alignRight},
-		{x0 + 400, "LIFETIME", alignRight}, {x0 + 448, "HANDS", alignRight},
+		{x0 + 16, "#", alignRight}, {x0 + 48, "PLAYER", alignLeft}, {right - 128, "CHIPS NOW", alignRight},
+		{right - 48, "LIFETIME", alignRight}, {right, "HANDS", alignRight},
 	}
+	if narrow { // no room for hands played
+		cols[2].x, cols[3].x, cols[4].label = right-72, right, ""
+	}
+	nameW := cols[2].x - 70 - cols[1].x
 	hy := r.Min.Y + 56
 	for i, c := range cols {
 		col := a.A.C("text_dim")
@@ -150,14 +156,14 @@ func (a *App) drawLeaderboard() {
 		if h := a.smallHat(p.Hat); h != nil {
 			blit(a.fb, h, ax+8-h.Rect.Dx()/2, ay-h.Rect.Dy()+3)
 		}
-		name := fitText(a.A.Font, p.Username, 150)
+		name := fitText(a.A.Font, p.Username, nameW)
 		a.text(cols[1].x, y+3, name, a.A.C("text"), alignLeft)
 		if p.Online {
 			dx := cols[1].x + a.A.Font.Width(name) + 5
 			fillRect(a.fb, image.Rect(dx, y+5, dx+3, y+8), a.A.C("online"))
 		}
 		if t, c, ok := titleOf(p.Title); ok {
-			a.text(cols[1].x, y+12, fitText(a.A.Font, t, 170), c, alignLeft)
+			a.text(cols[1].x, y+12, fitText(a.A.Font, t, nameW+20), c, alignLeft)
 		}
 		nc := a.A.C("text")
 		if p.Net > 0 {
@@ -171,7 +177,9 @@ func (a *App) drawLeaderboard() {
 		}
 		a.text(cols[2].x, ty, commas(p.Balance), bc, alignRight)
 		a.text(cols[3].x, ty, signed(p.Net), nc, alignRight)
-		a.text(cols[4].x, ty, fmt.Sprint(p.HandsPlayed), a.A.C("text"), alignRight)
+		if !narrow {
+			a.text(cols[4].x, ty, fmt.Sprint(p.HandsPlayed), a.A.C("text"), alignRight)
+		}
 	}
 	foot := "The richest player wears the crown."
 	if !rich {
@@ -180,11 +188,11 @@ func (a *App) drawLeaderboard() {
 	if maxScroll > 0 {
 		foot += "  Scroll for more."
 	}
-	a.text(r.Min.X+r.Dx()/2, r.Max.Y-16, foot, a.A.C("text_dim"), alignCenter)
+	a.text(r.Min.X+r.Dx()/2, r.Max.Y-16, fitText(a.A.Font, foot, r.Dx()-20), a.A.C("text_dim"), alignCenter)
 }
 
 func (a *App) drawProfile() {
-	r := image.Rect(140, 30, 500, 336)
+	r := ovRect(360, 306)
 	if a.overlayFrame(r, "PROFILE") {
 		return
 	}
@@ -235,7 +243,10 @@ func (a *App) drawProfile() {
 }
 
 func (a *App) drawHelp() {
-	r := image.Rect(110, 30, 530, 334)
+	r := ovRect(420, 304)
+	if Portrait() {
+		r = ovRect(420, ScreenH-60)
+	}
 	if a.overlayFrame(r, "HOW TO PLAY") {
 		return
 	}
