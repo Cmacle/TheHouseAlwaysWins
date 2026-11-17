@@ -1,0 +1,13 @@
+# build output
+/dist/
+*.exe
+/house-server
+/server
+/client
+
+# runtime files
+server.json
+client.json
+/data/
+/assets/
+*.log

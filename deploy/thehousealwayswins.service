@@ -1,0 +1,20 @@
+# systemd unit for the Linux server build.
+# 1. sudo useradd -r -m -d /opt/thehousealwayswins house
+# 2. copy house-server (and optionally server.json) to /opt/thehousealwayswins
+# 3. sudo cp thehousealwayswins.service /etc/systemd/system/
+# 4. sudo systemctl enable --now thehousealwayswins
+# Logs: journalctl -u thehousealwayswins -f   (also data/server.log)
+[Unit]
+Description=The House Always Wins blackjack server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=house
+WorkingDirectory=/opt/thehousealwayswins
+ExecStart=/opt/thehousealwayswins/house-server -config /opt/thehousealwayswins/server.json -noconsole
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
