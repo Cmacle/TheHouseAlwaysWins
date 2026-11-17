@@ -65,6 +65,7 @@ var (
 	pStretchDIBits     = gdi32.NewProc("StretchDIBits")
 	pSetStretchBltMode = gdi32.NewProc("SetStretchBltMode")
 	pPatBlt            = gdi32.NewProc("PatBlt")
+	pSetBrushOrgEx     = gdi32.NewProc("SetBrushOrgEx")
 
 	pGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 	pGlobalLock       = kernel32.NewProc("GlobalLock")
@@ -109,6 +110,7 @@ const (
 	srcCopy       = 0x00CC0020
 	blackness     = 0x00000042
 	colorOnColor  = 3
+	halftone      = 4
 	swpNoZOrder   = 0x0004
 	swpFrameChgd  = 0x0020
 	swpNoOwnerZ   = 0x0200
@@ -232,6 +234,8 @@ type window struct {
 	lastFB *image.RGBA
 	ox, oy int
 	dw, dh int
+	lw, lh int // canvas size for this window
+	k      int // whole-pixel prescale before the final smooth stretch
 	in     client.Input
 	quit   bool
 	full   bool
@@ -381,39 +385,40 @@ func (w *window) clientSize() (int, int) {
 	return int(r.Right - r.Left), int(r.Bottom - r.Top)
 }
 
+// layout picks the canvas size for the window's shape and where it goes.
+// The canvas is scaled up by whole pixels first and then smoothly to the
+// exact window size, so it fills the window and still looks sharp.
 func (w *window) layout() {
 	cw, ch := w.clientSize()
-	s := cw / client.ScreenW
-	if t := ch / client.ScreenH; t < s {
-		s = t
-	}
-	if s >= 1 {
-		w.dw, w.dh = client.ScreenW*s, client.ScreenH*s
-	} else {
-		// window smaller than 1x: fit while keeping the aspect ratio
+	w.lw, w.lh = client.ChooseSize(cw, ch)
+	s := min(float64(cw)/float64(w.lw), float64(ch)/float64(w.lh))
+	w.dw = max(1, int(float64(w.lw)*s+0.5))
+	w.dh = max(1, int(float64(w.lh)*s+0.5))
+	if w.dw > cw {
 		w.dw = cw
-		w.dh = cw * client.ScreenH / client.ScreenW
-		if w.dh > ch {
-			w.dh = ch
-			w.dw = ch * client.ScreenW / client.ScreenH
-		}
 	}
-	if w.dw < 1 {
-		w.dw = 1
+	if w.dh > ch {
+		w.dh = ch
 	}
-	if w.dh < 1 {
-		w.dh = 1
-	}
+	w.k = max(1, int(s))
 	w.ox, w.oy = (cw-w.dw)/2, (ch-w.dh)/2
 }
 
 func (w *window) blit(hdc uintptr) {
-	w.layout()
+	if w.lastFB == nil {
+		return
+	}
 	cw, ch := w.clientSize()
-	pSetStretchBltMode.Call(hdc, colorOnColor)
+	sw, sh := w.lastFB.Rect.Dx()*w.k, w.lastFB.Rect.Dy()*w.k
+	if sw == w.dw && sh == w.dh {
+		pSetStretchBltMode.Call(hdc, colorOnColor)
+	} else {
+		pSetStretchBltMode.Call(hdc, halftone)
+		pSetBrushOrgEx.Call(hdc, 0, 0, 0)
+	}
 	pStretchDIBits.Call(hdc,
 		uintptr(w.ox), uintptr(w.oy), uintptr(w.dw), uintptr(w.dh),
-		0, 0, client.ScreenW, client.ScreenH,
+		0, 0, uintptr(sw), uintptr(sh),
 		uintptr(unsafe.Pointer(&w.bgra[0])), uintptr(unsafe.Pointer(&w.bmi)), dibRGBColors, srcCopy)
 	if w.oy > 0 {
 		pPatBlt.Call(hdc, 0, 0, uintptr(cw), uintptr(w.oy), blackness)
@@ -427,10 +432,28 @@ func (w *window) blit(hdc uintptr) {
 
 func (w *window) present(fb *image.RGBA) {
 	w.lastFB = fb
-	p := fb.Pix
-	b := w.bgra
-	for i := 0; i+3 < len(p); i += 4 {
-		b[i], b[i+1], b[i+2], b[i+3] = p[i+2], p[i+1], p[i], 255
+	fw, fh, k := fb.Rect.Dx(), fb.Rect.Dy(), max(1, w.k)
+	sw, sh := fw*k, fh*k
+	if len(w.bgra) != sw*sh*4 {
+		w.bgra = make([]byte, sw*sh*4)
+	}
+	w.bmi.Header.Width, w.bmi.Header.Height = int32(sw), -int32(sh)
+	p, b := fb.Pix, w.bgra
+	row := sw * 4
+	for y := 0; y < fh; y++ {
+		src := p[y*fb.Stride : y*fb.Stride+fw*4]
+		dst := b[y*k*row : y*k*row+row]
+		o := 0
+		for x := 0; x < fw*4; x += 4 {
+			r, g, bl := src[x], src[x+1], src[x+2]
+			for j := 0; j < k; j++ {
+				dst[o], dst[o+1], dst[o+2], dst[o+3] = bl, g, r, 255
+				o += 4
+			}
+		}
+		for j := 1; j < k; j++ {
+			copy(b[(y*k+j)*row:(y*k+j+1)*row], dst)
+		}
 	}
 	hdc, _, _ := pGetDC.Call(w.hwnd)
 	w.blit(hdc)
@@ -556,11 +579,11 @@ func Run(cfg *client.Config, assets *client.Assets, icon []byte) error {
 	r := rect{0, 0, int32(client.ScreenW * scale), int32(client.ScreenH * scale)}
 	pAdjustWindowRect.Call(uintptr(unsafe.Pointer(&r)), wsOverlappedWindow, 0)
 	ww, wh := r.Right-r.Left, r.Bottom-r.Top
-	min := rect{0, 0, client.ScreenW / 2, client.ScreenH / 2}
+	min := rect{0, 0, 320, 180}
 	pAdjustWindowRect.Call(uintptr(unsafe.Pointer(&min)), wsOverlappedWindow, 0)
 
-	w := &window{cfg: cfg, bgra: make([]byte, client.ScreenW*client.ScreenH*4), minW: min.Right - min.Left, minH: min.Bottom - min.Top}
-	w.bmi.Header = bitmapInfoHeader{Width: client.ScreenW, Height: -client.ScreenH, Planes: 1, BitCount: 32}
+	w := &window{cfg: cfg, bgra: make([]byte, client.ScreenW*client.ScreenH*4), minW: min.Right - min.Left, minH: min.Bottom - min.Top, k: 1}
+	w.bmi.Header = bitmapInfoHeader{Width: int32(client.ScreenW), Height: -int32(client.ScreenH), Planes: 1, BitCount: 32}
 	w.bmi.Header.Size = uint32(unsafe.Sizeof(w.bmi.Header))
 	win = w
 
@@ -620,11 +643,12 @@ func Run(cfg *client.Config, assets *client.Assets, icon []byte) error {
 		pGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 		pScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&pt)))
 		w.layout()
+		app.SetSize(w.lw, w.lh)
 		in := w.in
-		in.MX = (int(pt.X) - w.ox) * client.ScreenW / w.dw
-		in.MY = (int(pt.Y) - w.oy) * client.ScreenH / w.dh
+		in.MX = (int(pt.X) - w.ox) * w.lw / w.dw
+		in.MY = (int(pt.Y) - w.oy) * w.lh / w.dh
 		fg, _, _ := pGetForegroundWnd.Call()
-		in.MouseInside = fg == hwnd && in.MX >= 0 && in.MY >= 0 && in.MX < client.ScreenW && in.MY < client.ScreenH
+		in.MouseInside = fg == hwnd && in.MX >= 0 && in.MY >= 0 && in.MX < w.lw && in.MY < w.lh
 		in.Shift = keyDown(0x10)
 		in.Ctrl = keyDown(0x11)
 

@@ -7,10 +7,12 @@ optional web page and Discord.
 
 - **Headless server** (`HouseServer.exe`, or a Linux binary) built to run 24/7.
   With nobody connected the table stops and the process just waits.
-- **Android app** (`TheHouseAlwaysWins.apk`): the same game on your phone, in
-  landscape, with touch controls and the on-screen keyboard.
-- **Game client** (`TheHouseAlwaysWins.exe`): pixel art at 640x360, scaled up by
-  whole pixels. Every image, sound and colour can be replaced (see
+- **Android app** (`TheHouseAlwaysWins.apk`): the same game on your phone,
+  held sideways or upright, with touch controls and the on-screen keyboard.
+- **Game client** (`TheHouseAlwaysWins.exe`): pixel art that fills the window
+  at any size or shape. The layout stretches to fit wide and tall windows,
+  switches to a vertical layout when the window is taller than it is wide, and
+  scales smoothly while staying sharp. Every image, sound and colour can be replaced (see
   [Replacing the art](#replacing-the-art)).
 - **Accounts** with a username, password and profile picture. Pictures are
   pixelated to 32x32.
@@ -74,7 +76,10 @@ run.
 browser or file manager will ask to allow installing apps: say yes for that
 app. Updates install over the old version and keep your login. Tap to press
 buttons, drag up and down to scroll the leaderboard, and use the phone's back
-button to close windows. The replaceable art lives in
+button to close windows. Turn the phone upright for the vertical layout (two
+rows of seats, big buttons at the bottom). When you tap a text box the keyboard
+opens and the screen slides up so you can see what you're typing. The
+replaceable art lives in
 `Android/data/com.cmacle.thehousealwayswins/files/assets` on the phone.
 
 ## How a hand works
@@ -187,14 +192,29 @@ Taking the crown is announced to everyone.
 With `dealer_trash_talk` on, the dealer reacts to what happens at the table
 and calls players out by name in a speech bubble:
 
+- **Betting:** he dares players who bet small to go big (naming a number),
+  nags whoever is running out the betting clock, and comments on min, max,
+  all-in and big-chunk bets, raising after a loss (chasing), shrinking a bet,
+  doubling up, betting first and betting last.
 - **Decisions:** busting (extra abuse for hitting a hard 17+), standing scared
-  on 12–16 against a strong up card, standing on 11 or less, splitting tens,
-  surrendering, doubling.
-- **Bets and results:** min, max and all-in bets, sitting a hand out, big
-  losses (with the amount), losing streaks, going broke, blackjacks, sweeps.
-- **Small talk:** greetings and between-hand roasts based on lifetime scores
-  (worst on the board, the crown holder, deep in the red, suspiciously up),
-  bragging about the house's lifetime take, and rambling.
+  on 12–16 against a strong up card, standing on 11 or less, splitting tens
+  (or anything else), surrendering, doubling, hitting to 21, five-card hands,
+  and a slow player's turn clock.
+- **Results:** big losses (with the amount), winning and losing streaks,
+  pushes, doubles won and lost, going broke, blackjacks, sweeps, his own
+  busts, and drawing out to 21 on everybody.
+- **The table:** his up card (an ace, or a weak 4-6), people leaving, the daily
+  refill landing, and being alone with one player.
+- **Between hands:** roasts based on lifetime scores (worst on the board, the
+  crown holder, deep in the red, suspiciously up), bragging about the house,
+  fake breaking news about players, rating someone's play, "Dale's Tip of the
+  Hand" (terrible advice), phone calls from people in his past, talking to his
+  iguana, made-up house rules, daily affirmations and bits of his old lounge
+  songs.
+
+He keeps it to about three small remarks a hand at the normal pace (five in
+turbo), with a short breather between them. Big moments (busts, blackjacks,
+someone going broke) always get a reaction.
 
 He also makes up humiliating stories about players ("{name} is the kind of guy
 who falls in the toilet at least once a week"), tells stories from his past,
@@ -209,12 +229,13 @@ and his whole life story is in [docs/DALE.md](docs/DALE.md). Every line he
 says fits it.
 
 **He tells long stories.** Every so often, between hands, he launches into one
-of 17 multi-paragraph stories about his life: the night the Lucky Lady sank,
+of 27 multi-paragraph stories about his life: the night the Lucky Lady sank,
 his father's last shuffle, the six minutes he was dead, the Applebee's riblets
 incident, how he won Comp in a Shreveport tire shop. They're told a bubble at
 a time. Small talk waits until he's done; if something big happens mid-story
 (a bust, a blackjack), he stops to rub it in and then picks the story back up
-where he left off. At the normal pace he starts one at most every 6 minutes.
+where he left off. Stories are rare: at most one every 15 minutes at the normal pace (25 in
+turbo), and only sometimes even then.
 
 **The dealer log.** The little speech bubble next to the dealer (or **T**)
 opens everything he's said lately, stories included, so you can catch up on
@@ -248,7 +269,7 @@ time, his mouth flaps, and each word makes a little blip. The vulgar dealer's
 voice is a low, gravelly grumble. Lines stay up long enough to read, longer
 for long ones, and anything too long for the bubble is split into pages.
 
-There are about 1,000 lines across both modes. They're dealt like a shuffled
+There are over 2,000 lines across both modes. They're dealt like a shuffled
 deck per situation, and recently used lines are skipped, so repeats are rare.
 `dealer_vulgar` adds the uncensored set and swaps in the cigar-smoking dealer
 sprite row in `dealers.png`. Lines live in `internal/banter/lines.go` if you
@@ -404,6 +425,9 @@ name and layout, then restart the client. Delete a file to get the default back.
   card back, chips, dealer, shoe, logo, default avatar, icon, buttons, panels,
   fields, checkbox, turn arrow, **hats.png** (the 24 hats) and **frames.png**
   (the 10 avatar frames).
+- The default table is redrawn to fit any window shape. If you replace
+  `table.png` with your own, it's stretched to fill the window instead, so
+  keep it simple (felt and rail) if you play in odd shapes.
 - `font.png` is a 16x6 grid of ASCII glyphs. Character widths are measured
   automatically.
 - Sounds are WAV files: card, chip, click, win, blackjack, lose, push, bust,

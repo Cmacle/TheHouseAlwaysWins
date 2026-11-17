@@ -185,7 +185,11 @@ func silhouette(dst, src *image.RGBA, x, y int, c color.RGBA) {
 var wardTabs = []struct{ kind, label string }{{cosmetics.Hat, "HATS"}, {cosmetics.Frame, "FRAMES"}, {cosmetics.Title, "TITLES"}}
 
 func (a *App) drawWardrobe() {
-	r := image.Rect(40, 14, 600, 346)
+	r := ovRect(560, 332)
+	narrow := r.Dx() < 500
+	if narrow {
+		r = ovRect(560, ScreenH-40)
+	}
 	if a.overlayFrame(r, "WARDROBE") {
 		return
 	}
@@ -228,6 +232,10 @@ func (a *App) drawWardrobe() {
 
 	items := cosmetics.OfKind(a.wardTab)
 	gx, gy := r.Min.X+16, r.Min.Y+54
+	gridW := r.Dx() - 32 - 100 // the "you" preview sits to the right
+	if narrow {
+		gy, gridW = r.Min.Y+104, r.Dx()-32 // ...or above
+	}
 	hover := ""
 	equipped := map[string]string{cosmetics.Hat: a.profile.EquippedHat, cosmetics.Frame: a.profile.Frame, cosmetics.Title: a.profile.Title}[a.wardTab]
 	click := func(it *cosmetics.Item, unlocked bool) {
@@ -245,9 +253,13 @@ func (a *App) drawWardrobe() {
 	}
 	switch a.wardTab {
 	case cosmetics.Hat, cosmetics.Frame:
-		cw, ch, cols := 54, 46, 8
+		cw, ch := 54, 46
 		if a.wardTab == cosmetics.Frame {
-			cw, ch, cols = 54, 50, 8
+			cw, ch = 54, 50
+		}
+		cols := max(1, min(8, (gridW+2)/(cw+2)))
+		if !narrow {
+			cols = 8
 		}
 		for i, it := range items {
 			cx, cy := gx+(i%cols)*(cw+2), gy+(i/cols)*(ch+2)
@@ -297,10 +309,15 @@ func (a *App) drawWardrobe() {
 			}
 		}
 	case cosmetics.Title:
-		cw, rh, cols := 140, 15, 3
+		cw, rh := 140, 15
+		cols := 3
+		if narrow {
+			cols = max(1, (gridW+4)/(cw+4))
+			cw = (gridW+4)/cols - 4
+		}
+		perCol := (len(items) + cols - 1) / cols
 		for i, it := range items {
-			cx, cy := gx+(i/9)*(cw+4), gy+(i%9)*(rh+2)
-			_ = cols
+			cx, cy := gx+(i/perCol)*(cw+4), gy+(i%perCol)*(rh+2)
 			row := image.Rect(cx, cy, cx+cw, cy+rh)
 			unlocked := cosmetics.Has(it.ID, st, own)
 			fillRect(a.fb, row, color.RGBA{0, 0, 0, 110})
@@ -332,11 +349,24 @@ func (a *App) drawWardrobe() {
 		show = a.wardSel
 	}
 	ib := image.Rect(r.Min.X+16, r.Max.Y-66, r.Max.X-16, r.Max.Y-14)
+	if narrow {
+		ib.Min.Y = r.Max.Y - 92
+	}
 	fillRect(a.fb, ib, color.RGBA{0, 0, 0, 140})
 	strokeRect(a.fb, ib, color.RGBA{0, 0, 0, 255})
 	it, ok := cosmetics.Get(show)
 	if !ok {
-		a.text(ib.Min.X+ib.Dx()/2, ib.Min.Y+20, "Hover an item to see how to unlock it. Click to wear it.", a.A.C("text_dim"), alignCenter)
+		hint := "Hover an item to see how to unlock it. Click to wear it."
+		if a.isTouch() {
+			hint = "Tap an item to see how to unlock it, or to wear it."
+		}
+		for i, l := range a.wrap(hint, ib.Dx()-16) {
+			a.text(ib.Min.X+ib.Dx()/2, ib.Min.Y+16+i*10, l, a.A.C("text_dim"), alignCenter)
+		}
+		return
+	}
+	if narrow {
+		a.wardInfoNarrow(ib, it, st, own)
 		return
 	}
 	unlocked := cosmetics.Has(it.ID, st, own)
@@ -373,5 +403,46 @@ func (a *App) drawWardrobe() {
 		}
 		fillRect(a.fb, image.Rect(in.Min.X, in.Min.Y, in.Min.X+int(float64(in.Dx())*frac), in.Max.Y), tierColor(it.Tier))
 		a.text(bar.Min.X-6, ib.Min.Y+32, commas(cur)+" / "+commas(goal), a.A.C("text_dim"), alignRight)
+	}
+}
+
+// wardInfoNarrow is the item info box laid out for a narrow screen.
+func (a *App) wardInfoNarrow(ib image.Rectangle, it *cosmetics.Item, st cosmetics.Stats, own map[string]bool) {
+	unlocked := cosmetics.Has(it.ID, st, own)
+	x := ib.Min.X + 8
+	y := ib.Min.Y + 6
+	a.text(x, y, it.Name, tierColor(it.Tier), alignLeft)
+	a.text(ib.Max.X-8, y, strings.ToUpper(cosmetics.TierNames[it.Tier]), a.A.C("text_dim"), alignRight)
+	y += 11
+	for _, l := range a.wrap(it.Desc, ib.Dx()-16) {
+		a.text(x, y, l, a.A.C("text"), alignLeft)
+		y += 10
+	}
+	for _, l := range a.wrap(it.Requirement(), ib.Dx()-16) {
+		a.text(x, y, l, a.A.C("gold"), alignLeft)
+		y += 10
+	}
+	status, sc := "LOCKED", a.A.C("lose")
+	if unlocked {
+		status, sc = "UNLOCKED - tap to wear", a.A.C("win")
+		if it.Dynamic() {
+			status = "YOURS WHILE YOU HOLD #1"
+		}
+	} else if it.Dynamic() {
+		status = "HELD BY THE CURRENT #1"
+	}
+	by := ib.Max.Y - 12
+	a.text(x, by, status, sc, alignLeft)
+	if !it.Dynamic() && it.Metric != cosmetics.MFree {
+		cur, goal := it.Progress(st)
+		if unlocked {
+			cur = goal
+		}
+		cur = max(cur, 0)
+		bar := image.Rect(ib.Max.X-90, by+1, ib.Max.X-8, by+7)
+		fillRect(a.fb, bar, color.RGBA{0, 0, 0, 255})
+		in := bar.Inset(1)
+		frac := min(float64(cur)/float64(goal), 1)
+		fillRect(a.fb, image.Rect(in.Min.X, in.Min.Y, in.Min.X+int(float64(in.Dx())*frac), in.Max.Y), tierColor(it.Tier))
 	}
 }

@@ -52,6 +52,43 @@ const (
 	EvFlex       = "flex"      // bragging about current riches: {item}
 	EvSympathy   = "sympathy"  // while down: begging, badly
 	EvPetty      = "petty"     // house lost a round: {name} won {amount}
+
+	// betting
+	EvDare     = "dare"      // dare {name} to bet {amount}
+	EvBetSlow  = "bet_slow"  // betting clock running out on {name}
+	EvBetUp    = "bet_up"    // {name} raised their bet a lot ({amount})
+	EvBetDown  = "bet_down"  // {name} shrank their bet after a loss
+	EvChase    = "chase"     // {name} raised right after losing {amount}
+	EvBetBig   = "bet_big"   // {name} bet a big chunk ({amount}) of their stack
+	EvFirstBet = "first_bet" // {name} bet first
+	EvLastBet  = "last_bet"  // {name} bet last, everyone waiting
+	EvBetOpen  = "bet_open"  // taunting the table to bet big ({name} optional)
+
+	// playing
+	EvTurnSlow   = "turn_slow"   // {name}'s turn clock running out
+	EvTwentyOne  = "twenty_one"  // {name} hit to 21
+	EvFiveCard   = "five_card"   // {name} has five cards and hasn't busted ({total})
+	EvStandGood  = "stand_good"  // {name} stood on 20 (correctly, annoyingly)
+	EvSplit      = "split"       // {name} split something other than tens
+	EvDoubleWin  = "double_win"  // {name} doubled and won {amount}
+	EvPush       = "push"        // {name} tied him
+	EvDealerAce  = "dealer_ace"  // he's showing an ace
+	EvDealerWeak = "dealer_weak" // he's showing a 4, 5 or 6 ({up})
+	EvDealer21   = "dealer_21"   // he drew to 21 and won
+	EvWinStreak  = "win_streak"  // {name} won {streak} in a row
+	EvLeave      = "leave"       // {name} walked away
+	EvRefill     = "refill"      // {name} got the daily refill of {amount}
+
+	// between hands, other ways to run his mouth
+	EvAlone    = "alone"    // only {name} at the table
+	EvHeadline = "headline" // fake breaking news (often about {name})
+	EvRating   = "rating"   // rates {name}
+	EvTip      = "tip"      // terrible advice
+	EvPhone    = "phone"    // on the phone with somebody from his past
+	EvComp     = "comp"     // talking to Comp the iguana (about {name})
+	EvRule     = "rule"     // made-up house rules
+	EvAffirm   = "affirm"   // daily affirmations
+	EvSong     = "song"     // a bit of a lounge song (his own)
 )
 
 // Vars fill the placeholders in a line.

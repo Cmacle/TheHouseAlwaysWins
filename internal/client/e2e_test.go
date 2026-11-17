@@ -78,7 +78,7 @@ func TestEndToEnd(t *testing.T) {
 	// alice clicks the 10 chip three times and presses Enter; bob uses the keyboard after clicking 25
 	chip := func(i int) Input {
 		cs := a.A.Theme.ChipSize
-		return Input{MX: 168 + 4 + i*(cs+4) + 5, MY: hudTop + 7 + 5, Pressed: true, Down: true, MouseInside: true}
+		return Input{MX: 168 + 4 + i*(cs+4) + 5, MY: ScreenH - 62 + 7 + 5, Pressed: true, Down: true, MouseInside: true}
 	}
 	for k := 0; k < 3; k++ {
 		pump(t, apps, map[*App]Input{a: chip(1), b: chip(2)}, func() bool { return true }, "")

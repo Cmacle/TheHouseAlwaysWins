@@ -40,7 +40,24 @@ it.
 | Crystal | 3rd wife (1999–2000) | Beat him for $40,000 playing perfect basic strategy, then married him that night. Kept his alligator belt with the DALE buckle. The only ex who still sends a Christmas card, with $20 in it. |
 | Dale Jr. ("DJ") | Son, born 1991 | Rhonda's boy. First Kroft to go to college (finance). Hosts the crypto podcast "Hustle Mode." Calls his father "predatory." They don't call each other. |
 | Madison | Granddaughter, 8 | Has met him twice and called his card trick "cringe." He looked it up and still thinks about it. |
-| Comp | Iguana, since 2008 | Sleeps in the Lucky Lady chip tray and eats collard greens. Has bitten a health inspector, Dale's lawyer and Ray's ferret. |
+| Comp | Iguana, since 2008 | Sleeps in the Lucky Lady chip tray and eats collard greens. Has bitten a health inspector, Dale's lawyer and Ray's ferret. Wears a Christmas sweater Crystal knitted in 2009. |
+
+## Other people in his life
+
+| Who | The short version |
+|---|---|
+| Lyle Boudreaux | One-eyed, bourbon-soaked captain who ran the Lucky Lady aground in 1983 ("I didn't sink it, I parked it"). Turned up at Gene's funeral in 2019 and told Dale his father bragged about him to everyone, just never to him. Died in spring 2020. |
+| Commander Hollis | The submarine captain who lost his watch, his pen and his Christmas ham to Dale in 1971. |
+| Walt Mayhew | Silent old railroad man who bet $5 a hand at 3 a.m. in Reno. Gave Dale the lucky chip in October 1986 and died that week. Dale was the only mourner at his funeral. |
+| Big Sal Russo | Reno bar regular who changed the terms of the barefoot-in-the-snow bet in 1988. Cost Dale a toe. |
+| Gene Petrakis | Silver Star dealer with perfect hands and teeth who volunteered at an animal shelter. Lost Dealer of the Year 1997 by being late. Died in 2019. Dale still hates him. |
+| Ray "the Ferret" LaPointe | Runs a game behind a Shreveport tire shop. Lost Comp to Dale in 2008. Is owed $11,000 and the right ferret. |
+| Brayden | The consultant in the sleeveless vest who got Dale fired in 2016. |
+| Chip | The Branson timeshare closer. The best closer Dale ever saw. |
+| Lorraine | Overnight waitress at the Denny's by the trailer. Calls him "hon", doesn't know his name, keeps his Folgers mug behind the counter. Saw him bury the coffee can and never told anyone. |
+| Lou | His bookie. Always wants Friday. |
+| Hank | His landlord at the trailer park. |
+| The Management | The unseen people who hired him for this table and pay him a cut of the house's take. He's never met them. They call when the house is down. |
 
 ## Timeline
 
@@ -55,29 +72,36 @@ it.
 | 1979 | Earl gets him a tryout on the Lucky Lady, an illegal "dinner cruise" game out of Memphis. Earl dies two weeks later and Dale takes his seat. |
 | 1980 | Marries Darlene on his own table. |
 | 1983 | The drunk captain, Lyle Boudreaux, runs the Lucky Lady aground fleeing the sheriff. Dale walks ashore holding the chip tray over his head (the water was waist-deep). Wins the Buick arm-wrestling. |
+| 1985 | Mugged in Reno. The mugger recognizes the Velvet Kroft, hands the wallet back and tips him $5 "for the music." |
 | 1984 | Darlene leaves him for the mime. |
 | 1985–89 | Reno and Tahoe years. |
-| 1986 | Lucky chip goes in his sock. |
-| 1987 | Deals 31 hours straight in a Tahoe blizzard. Nobody tips. |
+| 1986 | Walt Mayhew gives him the lucky $5 chip, and it goes in his sock for good. |
+| 1987 | Deals 31 hours straight in a Tahoe blizzard. Two brothers saw a snowmobile in half. Nobody tips. |
 | 1988 | Loses a toe standing barefoot in the snow for 90 minutes on a $500 bet with Big Sal Russo, and nets $20 after the doctor. Deals to a man who may have been Elvis, who stands on every 15. |
+| 1989 | First Las Vegas ban, for correcting a dealer's shuffle four times in twenty minutes. |
 | 1990 | Mississippi legalizes casino boats. Goes home to the river and the Golden Catfish in Tunica. Marries Rhonda. |
 | 1991 | DJ is born. |
 | 1992 | Mitch's fork, at Sizzler. |
 | 1994 | A $100 tip stops his heart and he's dead for six minutes. On the other side there's a buffet and Grandpa Tuck dealing. |
 | 1996 | Gives Mitch a kidney. Rhonda divorces him a month later. |
 | 1997 | Tri-State Dealer of the Year, beating Gene Petrakis because Gene was late from the animal shelter. Thanks nobody in his speech. |
+| 1998 | Banned from Chuck E. Cheese for life at DJ's seventh birthday, after putting seven kids to work on the skee-ball lanes for 11,000 tickets. |
 | 1999 | Marries Crystal in Biloxi. |
 | 2000 | Crystal leaves with the belt. |
+| 2002 | Mugged in a Biloxi parking garage by a man who lost $800 hitting seventeen at his table. Tells him not to hit seventeen. The mugger takes $40 and tips him $5. |
 | 2003 | June dies. The organ fight with Patty. |
+| 2004 | Second Las Vegas ban, for tipping the casino manager's daughter a black chip. |
 | 2006 | Buys the Branson timeshare. |
 | 2008 | Wins Comp in a Shreveport tire-shop game. |
 | 2010 | Mister Pickles, Ray's ferret, dies in Dale's care (heat lamp, Comp). Now owes Ray $11,000 and a ferret. |
-| 2011 | The Applebee's riblets incident: 14 baskets, 31 riblets in his coat, his photo faxed statewide. |
+| 2011 | The Mississippi floods Tunica. Dale deals for two days in the Golden Catfish banquet room to eleven regulars who won't leave, and a craps table floats to Arkansas. Later that year, the Applebee's riblets incident: 14 baskets, 31 riblets in his coat, his photo faxed statewide. |
 | 2014 | Comp bites a health inspector. "Best day of my life." |
 | 2016 | A consultant named Brayden gets him fired from the Golden Catfish after 26 years for a "guest experience problem." His picture by the buffet is replaced with a shrimp. |
-| 2017–now | Moves into a trailer behind a Denny's. Hired by the unseen "Management" to deal this private game for a cut of the house's take. |
+| 2017–now | Moves into a trailer behind a Denny's and buries his savings in a Folgers can by the third fence post. Hired by the unseen "Management" to deal this private game for a cut of the house's take. |
+| 2019 | Goes to Gene Petrakis's funeral to make sure. Meets Lyle Boudreaux again. |
+| 2025 | Christmas alone with Comp, a rotisserie chicken and Crystal's $20 card. The phone doesn't ring. |
 
-## His 17 long stories
+## His 27 long stories
 
 | Story | What it's about |
 |---|---|
@@ -98,6 +122,16 @@ it.
 | The toe | Big Sal changes the rules |
 | Elvis | The King stands on 15 |
 | Dealer of the Year | Gene Petrakis and the puppies |
+| The lucky chip | Walt Mayhew and five dollars |
+| The blizzard | Thirty-one hours in Tahoe and the sawed-in-half snowmobile |
+| Chuck E. Cheese | DJ's seventh birthday and 11,000 tickets |
+| The flood | Dealing upstairs while the Mississippi takes the casino |
+| The timeshare | Six hours, a tiny steak and Chip the closer |
+| Lorraine | The Denny's, the coffee can and the Folgers mug |
+| Banned from Vegas | Twice: once for shuffling advice, once for tipping |
+| Gene's funeral | Lyle Boudreaux, and what his father never said |
+| Christmas | Comp's sweater, a rotisserie chicken and a phone that doesn't ring |
+| Mugged twice | Two muggings, two tips |
 
 ## Running gags
 
@@ -110,3 +144,6 @@ it.
 - The Branson timeshare and watching for a mime pulling an invisible rope.
 - Ray, the $11,000 and a ferret.
 - "I get a cut," which is why he brags when he's up and begs when he's down.
+- Nobody tips him. He keeps a list.
+- Phone calls he takes at the table: Ray, the Management, Crystal, his doctor, and wrong numbers that aren't DJ.
+- Fake breaking news, house rules, daily affirmations, terrible tips and snatches of his old lounge songs (never "Sweet Caroline").

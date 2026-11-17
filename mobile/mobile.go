@@ -106,10 +106,42 @@ func Start(configDir, assetsDir string, h Host) error {
 }
 
 // Width is the frame width in pixels.
-func Width() int { return client.ScreenW }
+func Width() int {
+	mu.Lock()
+	defer mu.Unlock()
+	return client.ScreenW
+}
 
 // Height is the frame height in pixels.
-func Height() int { return client.ScreenH }
+func Height() int {
+	mu.Lock()
+	defer mu.Unlock()
+	return client.ScreenH
+}
+
+// Layout tells the game how big the screen area is (in device pixels); it
+// picks a canvas with the same shape, which Width and Height then return.
+func Layout(pw, ph int) {
+	mu.Lock()
+	defer mu.Unlock()
+	w, h := client.ChooseSize(pw, ph)
+	if app != nil {
+		app.SetSize(w, h)
+	} else {
+		client.ScreenW, client.ScreenH = w, h
+	}
+}
+
+// FocusBottom is the bottom of the text box being typed in (canvas pixels),
+// or -1, so the screen can pan it above the keyboard.
+func FocusBottom() float64 {
+	mu.Lock()
+	defer mu.Unlock()
+	if app == nil {
+		return -1
+	}
+	return float64(app.FocusBottom())
+}
 
 // Frame advances the game one frame and returns the picture as RGBA bytes
 // (Width*Height*4), ready for Bitmap.copyPixelsFromBuffer.

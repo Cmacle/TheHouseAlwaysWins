@@ -15,14 +15,10 @@ import (
 )
 
 const (
-	hudTop   = 298
 	animSecs = 0.30
 	// dealStagger spaces out cards that show up in the same update
 	dealStagger = 160 * time.Millisecond
 	flipSecs    = 0.22
-	shoeX       = 588
-	shoeY       = 24
-	dealerTop   = 58
 )
 
 // ---------------------------------------------------------------- state updates
@@ -182,17 +178,6 @@ func (a *App) onEvent(e proto.Event) {
 
 // ---------------------------------------------------------------- layout
 
-func (a *App) seatPos(i, n int) (x, avatarCY int) {
-	if n <= 1 {
-		x = ScreenW / 2
-	} else {
-		x = 46 + i*548/(n-1)
-	}
-	dx := (float64(x) - 320) / 420
-	rail := 40 + 222*math.Sqrt(math.Max(0, 1-dx*dx))
-	return x, int(rail) - 10
-}
-
 type cardPos struct {
 	hand, idx int
 	x, y      int
@@ -286,8 +271,9 @@ func (a *App) drawCardAt(c bj.Card, key string, x, y int, fly *[]flying) {
 		}
 		if t < 1 {
 			e := easeOut(math.Max(0, t))
-			fx := float64(shoeX) + (float64(x)-shoeX)*e
-			fy := float64(shoeY) + (float64(y)-shoeY)*e
+			sx, sy := float64(a.L.shoe.X), float64(a.L.shoe.Y)
+			fx := sx + (float64(x)-sx)*e
+			fy := sy + (float64(y)-sy)*e
 			back := a.A.CardBack
 			if t > 0.6 {
 				back = img
@@ -354,10 +340,12 @@ func (a *App) resultLabel(h proto.HandView) (string, color.RGBA) {
 }
 
 func (a *App) drawTable() {
-	blit(a.fb, a.A.Table, 0, 0)
+	a.computeLayout()
+	a.drawTableBG()
+	L := a.L
 	st := a.st
 	if st == nil {
-		a.text(ScreenW/2, 170, "Joining the table...", a.A.C("text"), alignCenter)
+		a.text(ScreenW/2, ScreenH/2-10, "Joining the table...", a.A.C("text"), alignCenter)
 		return
 	}
 	overlayOpen := a.overlay != ovNone
@@ -365,7 +353,7 @@ func (a *App) drawTable() {
 	var fly []flying
 
 	// dealer
-	blit(a.fb, a.A.Shoe, shoeX-6, shoeY-2)
+	blit(a.fb, a.A.Shoe, L.shoe.X-6, L.shoe.Y-2)
 	a.drawDealer(st)
 	if n := len(st.Dealer.Cards); n > 0 {
 		cw := a.A.Theme.CardWidth
@@ -373,7 +361,7 @@ func (a *App) drawTable() {
 		w := cw + step*(n-1)
 		x0 := ScreenW/2 - w/2
 		for i, c := range st.Dealer.Cards {
-			a.drawCardAt(c, fmt.Sprintf("d%d", i), x0+i*step, dealerTop, &fly)
+			a.drawCardAt(c, fmt.Sprintf("d%d", i), x0+i*step, L.cardsY, &fly)
 		}
 		lbl := totalLabel(st.Dealer.Total, st.Dealer.Soft, false, n)
 		if bj.IsBlackjack(st.Dealer.Cards) {
@@ -384,34 +372,31 @@ func (a *App) drawTable() {
 			if st.Dealer.Total > 21 {
 				col = a.A.C("lose")
 			}
-			a.text(x0-6, dealerTop+12, lbl, col, alignRight)
+			a.text(x0-6, L.cardsY+12, lbl, col, alignRight)
 		}
 	}
 
 	// felt text
 	s := st.Settings
 	if st.Message != "" {
-		a.text(ScreenW/2, 96, st.Message, a.A.C("highlight"), alignCenter)
+		a.text(ScreenW/2, L.msgY, st.Message, a.A.C("highlight"), alignCenter)
 	}
-	rule := "DEALER STANDS ON ALL 17s"
-	if s.DealerHitsSoft17 {
-		rule = "DEALER HITS SOFT 17"
+	if !L.noRules {
+		rule := "DEALER STANDS ON ALL 17s"
+		if s.DealerHitsSoft17 {
+			rule = "DEALER HITS SOFT 17"
+		}
+		felt := a.A.C("felt_text")
+		a.A.Font.Draw(a.fb, ScreenW/2-a.A.Font.Width(rule)/2, L.rulesY, rule, felt)
+		mm := fmt.Sprintf("MIN %s  -  MAX %s", commas(s.MinBet), commas(s.MaxBet))
+		a.A.Font.Draw(a.fb, ScreenW/2-a.A.Font.Width(mm)/2, L.rulesY+10, mm, felt)
+		pays := "BLACKJACK PAYS " + strings.ReplaceAll(s.BlackjackPays, ":", " TO ")
+		a.A.Font.Draw(a.fb, ScreenW/2-a.A.Font.Width(pays)/2, L.rulesY+23, pays, a.A.C("gold"))
 	}
-	felt := a.A.C("felt_text")
-	a.A.Font.Draw(a.fb, ScreenW/2-a.A.Font.Width(rule)/2, 110, rule, felt)
-	mm := fmt.Sprintf("MIN %s  -  MAX %s", commas(s.MinBet), commas(s.MaxBet))
-	a.A.Font.Draw(a.fb, ScreenW/2-a.A.Font.Width(mm)/2, 120, mm, felt)
-	pays := "BLACKJACK PAYS " + strings.ReplaceAll(s.BlackjackPays, ":", " TO ")
-	a.A.Font.Draw(a.fb, ScreenW/2-a.A.Font.Width(pays)/2, 133, pays, a.A.C("gold"))
 
 	// seats
 	n := len(st.Seats)
-	seatW := 60
-	if n > 1 {
-		if sp := 548/(n-1) - 2; sp < seatW {
-			seatW = sp
-		}
-	}
+	seatW := a.seatSpacing(n)
 	if seatW < a.A.Theme.CardWidth+4 {
 		seatW = a.A.Theme.CardWidth + 4
 	}
@@ -456,12 +441,17 @@ func (a *App) drawTable() {
 		if me {
 			nameCol = a.A.C("gold")
 		}
-		a.text(x, ar.Max.Y+4, fitText(a.A.Font, sv.Username, seatW), nameCol, alignCenter)
+		// keep the labels on screen for seats at the edges
+		label := func(y int, s string, c color.RGBA) {
+			hw := a.A.Font.Width(s)/2 + 2
+			a.text(min(max(x, hw), ScreenW-hw), y, s, c, alignCenter)
+		}
+		label(ar.Max.Y+4, fitText(a.A.Font, sv.Username, seatW), nameCol)
 		if name, c, ok := titleOf(sv.Title); ok {
-			a.text(x, ar.Max.Y+13, fitText(a.A.Font, name, seatW+16), c, alignCenter)
+			label(ar.Max.Y+13, fitText(a.A.Font, name, seatW+16), c)
 		}
 		if line, lc := a.seatLine(st, sv); line != "" {
-			a.text(x, ar.Max.Y+22, line, lc, alignCenter)
+			label(ar.Max.Y+22, line, lc)
 		}
 		// hover tooltip with balance
 		if a.hovered(ar) {
@@ -573,7 +563,7 @@ func (a *App) drawTable() {
 		a.drawDealerLog()
 	}
 	if a.overlay == ovNone && a.profileHatOnTop() {
-		a.drawHat(a.profile.Hat, 10, hudTop+12)
+		a.drawHat(a.profile.Hat, 10, L.hudTop+12)
 	}
 }
 
@@ -629,7 +619,11 @@ func (a *App) drawTopBar(st *proto.TableState) {
 	if name == "" {
 		name = a.serverInfo.Name
 	}
-	a.text(6, 4, fitText(a.A.Font, name, 200), a.A.C("gold"), alignLeft)
+	ty := 4
+	if a.L.portrait {
+		ty = 24 // the buttons get the top row
+	}
+	a.text(6, ty, fitText(a.A.Font, name, 200), a.A.C("gold"), alignLeft)
 	info := fmt.Sprintf("Seats %d/%d", seated, len(st.Seats))
 	if st.HandNumber > 0 {
 		info += fmt.Sprintf("  -  Hand #%d", st.HandNumber)
@@ -638,7 +632,7 @@ func (a *App) drawTopBar(st *proto.TableState) {
 		info += fmt.Sprintf("  -  %d watching", st.Spectators)
 	}
 	info += "  -  House " + signedMoney(st.HouseNet)
-	a.text(6, 14, info, a.A.C("text_dim"), alignLeft)
+	a.text(6, ty+10, fitText(a.A.Font, info, ScreenW-12), a.A.C("text_dim"), alignLeft)
 
 	y := 4
 	x := ScreenW - 4
@@ -709,6 +703,8 @@ func chipLabel(v int64) string {
 }
 
 func (a *App) drawHUD(st *proto.TableState) {
+	L := a.L
+	hudTop := L.hudTop
 	hud := image.Rect(0, hudTop, ScreenW, ScreenH)
 	a.panel(hud)
 	me := a.mySeat(st)
@@ -741,12 +737,15 @@ func (a *App) drawHUD(st *proto.TableState) {
 	}
 
 	// center
-	cx0, cx1 := 168, 476
+	cx0, cx1 := L.cx0, L.cx1
+	if L.portrait {
+		fillRect(a.fb, image.Rect(6, L.center-3, ScreenW-6, L.center-2), color.RGBA{0, 0, 0, 90})
+	}
 	switch {
 	case st.CanBet && me != nil:
-		a.drawBetting(st, me, cx0, cx1)
+		a.drawBetting(st, me, cx0, cx1, L.center)
 	case len(st.Actions) > 0 && me != nil:
-		a.drawActions(st, me, cx0, cx1)
+		a.drawActions(st, me, cx0, cx1, L.center)
 	default:
 		msg := st.Message
 		if me != nil && st.Phase == proto.PhaseBetting && me.PendingBet > 0 {
@@ -764,7 +763,7 @@ func (a *App) drawHUD(st *proto.TableState) {
 			msg = "Waiting for players..."
 		}
 		lines := a.wrap(msg, cx1-cx0-10)
-		y := hudTop + 30 - len(lines)*5
+		y := L.center + 30 - len(lines)*5
 		for _, l := range lines {
 			a.text((cx0+cx1)/2, y, l, a.A.C("text"), alignCenter)
 			y += 10
@@ -772,7 +771,7 @@ func (a *App) drawHUD(st *proto.TableState) {
 	}
 
 	// right: phase, timer, toggles
-	rx0, rx1 := 484, ScreenW-10
+	rx0, rx1 := L.rx0, L.rx1
 	phase := strings.ToUpper(st.Phase)
 	yourTurn := len(st.Actions) > 0 || st.CanBet
 	pc := a.A.C("gold")
@@ -819,7 +818,7 @@ func (a *App) drawHUD(st *proto.TableState) {
 	}
 }
 
-func (a *App) drawBetting(st *proto.TableState, me *proto.SeatView, x0, x1 int) {
+func (a *App) drawBetting(st *proto.TableState, me *proto.SeatView, x0, x1, hudTop int) {
 	s := st.Settings
 	limit := s.MaxBet
 	if me.Balance < limit {
@@ -898,7 +897,7 @@ func (a *App) drawBetting(st *proto.TableState, me *proto.SeatView, x0, x1 int) 
 	}
 }
 
-func (a *App) drawActions(st *proto.TableState, me *proto.SeatView, x0, x1 int) {
+func (a *App) drawActions(st *proto.TableState, me *proto.SeatView, x0, x1, hudTop int) {
 	can := map[string]bool{}
 	for _, act := range st.Actions {
 		can[act] = true

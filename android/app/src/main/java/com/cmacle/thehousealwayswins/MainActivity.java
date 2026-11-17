@@ -55,6 +55,10 @@ public class MainActivity extends Activity implements Host {
 
         view = new GameView(this);
         setContentView(view);
+        if (Build.VERSION.SDK_INT >= 30) {
+            // so the view gets keyboard insets even in fullscreen
+            getWindow().setDecorFitsSystemWindows(false);
+        }
         hideSystemUi();
     }
 

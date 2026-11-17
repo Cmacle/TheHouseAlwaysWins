@@ -894,3 +894,13 @@ func NormalizeAvatar(data []byte) ([]byte, error) {
 	}
 	return buf.Bytes(), nil
 }
+
+// WinStreak returns a player's current run of winning hands.
+func (s *Store) WinStreak(username string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.accounts[strings.ToLower(username)]; ok {
+		return a.WinStreak
+	}
+	return 0
+}

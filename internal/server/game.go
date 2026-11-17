@@ -41,7 +41,9 @@ type player struct {
 	hands      []*bj.Hand
 	leaving    bool
 	missed     int
-	needLog    bool // send the dealer's recent lines with the next state
+	needLog    bool  // send the dealer's recent lines with the next state
+	prevBet    int64 // last round's bet and how it went, for the dealer
+	prevDelta  int64
 }
 
 type evKind int
@@ -102,6 +104,11 @@ type Game struct {
 	lastStory  time.Time
 	forceSay   bool
 	sayLog     []proto.DealerLine
+	handTalk   int       // lines this hand (he keeps it to a few)
+	betNudged  bool      // nagged a slow bettor this round
+	dared      bool      // dared someone to bet big this round
+	bettingAt  time.Time // when betting opened
+	turnNudged string    // whose turn he last nagged (seat:hand)
 	idleLogged bool
 }
 
@@ -147,6 +154,8 @@ func (g *Game) Run(stop <-chan struct{}) {
 	refill := time.NewTicker(20 * time.Second)
 	defer refill.Stop()
 	g.checkRefill()
+	nudge := time.NewTicker(time.Second)
+	defer nudge.Stop()
 	for {
 		var tc, sc <-chan time.Time
 		if g.timer != nil {
@@ -169,6 +178,8 @@ func (g *Game) Run(stop <-chan struct{}) {
 			}
 		case <-sc:
 			g.onSayTimer()
+		case <-nudge.C:
+			g.nudge()
 		case <-refill.C:
 			g.checkRefill()
 		}
@@ -313,6 +324,7 @@ func (g *Game) leave(c *conn) {
 	p.conn = nil
 	g.store.SetOnline(p.user, false)
 	g.log.Printf("%s disconnected", p.user)
+	g.reactToLeave(p)
 	if p.inHand {
 		p.leaving = true
 		// Disconnected players stand automatically.
@@ -577,6 +589,8 @@ func (g *Game) startBetting() {
 		return
 	}
 	g.idleLogged = false
+	g.handTalk, g.betNudged, g.dared = 0, false, false
+	g.bettingAt = time.Now()
 	if g.shoe.NeedsShuffle() {
 		g.shoe.Shuffle()
 		g.eventAll(proto.Event{Kind: "shuffle", Text: "Shuffling the shoe...", Seat: -1})
@@ -615,15 +629,11 @@ func (g *Game) onBet(p *player, amt int64) {
 		g.errTo(p, "You don't have enough chips for that bet.")
 		return
 	}
+	changed := p.betPlaced
 	p.pendingBet, p.betPlaced = amt, true
 	g.eventAll(proto.Event{Kind: "chip", Seat: p.seat})
-	switch bal := g.store.Balance(p.user); {
-	case amt == bal && bal >= g.cfg.MinBet*5:
-		g.say(banter.EvAllIn, p, banter.Vars{Amount: amt}, 0.9, prioNormal)
-	case amt == g.cfg.MaxBet:
-		g.say(banter.EvMaxBet, p, banter.Vars{Amount: amt}, 0.5, prioNormal)
-	case amt == g.cfg.MinBet:
-		g.say(banter.EvMinBet, p, banter.Vars{Amount: amt}, 0.3, prioLow)
+	if !changed {
+		g.reactToBet(p, amt)
 	}
 	if turns {
 		g.advanceBetTurn()
@@ -789,6 +799,7 @@ func (g *Game) afterDeal() {
 			defer g.say(banter.EvPlayerBJ, p, banter.Vars{}, 0.7, prioNormal)
 		}
 	}
+	g.reactToUpCard()
 	g.startPlay()
 }
 
@@ -1086,7 +1097,7 @@ func (g *Game) settle() {
 		}
 		var res []HandResult
 		var staked int64
-		doubleLost := false
+		doubleLost, doubleWon, pushed := false, false, false
 		var delta int64
 		bjCount := 0
 		for _, h := range p.hands {
@@ -1103,10 +1114,17 @@ func (g *Game) settle() {
 			if h.Doubled && h.Payout < h.Bet {
 				doubleLost = true
 			}
+			if h.Doubled && h.Payout > h.Bet {
+				doubleWon = true
+			}
+			if h.Result == "push" {
+				pushed = true
+			}
 			playerHands++
 		}
 		houseDelta -= delta
-		results = append(results, roundResult{p: p, delta: delta, before: g.store.Balance(p.user) + staked, doubleLost: doubleLost})
+		results = append(results, roundResult{p: p, delta: delta, before: g.store.Balance(p.user) + staked, doubleLost: doubleLost, doubleWon: doubleWon, pushed: pushed})
+		p.prevBet, p.prevDelta = p.pendingBet, delta
 		g.store.Settle(p.user, res)
 		g.sendProfile(p)
 		kind := "push"
@@ -1152,6 +1170,7 @@ func (g *Game) endRound() {
 				refilled = append(refilled, p.user)
 				if p.conn != nil {
 					p.conn.event(proto.Event{Kind: "refill", Seat: p.seat, Delta: d, Text: fmt.Sprintf("Daily refill: +%d chips", d)})
+					defer g.reactToRefill(p, d)
 					g.sendProfile(p)
 				}
 			}
@@ -1189,6 +1208,7 @@ func (g *Game) checkRefill() {
 			refilled = append(refilled, u)
 			if p := g.byUser[strings.ToLower(u)]; p != nil && p.conn != nil {
 				p.conn.event(proto.Event{Kind: "refill", Seat: p.seat, Delta: d, Text: fmt.Sprintf("Daily refill: +%d chips", d)})
+				defer g.reactToRefill(p, d)
 				g.sendProfile(p)
 			}
 		}
