@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"log"
@@ -162,6 +163,7 @@ func (c *conn) reader() {
 	c.send(proto.SServerInfo, proto.ServerInfo{
 		Name: s.cfg().ServerName, Version: proto.Version,
 		AllowRegistration: s.cfg().AllowRegistration, MOTD: s.cfg().MOTD,
+		NeedsPassword: s.cfg().ServerPassword != "",
 	})
 	sc := bufio.NewScanner(c.nc)
 	sc.Buffer(make([]byte, 64*1024), proto.MaxLine)
@@ -222,6 +224,17 @@ func (c *conn) handle(m proto.Msg) bool {
 			}
 			if !s.cfg().AllowRegistration {
 				c.send(proto.SAuthFail, proto.AuthFail{Reason: "Registration is closed on this server."})
+				return true
+			}
+			if want := s.cfg().ServerPassword; want != "" &&
+				subtle.ConstantTimeCompare([]byte(r.ServerPassword), []byte(want)) != 1 {
+				reason := "Wrong server password. Ask whoever runs the server for it."
+				if r.ServerPassword == "" {
+					reason = "This server needs a server password to create an account."
+				}
+				s.Log.Printf("registration refused for %q: bad server password", r.Username)
+				time.Sleep(time.Second) // slow down guessing
+				c.send(proto.SAuthFail, proto.AuthFail{Reason: reason})
 				return true
 			}
 			prof, tok, err := s.Store.Register(r.Username, r.Password, r.Avatar, s.cfg().RefillAmount, s.cfg().RefillPeriod(time.Now()))

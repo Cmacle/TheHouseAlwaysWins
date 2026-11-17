@@ -77,12 +77,16 @@ type ServerInfo struct {
 	Version           int    `json:"version"`
 	AllowRegistration bool   `json:"allow_registration"`
 	MOTD              string `json:"motd"`
+	// NeedsPassword: creating an account needs the server password.
+	NeedsPassword bool `json:"needs_password,omitempty"`
 }
 
 type Register struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Avatar   []byte `json:"avatar,omitempty"` // PNG bytes (base64 in JSON)
+	// ServerPassword is needed when the server has one set.
+	ServerPassword string `json:"server_password,omitempty"`
 }
 
 type Login struct {
@@ -294,6 +298,21 @@ type TableState struct {
 	DealerSay      string `json:"dealer_say,omitempty"`
 	DealerSayID    int    `json:"dealer_say_id,omitempty"`
 	DealerSayUntil int64  `json:"dealer_say_until,omitempty"` // unix ms
-	HouseNet       int64  `json:"house_net"`
-	HouseTier      int    `json:"house_tier"`
+	// DealerSayCont: this bubble continues the previous one (a long line or a
+	// story told a page at a time); DealerSayPara: and it starts a paragraph.
+	DealerSayCont bool `json:"dealer_say_cont,omitempty"`
+	DealerSayPara bool `json:"dealer_say_para,omitempty"`
+	// DealerLog is what the dealer said recently, sent once after you join.
+	DealerLog []DealerLine `json:"dealer_log,omitempty"`
+	HouseNet  int64        `json:"house_net"`
+	HouseTier int          `json:"house_tier"`
+}
+
+// DealerLine is one bubble the dealer said, for the "what he said" log.
+type DealerLine struct {
+	ID   int    `json:"id"`
+	Text string `json:"text"`
+	Cont bool   `json:"cont,omitempty"` // continues the previous line
+	Para bool   `json:"para,omitempty"` // ...starting a new paragraph
+	At   int64  `json:"at"`             // unix ms
 }

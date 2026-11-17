@@ -165,7 +165,7 @@ var clean = map[string][]string{
 		"{name} split tens. I'm calling the authorities.",
 		"Splitting tens, {name}? Who hurt you?",
 		"{name} had a twenty and said no thank you. Unreal.",
-		"I've been dealing thirty years and {name} just split tens. Incredible.",
+		"I've been dealing forty-seven years and {name} just split tens. Incredible.",
 	},
 	EvSurrender: {
 		"{name} surrenders! White flag up, dignity down.",
@@ -336,7 +336,7 @@ var vulgar = map[string][]string{
 	EvJoinDown: {
 		"{name} is down {net} and still showing up. Absolute fucking legend.",
 		"Holy shit, {name}, {net}? You should be paying rent here.",
-		"{name}, you're {net}. My kid's college fund thanks you, dipshit.",
+		"{name}, you're {net}. Comp's retirement fund thanks you, dipshit.",
 		"Back for more punishment, {name}? {net} wasn't enough, you sick bastard?",
 		"Christ on a cracker, {name}. {net} lifetime and you came BACK?",
 		"{name}! Down {net}. I named my damn Cadillac after you.",
@@ -411,7 +411,7 @@ var vulgar = map[string][]string{
 		"What in the hell was that, {name}? You had a hand! You HAD A HAND!",
 		"{name} took a winning hand out back and shot it.",
 		"You hit a stiff seventeen and made {total}. {name}, who the hell taught you this game?",
-		"{name}, that might be the dumbest hit I've seen in thirty goddamn years.",
+		"{name}, that might be the dumbest hit I've seen in forty-seven goddamn years.",
 	},
 	EvCoward: {
 		"Standing on {total}? Grow a pair, {name}.",
@@ -578,9 +578,9 @@ var vulgar = map[string][]string{
 		"Avocado toast? In my day we called that guacamole on bread and we were poor.",
 		"I don't need a smart fridge. My fridge knows exactly what it is: beer storage.",
 		"Everybody's got a podcast now. Nobody's got a job, but they got a podcast.",
-		"My grandkids say I'm 'cringe.' I don't know what it means but I'm proud of it.",
+		"My granddaughter says I'm 'cringe.' I looked it up. I'm proud of it. Mostly.",
 		"You know what's wrong with this country? Not enough people losing at blackjack.",
-		"Thirty years I've been dealing cards. Thirty years of watching dumbasses like you.",
+		"Forty-seven years I've been dealing cards. Forty-seven years of watching dumbasses like you.",
 		"I've got three ex-wives and every one of them was smarter with money than you people.",
 		"This cigar costs more than your last bet. Think about that.",
 		"Self-checkout? I'm not working there, why should I scan my own damn groceries?",

@@ -280,7 +280,7 @@ func (a *App) drawHelp() {
 		"Unlock hats, frames and titles by playing (PROFILE > WARDROBE).",
 		"Whoever has the most chips wears the crown!",
 		"",
-		"L leaderboard   O settings   M mute   F11 fullscreen   ESC close",
+		"L leaderboard   T dealer log   O settings   M mute   F11 fullscreen",
 	)
 	y := r.Min.Y + 36
 	for _, l := range lines {

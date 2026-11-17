@@ -32,7 +32,7 @@ var TierItems = map[int]string{
 	5:  "golden crown, royal cape and a scepter",
 	-1: "good jacket",
 	-2: "car, the watch and my visor",
-	-3: "apartment",
+	-3: "trailer",
 }
 
 // RecoverItems is what he gets back climbing up to a tier at or below zero.

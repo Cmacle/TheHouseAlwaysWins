@@ -83,6 +83,13 @@ func NewPicker() *Picker {
 
 // Pool returns the lines available for an event.
 func Pool(ev string, vulgarOn bool) []string {
+	if ev == EvStory || ev == EvResume {
+		// stories have a clean and a vulgar telling of the same thing
+		if vulgarOn {
+			return append([]string(nil), vulgar[ev]...)
+		}
+		return append([]string(nil), clean[ev]...)
+	}
 	out := append([]string(nil), clean[ev]...)
 	if vulgarOn {
 		// vulgar mode leans hard on the filthy lines

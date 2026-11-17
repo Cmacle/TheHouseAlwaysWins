@@ -3,6 +3,7 @@ package client
 import (
 	"io"
 	"log"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,13 +11,18 @@ import (
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/server"
 )
 
-func startServer(t *testing.T) string {
+func startServer(t *testing.T) string { return startServerWith(t, 39517, nil) }
+
+func startServerWith(t *testing.T, port int, mut func(*server.Config)) string {
 	cfg := server.DefaultConfig()
 	cfg.ListenAddress = "127.0.0.1"
-	cfg.Port = 39517
+	cfg.Port = port
 	cfg.DataDir = t.TempDir()
 	cfg.DealDelayMS, cfg.DealerDelayMS = 5, 5
 	cfg.ResultsTimeSeconds = 1
+	if mut != nil {
+		mut(cfg)
+	}
 	s, err := server.New(cfg, "", log.New(io.Discard, "", 0))
 	if err != nil {
 		t.Fatal(err)
@@ -113,4 +119,28 @@ func TestEndToEnd(t *testing.T) {
 	pump(t, apps, nil, func() bool { return a.screen == scrTable && a.st != nil }, "re-login")
 	// next round starts for both
 	pump(t, apps, nil, func() bool { return a.st.CanBet }, "second betting round")
+}
+
+func TestServerPassword(t *testing.T) {
+	addr := startServerWith(t, 39518, func(c *server.Config) { c.ServerPassword = "hunter2" })
+	try := func(user, sp string) *App {
+		assets, _ := LoadAssets("")
+		a := New(fakePlatform{}, &Config{Server: addr}, assets)
+		a.fServer, a.fUser, a.fPass, a.fPass2, a.fServerPass = addr, user, "pass1234", "pass1234", sp
+		a.loginMode = modeRegister
+		a.doRegister()
+		return a
+	}
+	none := try("nopass", "")
+	pump(t, []*App{none}, nil, func() bool { return none.statusErr }, "refused without password")
+	if !strings.Contains(none.status, "needs a server password") || !none.serverInfo.NeedsPassword {
+		t.Fatalf("status %q", none.status)
+	}
+	wrong := try("wrongpass", "hunter3")
+	pump(t, []*App{wrong}, nil, func() bool { return wrong.statusErr }, "refused with wrong password")
+	if !strings.Contains(wrong.status, "Wrong server password") {
+		t.Fatalf("status %q", wrong.status)
+	}
+	right := try("rightpass", "hunter2")
+	pump(t, []*App{right}, nil, func() bool { return right.screen == scrTable }, "account created")
 }

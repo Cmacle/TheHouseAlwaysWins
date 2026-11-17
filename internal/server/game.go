@@ -41,6 +41,7 @@ type player struct {
 	hands      []*bj.Hand
 	leaving    bool
 	missed     int
+	needLog    bool // send the dealer's recent lines with the next state
 }
 
 type evKind int
@@ -94,6 +95,13 @@ type Game struct {
 	lastRich   string
 	banter     *banter.Picker
 	speech     speech
+	sayQueue   []banter.Page // pages of the current line still to show
+	sayPrio    int
+	sayTimer   *time.Timer
+	story      *storyRun
+	lastStory  time.Time
+	forceSay   bool
+	sayLog     []proto.DealerLine
 	idleLogged bool
 }
 
@@ -105,9 +113,10 @@ func NewGame(cfg *Config, store *Store, n Notifier, lg *log.Logger) *Game {
 	store.CrownMin = cfg.RefillAmount
 	rich, _ := store.Tops()
 	return &Game{
-		lastRich: rich,
-		banter:   banter.NewPicker(),
-		cfg:      cfg, store: store, notify: n, log: lg,
+		lastRich:  rich,
+		lastStory: time.Now(),
+		banter:    banter.NewPicker(),
+		cfg:       cfg, store: store, notify: n, log: lg,
 		shoe:       bj.NewShoe(cfg.Decks, cfg.Penetration),
 		rules:      cfg.Rules(),
 		events:     make(chan event, 1024),
@@ -139,9 +148,12 @@ func (g *Game) Run(stop <-chan struct{}) {
 	defer refill.Stop()
 	g.checkRefill()
 	for {
-		var tc <-chan time.Time
+		var tc, sc <-chan time.Time
 		if g.timer != nil {
 			tc = g.timer.C
+		}
+		if g.sayTimer != nil {
+			sc = g.sayTimer.C
 		}
 		select {
 		case <-stop:
@@ -155,6 +167,8 @@ func (g *Game) Run(stop <-chan struct{}) {
 			if fn != nil {
 				fn()
 			}
+		case <-sc:
+			g.onSayTimer()
 		case <-refill.C:
 			g.checkRefill()
 		}
@@ -223,9 +237,10 @@ func (g *Game) join(c *conn, user string) {
 			old.kick("You logged in from another client.")
 		}
 		p.conn = c
+		p.needLog = true
 		p.leaving = false
 	} else {
-		p = &player{user: user, conn: c, seat: -1}
+		p = &player{user: user, conn: c, seat: -1, needLog: true}
 		g.byUser[key] = p
 		if !g.seatPlayer(p) {
 			if len(g.spectators) >= g.cfg.MaxSpectators {
@@ -576,8 +591,8 @@ func (g *Game) startBetting() {
 	}
 	g.betTurn = -1
 	g.message = "Place your bets!"
-	g.setDeadline(secs(g.cfg.BettingTimeSeconds))
-	g.after(secs(g.cfg.BettingTimeSeconds), g.endBetting)
+	g.setDeadline(g.cfg.Timing().Betting)
+	g.after(g.cfg.Timing().Betting, g.endBetting)
 	g.broadcast()
 	g.chatter()
 }
@@ -654,8 +669,8 @@ func (g *Game) advanceBetTurn() {
 			}
 			g.betTurn = i
 			g.message = p.user + " is betting..."
-			g.setDeadline(secs(g.cfg.BettingTimeSeconds))
-			g.after(secs(g.cfg.BettingTimeSeconds), func() {
+			g.setDeadline(g.cfg.Timing().Betting)
+			g.after(g.cfg.Timing().Betting, func() {
 				if q := g.seats[i]; q != nil && !q.betPlaced {
 					q.eligible = false
 				}
@@ -740,9 +755,9 @@ func (g *Game) dealStep(queue []*player) {
 	g.broadcast()
 	rest := queue[1:]
 	if len(rest) > 0 {
-		g.after(ms(g.cfg.DealDelayMS), func() { g.dealStep(rest) })
+		g.after(g.cfg.Timing().Deal, func() { g.dealStep(rest) })
 	} else {
-		g.after(ms(g.cfg.DealDelayMS), g.afterDeal)
+		g.after(g.cfg.Timing().Deal, g.afterDeal)
 	}
 }
 
@@ -763,7 +778,7 @@ func (g *Game) afterDeal() {
 			}
 			g.phase = proto.PhaseDealer
 			g.broadcast()
-			g.after(ms(g.cfg.DealerDelayMS)*2, g.settle)
+			g.after(g.cfg.Timing().Dealer*2, g.settle)
 			return
 		}
 	}
@@ -790,8 +805,36 @@ func curHand(p *player) int {
 
 func (g *Game) standAll(p *player) {
 	for _, h := range p.hands {
+		if len(h.Cards) == 1 { // a split hand that never got its second card
+			h.Cards = append(h.Cards, g.shoe.Draw())
+			g.eventAll(proto.Event{Kind: "card", Seat: p.seat})
+		}
 		h.Done = true
 	}
+}
+
+// fillSplit gives the hand a player has moved on to its second card, if it's
+// one half of a split.
+func (g *Game) fillSplit(p *player) {
+	for {
+		idx := curHand(p)
+		if idx < 0 || len(p.hands[idx].Cards) != 1 {
+			return
+		}
+		g.drawTo(p, p.hands[idx])
+	}
+}
+
+// endTurn moves on to the next player after a short breather.
+func (g *Game) endTurn() {
+	gap := g.cfg.Timing().TurnGap
+	if gap <= 0 {
+		g.nextTurn()
+		return
+	}
+	g.clearDeadline()
+	g.broadcast()
+	g.after(gap, g.nextTurn)
 }
 
 func (g *Game) allDone() bool {
@@ -826,8 +869,8 @@ func (g *Game) startPlay() {
 			p.conn.event(proto.Event{Kind: "turn", Text: "Your turn!", Seat: p.seat})
 		}
 	}
-	g.setDeadline(secs(g.cfg.PlayTimeSeconds))
-	g.after(secs(g.cfg.PlayTimeSeconds), func() {
+	g.setDeadline(g.cfg.Timing().Play)
+	g.after(g.cfg.Timing().Play, func() {
 		for _, p := range g.seats {
 			if p != nil && p.inHand {
 				g.standAll(p)
@@ -860,15 +903,15 @@ func (g *Game) nextTurn() {
 
 func (g *Game) armTurnTimer() {
 	seat := g.activeSeat
-	g.setDeadline(secs(g.cfg.TurnTimeSeconds))
-	g.after(secs(g.cfg.TurnTimeSeconds), func() {
+	g.setDeadline(g.cfg.Timing().Turn)
+	g.after(g.cfg.Timing().Turn, func() {
 		if p := g.seats[seat]; p != nil {
 			g.standAll(p)
 			if p.conn != nil {
 				p.conn.event(proto.Event{Kind: "info", Text: "Time's up - you stand.", Seat: seat})
 			}
 		}
-		g.nextTurn()
+		g.endTurn()
 	})
 }
 
@@ -934,9 +977,11 @@ func (g *Game) onAction(p *player, act string) {
 		h.FromSplit, h.SplitAces = true, aces
 		p.hands = append(p.hands[:idx+1], append([]*bj.Hand{nh}, p.hands[idx+1:]...)...)
 		g.eventAll(proto.Event{Kind: "chip", Seat: p.seat})
+		// like a real table: the first hand gets its card now, the second
+		// gets one when you move on to it (split aces get both right away)
 		g.drawTo(p, h)
-		g.drawTo(p, nh)
 		if aces && !r.HitSplitAces {
+			g.drawTo(p, nh)
 			h.Done, nh.Done = true, true
 		}
 	case "surrender":
@@ -949,9 +994,10 @@ func (g *Game) onAction(p *player, act string) {
 		g.errTo(p, "Unknown action.")
 		return
 	}
+	g.fillSplit(p)
 	if turns {
 		if curHand(p) < 0 {
-			g.nextTurn()
+			g.endTurn()
 			return
 		}
 		g.armTurnTimer()
@@ -982,7 +1028,7 @@ func (g *Game) dealerPlay() {
 	g.activeSeat = -1
 	g.message = "Dealer's turn"
 	g.broadcast()
-	g.after(ms(g.cfg.DealerDelayMS), func() {
+	g.after(g.cfg.Timing().Dealer, func() {
 		g.holeHidden = false
 		g.eventAll(proto.Event{Kind: "card", Seat: -1})
 		g.broadcast()
@@ -1007,7 +1053,7 @@ func (g *Game) dealerNeedsToDraw() bool {
 
 func (g *Game) dealerContinue() {
 	if g.dealerNeedsToDraw() {
-		g.after(ms(g.cfg.DealerDelayMS), func() {
+		g.after(g.cfg.Timing().Dealer, func() {
 			g.dealer = append(g.dealer, g.shoe.Draw())
 			g.eventAll(proto.Event{Kind: "card", Seat: -1})
 			g.broadcast()
@@ -1015,7 +1061,7 @@ func (g *Game) dealerContinue() {
 		})
 		return
 	}
-	g.after(ms(g.cfg.DealerDelayMS), g.settle)
+	g.after(g.cfg.Timing().Dealer, g.settle)
 }
 
 func (g *Game) settle() {
@@ -1088,8 +1134,8 @@ func (g *Game) settle() {
 	g.processUnlocks()
 	g.notify.LeaderboardChanged()
 	defer g.reactToResults(results, houseDelta, dt > 21, bj.IsBlackjack(g.dealer))
-	g.setDeadline(secs(g.cfg.ResultsTimeSeconds))
-	g.after(secs(g.cfg.ResultsTimeSeconds), g.endRound)
+	g.setDeadline(g.cfg.Timing().Results)
+	g.after(g.cfg.Timing().Results, g.endRound)
 	g.broadcast()
 }
 
@@ -1199,6 +1245,11 @@ func (g *Game) view(viewer *player) proto.TableState {
 	}
 	if g.cfg.DealerTrashTalk && time.Now().Before(g.speech.until) {
 		st.DealerSay, st.DealerSayID, st.DealerSayUntil = g.speech.text, g.speech.id, g.speech.until.UnixMilli()
+		st.DealerSayCont, st.DealerSayPara = g.speech.cont, g.speech.cont && g.speech.page.Para
+	}
+	if viewer.needLog {
+		viewer.needLog = false
+		st.DealerLog = g.sayLog
 	}
 	house := g.store.House()
 	st.HouseNet, st.HouseTier = house.Net, house.Tier

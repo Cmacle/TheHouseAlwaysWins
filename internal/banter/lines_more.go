@@ -6,10 +6,10 @@ package banter
 const DealerName = `DALE "THE HOUSE" KROFT`
 
 // Bio is the dealer's backstory, shown on the house tab.
-const Bio = `Dealing since 1979, starting on the Mississippi riverboat Lucky Lady until it sank. ` +
-	`He claims he swam to shore holding the chip tray over his head. Three ex-wives, a timeshare in Branson, ` +
-	`an iguana named Comp, and a lifetime ban from every Applebee's in Missouri. ` +
-	`He has never lost a hand on a Tuesday. He has never once been happy for you.`
+const Bio = `Born on a card table in Cape Girardeau, Missouri, in 1951. Kicked out of the Navy, run out of Reno, ` +
+	`dealing since 1979 on the riverboat Lucky Lady until it sank. Three ex-wives, a son who won't call, an iguana ` +
+	`named Comp, and a lifetime ban from every Applebee's in Missouri. He gets a cut of everything the house takes. ` +
+	`He has never once been happy for you.`
 
 // Extra events.
 const (
@@ -121,7 +121,7 @@ func init() {
 	add(clean, EvBackstory,
 		"I started dealing in 1979 on the Lucky Lady riverboat. It sank. I didn't drop a single chip.",
 		"When the Lucky Lady went down, I swam to shore holding the chip tray over my head. True story.",
-		"I've been married three times. All three ex-wives are still paying me. Don't ask how.",
+		"Married three times. Rhonda got the house, Darlene got a mime, Crystal got my good belt. I got Comp. I won.",
 		"My iguana's name is Comp. He's the only one who understands me.",
 		"I have a timeshare in Branson. You can't afford a weekend. I checked.",
 		"I've never lost a hand on a Tuesday. Never. Check the records.",
@@ -131,7 +131,7 @@ func init() {
 		"In 1983 I won a Buick in an arm-wrestling match. I don't have a license. I keep it for the principle.",
 		"I was briefly a lounge singer in Reno. I'm not allowed to talk about why it ended.",
 		"I have a bowling average of 212 and a cholesterol of 340. Both are personal records.",
-		"My first ex-wife left me for a blackjack dealer. Better than me. I've never forgiven her or him.",
+		"My first wife left me for a mime. Said he was a better listener. He's a MIME. He's not listening, he's just quiet.",
 		"I've dealt over four million hands. I remember every bust. Especially yours.",
 		"I was nearly a dentist. I didn't like teeth. I like money.",
 		"I once dealt for 31 hours straight during a blizzard in Tahoe. Nobody tipped.",
@@ -160,7 +160,7 @@ func init() {
 		"I've been dealing cards since before you were a twinkle in your dad's bloodshot eye.",
 		"I got kicked out of the Navy for running a blackjack table on a submarine. Worth it.",
 		"The Lucky Lady sank in '83 and the only thing I saved was the chip tray and a fifth of Jim Beam.",
-		"I once got so drunk in Biloxi I married a woman named Crystal. Woke up next to a woman named Doug.",
+		"I once got so drunk in Biloxi I married a woman named Crystal. She'd just won forty grand off me. Smartest broad I ever met.",
 		"My iguana Comp has more brains than this whole table combined. And better hygiene.",
 		"I'm banned from Applebee's for life. I regret nothing. The riblets had it coming.",
 		"I've had three heart attacks. Every one of 'em happened when somebody tipped me. Shock.",
@@ -172,10 +172,10 @@ func init() {
 		"I've been sober since Tuesday. Which Tuesday? Mind your goddamn business.",
 		"I lost a toe in Reno in '88. Frostbite? Bet? Both. It was a weird night.",
 		"I've worn this same shirt since the Clinton administration. The first one.",
-		"I sold a kidney in Tijuana to pay off a bar tab. Best decision I ever made. Still got one.",
+		"I gave my left kidney to a man who once stabbed me with a fork. His sister divorced me anyway. Never do anything nice.",
 		"My doctor told me to quit drinking. I told him to quit being a pussy. We're both still here.",
 		"I once dealt cards to a mob boss, a senator, and a guy in a bear suit. The bear suit tipped best.",
-		"I've been married three times and divorced four. Don't do the math, it hurts my head.",
+		"I've been married three times. I've been proposed to by a slot machine once. That was the healthiest of the four.",
 		"In 1992 I got stabbed with a fork at a Sizzler. I finished my steak first.",
 		"I don't believe in banks. My life savings is in a coffee can buried behind a Denny's.",
 		"This cigar was a gift from a Cuban general. Or a guy at a gas station. Memory's foggy.",
