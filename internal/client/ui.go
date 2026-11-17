@@ -133,12 +133,73 @@ func (a *App) button(id string, r image.Rectangle, label string, o btn) bool {
 	return clicked
 }
 
-// textField is a single-line text box. Returns true when Enter is pressed in it.
+type fieldState struct {
+	cursor int // insertion point, 0..len(value)
+	scroll int // first visible character
+	last   int // value length last frame (detects outside changes)
+}
+
+func (a *App) field(id string) *fieldState {
+	if a.fields == nil {
+		a.fields = map[string]*fieldState{}
+	}
+	f := a.fields[id]
+	if f == nil {
+		f = &fieldState{cursor: -1}
+		a.fields[id] = f
+	}
+	return f
+}
+
+func isWordChar(c byte) bool {
+	return c != ' ' && c != '.' && c != ':' && c != '/' && c != '_' && c != '-' && c != '@'
+}
+
+// textField is a single-line text box with a movable cursor. Returns true
+// when Enter is pressed in it.
 func (a *App) textField(id string, r image.Rectangle, value *string, masked bool, maxLen int, placeholder string, allowed func(rune) bool) bool {
 	a.focusOrder = append(a.focusOrder, id)
+	f := a.field(id)
+	v := *value
+	// value changed from outside (cleared, loaded, tidied): put cursor at end
+	if f.cursor < 0 || len(v) != f.last && a.focusID != id {
+		f.cursor = len(v)
+	}
+	if f.cursor > len(v) {
+		f.cursor = len(v)
+	}
+	shownOf := func(s string) string {
+		if masked {
+			return strings.Repeat("*", len(s))
+		}
+		return s
+	}
+	font := a.A.Font
+	tx := r.Min.X + 5
+	maxW := r.Dx() - 10
+
 	if a.in.Pressed && !a.blocked {
 		if a.hovered(r) {
-			a.focusID = id
+			if a.focusID != id {
+				a.focusID = id
+			}
+			// place the cursor at the nearest character boundary
+			shown := shownOf(v)
+			if f.scroll > len(shown) {
+				f.scroll = 0
+			}
+			x := tx
+			pos := len(v)
+			for i := f.scroll; i < len(shown); i++ {
+				w := font.Width(shown[i:i+1]) + 1
+				if a.in.MX < x+w/2 {
+					pos = i
+					break
+				}
+				x += w
+			}
+			f.cursor = pos
+			a.caretAt = a.frame
 		} else if a.focusID == id {
 			a.focusID = ""
 		}
@@ -146,57 +207,111 @@ func (a *App) textField(id string, r image.Rectangle, value *string, masked bool
 	focused := a.focusID == id && !a.blocked
 	enter := false
 	if focused {
-		for _, c := range a.in.Chars {
-			if c < 32 || c > 126 {
-				continue
-			}
-			if allowed != nil && !allowed(c) {
-				continue
-			}
-			if len(*value) < maxLen {
-				*value += string(c)
-			}
-		}
-		if a.in.key(KeyPaste) {
-			for _, c := range a.P.ClipboardText() {
-				if c >= 32 && c <= 126 && (allowed == nil || allowed(c)) && len(*value) < maxLen {
-					*value += string(c)
+		moved := false
+		insert := func(text string) {
+			for _, c := range text {
+				if c < 32 || c > 126 || (allowed != nil && !allowed(c)) || len(v) >= maxLen {
+					continue
 				}
+				v = v[:f.cursor] + string(c) + v[f.cursor:]
+				f.cursor++
+			}
+			moved = true
+		}
+		insert(string(a.in.Chars))
+		for _, k := range a.in.Keys {
+			switch k {
+			case KeyPaste:
+				insert(a.P.ClipboardText())
+			case KeyLeft:
+				if a.in.Ctrl {
+					for f.cursor > 0 && !isWordChar(v[f.cursor-1]) {
+						f.cursor--
+					}
+					for f.cursor > 0 && isWordChar(v[f.cursor-1]) {
+						f.cursor--
+					}
+				} else if f.cursor > 0 {
+					f.cursor--
+				}
+				moved = true
+			case KeyRight:
+				if a.in.Ctrl {
+					for f.cursor < len(v) && isWordChar(v[f.cursor]) {
+						f.cursor++
+					}
+					for f.cursor < len(v) && !isWordChar(v[f.cursor]) {
+						f.cursor++
+					}
+				} else if f.cursor < len(v) {
+					f.cursor++
+				}
+				moved = true
+			case KeyHome:
+				f.cursor = 0
+				moved = true
+			case KeyEnd:
+				f.cursor = len(v)
+				moved = true
+			case KeyBackspace:
+				if a.in.Ctrl {
+					v = v[f.cursor:]
+					f.cursor = 0
+				} else if f.cursor > 0 {
+					v = v[:f.cursor-1] + v[f.cursor:]
+					f.cursor--
+				}
+				moved = true
+			case KeyDelete:
+				if a.in.Ctrl {
+					v = v[:f.cursor]
+				} else if f.cursor < len(v) {
+					v = v[:f.cursor] + v[f.cursor+1:]
+				}
+				moved = true
+			case KeyEnter:
+				enter = true
 			}
 		}
-		if a.in.key(KeyBackspace) && len(*value) > 0 {
-			if a.in.Ctrl {
-				*value = ""
-			} else {
-				*value = (*value)[:len(*value)-1]
-			}
+		if moved {
+			a.caretAt = a.frame
 		}
-		if a.in.key(KeyEnter) {
-			enter = true
-		}
+		*value = v
 	}
+	f.last = len(v)
+
 	spr := a.A.Field
 	if focused {
 		spr = a.A.FieldFocus
 	}
 	nineSlice(a.fb, spr, r, a.A.Theme.NineSliceEdge)
-	shown := *value
-	if masked {
-		shown = strings.Repeat("*", len(*value))
+	ty := r.Min.Y + (r.Dy()-font.Height()+1)/2
+	shown := shownOf(v)
+	// keep the cursor in view
+	if f.scroll > f.cursor {
+		f.scroll = f.cursor
 	}
-	ty := r.Min.Y + (r.Dy()-a.A.Font.Height()+1)/2
-	maxW := r.Dx() - 10
-	for a.A.Font.Width(shown) > maxW && len(shown) > 0 {
-		shown = shown[1:]
+	for f.scroll < f.cursor && font.Width(shown[f.scroll:f.cursor]) > maxW-2 {
+		f.scroll++
 	}
-	if shown == "" && !focused {
-		a.A.Font.Draw(a.fb, r.Min.X+5, ty, placeholder, a.A.C("text_dim"))
+	for f.scroll > 0 && font.Width(shown[f.scroll-1:]) <= maxW {
+		f.scroll-- // scroll back when text gets shorter
+	}
+	vis := shown[f.scroll:]
+	for font.Width(vis) > maxW && len(vis) > 0 {
+		vis = vis[:len(vis)-1]
+	}
+	if v == "" && !focused {
+		font.Draw(a.fb, tx, ty, placeholder, a.A.C("text_dim"))
 	} else {
-		a.A.Font.Draw(a.fb, r.Min.X+5, ty, shown, a.A.C("text"))
+		font.Draw(a.fb, tx, ty, vis, a.A.C("text"))
 	}
-	if focused && (a.frame/30)%2 == 0 {
-		cx := r.Min.X + 5 + a.A.Font.Width(shown) + 1
-		fillRect(a.fb, image.Rect(cx, ty-1, cx+1, ty+a.A.Font.Height()-1), a.A.C("gold"))
+	if focused && ((a.frame-a.caretAt)/30)%2 == 0 {
+		cx := tx
+		if f.cursor > f.scroll {
+			cx += font.Width(shown[f.scroll:f.cursor]) + 1
+		}
+		fillRect(a.fb, image.Rect(cx, ty-1, cx+1, ty+font.Height()-1), a.A.C("gold"))
 	}
 	return enter
 }

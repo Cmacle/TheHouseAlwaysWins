@@ -131,6 +131,8 @@ type App struct {
 	smallHats   map[string]*image.RGBA
 	wardTab     string
 	wardSel     string
+	fields      map[string]*fieldState
+	caretAt     int
 }
 
 // New creates the client app.
