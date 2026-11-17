@@ -196,13 +196,7 @@ func (a *App) drawProfile() {
 		a.wardSel = ""
 	}
 	if a.button("chpic", image.Rect(r.Min.X+14, ar.Max.Y+32, r.Min.X+90, ar.Max.Y+50), "NEW PICTURE", btn{enabled: true}) {
-		data, _, err := a.pickAvatar()
-		if err != nil {
-			a.toast(err.Error(), a.A.C("error"), 3, 1)
-		} else if data != nil {
-			a.send(proto.CAvatarSet, proto.AvatarSet{Data: data})
-			a.toast("Picture updated!", a.A.C("win"), 2, 1)
-		}
+		a.choosePicture("profile")
 	}
 	x := r.Min.X + 110
 	y := r.Min.Y + 42

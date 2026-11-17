@@ -17,7 +17,7 @@ import (
 
 type fakePlatform struct{}
 
-func (fakePlatform) PlaySound([]byte)              {}
+func (fakePlatform) PlaySound(string, []byte)      {}
 func (fakePlatform) OpenImageFile() (string, bool) { return "", false }
 func (fakePlatform) ClipboardText() string         { return "" }
 func (fakePlatform) ToggleFullscreen()             {}

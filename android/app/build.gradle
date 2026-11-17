@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Version comes from the repo's VERSION file, e.g. 1.2.1 -> versionCode 10201.
+def versionText = rootProject.file('../VERSION').text.trim()
+def parts = versionText.tokenize('.').collect { it.replaceAll('[^0-9]', '') as int }
+while (parts.size() < 3) { parts << 0 }
+def code = parts[0] * 10000 + parts[1] * 100 + parts[2]
+
+android {
+    namespace 'com.cmacle.thehousealwayswins'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.cmacle.thehousealwayswins'
+        minSdk 21
+        targetSdk 35
+        versionCode code
+        versionName versionText
+    }
+
+    // A fixed key so new APKs install over old ones without uninstalling.
+    signingConfigs {
+        release {
+            storeFile file('release.keystore')
+            storePassword 'thehousealwayswins'
+            keyAlias 'house'
+            keyPassword 'thehousealwayswins'
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+        }
+        debug {
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // Built by: gomobile bind -target=android/arm64,android/arm -o android/app/libs/housecore.aar ./mobile
+    implementation files('libs/housecore.aar')
+}

@@ -65,7 +65,7 @@ func (a *App) drawLogin() {
 		enter = a.textField("user", image.Rect(x0, pr.Min.Y+56, x1, pr.Min.Y+74), &a.fUser, false, 16, "", userChar) || enter
 		label(pr.Min.Y+80, "PASSWORD")
 		enter = a.textField("pass", image.Rect(x0, pr.Min.Y+90, x1, pr.Min.Y+108), &a.fPass, true, 128, "", nil) || enter
-		a.checkbox("remember", x0, pr.Min.Y+116, "Remember me on this computer", &a.Cfg.RememberMe)
+		a.checkbox("remember", x0, pr.Min.Y+116, a.rememberLabel(), &a.Cfg.RememberMe)
 
 		by := pr.Min.Y + 134
 		mid := (x0 + x1) / 2
@@ -98,15 +98,9 @@ func (a *App) drawLogin() {
 		}
 		blitScaled(a.fb, img, box)
 		if a.button("pick", image.Rect(ax, pr.Min.Y+124, ax+64, pr.Min.Y+142), "BROWSE", btn{enabled: true}) {
-			data, im, err := a.pickAvatar()
-			if err != nil {
-				a.setStatus(err.Error(), true)
-			} else if data != nil {
-				a.regAvatar, a.regAvatarImg = data, im
-				a.setStatus("Looking sharp! Pictures are pixelated to 32x32.", false)
-			}
+			a.choosePicture("register")
 		}
-		a.checkbox("remember2", x0, pr.Min.Y+150, "Remember me on this computer", &a.Cfg.RememberMe)
+		a.checkbox("remember2", x0, pr.Min.Y+150, a.rememberLabel(), &a.Cfg.RememberMe)
 		by := pr.Min.Y + 166
 		mid := (x0 + x1) / 2
 		if a.button("register", image.Rect(x0, by, mid-4, by+20), "CREATE", btn{enabled: !busy, style: styleGold}) || (enter && !busy) {
@@ -119,7 +113,11 @@ func (a *App) drawLogin() {
 		}
 		a.drawStatus(x0, x1, pr.Min.Y+196)
 	}
-	a.text(4, ScreenH-10, "v"+Version+"  -  F11 fullscreen", a.A.C("text_dim"), alignLeft)
+	foot := "v" + Version + "  -  F11 fullscreen"
+	if a.isTouch() {
+		foot = "v" + Version
+	}
+	a.text(4, ScreenH-10, foot, a.A.C("text_dim"), alignLeft)
 	if a.serverInfo.Name != "" && a.net != nil {
 		a.text(ScreenW-4, ScreenH-10, a.serverInfo.Name, a.A.C("text_dim"), alignRight)
 	}
@@ -184,4 +182,11 @@ func (a *App) doRegister() {
 		a.send(proto.CRegister, reg)
 		a.setStatus("Creating account...", false)
 	})
+}
+
+func (a *App) rememberLabel() string {
+	if a.isTouch() {
+		return "Remember me on this device"
+	}
+	return "Remember me on this computer"
 }

@@ -10,19 +10,20 @@ on:
 permissions:
   contents: write
 
-# one release job at a time so two quick pushes don't race each other
+# one release at a time so two quick pushes don't race each other
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build:
+  desktop:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
+          cache: false
       - name: Vet
         run: |
           go vet ./...
@@ -35,35 +36,80 @@ jobs:
           ./scripts/build.sh
       - name: Package
         run: |
-          mkdir -p pkg/TheHouseAlwaysWins-Client pkg/TheHouseAlwaysWins-Server-Windows pkg/TheHouseAlwaysWins-Server-Linux
+          mkdir -p pkg/TheHouseAlwaysWins-Client pkg/TheHouseAlwaysWins-Server-Windows pkg/TheHouseAlwaysWins-Server-Linux out
           cp dist/TheHouseAlwaysWins.exe README.md pkg/TheHouseAlwaysWins-Client/
           cp dist/HouseServer.exe dist/server.json dist/run-server.bat README.md pkg/TheHouseAlwaysWins-Server-Windows/
           cp dist/house-server-linux-amd64 dist/house-server-linux-arm64 dist/server.json dist/thehousealwayswins.service README.md pkg/TheHouseAlwaysWins-Server-Linux/
-          cd pkg
-          for d in *; do zip -qr "../$d.zip" "$d"; done
+          (cd pkg && for d in *; do zip -qr "../out/$d.zip" "$d"; done)
+          cp dist/TheHouseAlwaysWins.exe dist/HouseServer.exe dist/house-server-linux-amd64 dist/house-server-linux-arm64 out/
       - uses: actions/upload-artifact@v4
         with:
-          name: TheHouseAlwaysWins
-          path: "*.zip"
-      # Pushes to main publish to the release named after the VERSION file
-      # (v1.0.0, ...). Bump VERSION for a new release; any other push to main
-      # rebuilds and replaces the files on the current one. Pushing a v* tag
-      # also works.
-      - name: Release
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+          name: desktop
+          path: out/*
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Go bindings (gomobile)
+        run: |
+          export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          go get golang.org/x/mobile/bind
+          gomobile init
+          gomobile bind -v -target=android/arm64,android/arm -androidapi 21 -o android/app/libs/housecore.aar ./mobile
+      - name: Build APK
+        working-directory: android
+        run: gradle --no-daemon assembleRelease
+      - name: Collect
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/app-release.apk out/TheHouseAlwaysWins.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: out/*
+
+  # Pushes to main publish to the release named after the VERSION file
+  # (v1.0.0, ...). Bump VERSION for a new release; any other push to main
+  # rebuilds and replaces the files on the current one. Pushing a v* tag also
+  # works.
+  release:
+    needs: [desktop, android]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then TAG="$GITHUB_REF_NAME"; else TAG="v$(tr -d '[:space:]' < VERSION)"; fi
-          cp dist/TheHouseAlwaysWins.exe dist/HouseServer.exe dist/house-server-linux-amd64 dist/house-server-linux-arm64 .
-          FILES="TheHouseAlwaysWins.exe HouseServer.exe house-server-linux-amd64 house-server-linux-arm64 *.zip"
+          ls -la files
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" $FILES --clobber
+            gh release upload "$TAG" files/* --clobber
             echo "Updated files on release $TAG"
           else
             cat > notes.md <<NOTES
           ## Downloads
-          - **TheHouseAlwaysWins.exe**: the game (Windows). Run it, enter the server address, create an account.
+          - **TheHouseAlwaysWins.exe**: the game for Windows. Run it, enter the server address, create an account.
+          - **TheHouseAlwaysWins.apk**: the game for Android. Open it on your phone to install (allow installs from your browser or file manager when asked).
           - **HouseServer.exe**: the headless server (Windows). Creates \`server.json\` and \`data/\` next to itself on first run.
           - **TheHouseAlwaysWins-Server-Windows.zip**: server + default \`server.json\` + \`run-server.bat\` (auto-restart).
           - **TheHouseAlwaysWins-Server-Linux.zip** / **house-server-linux-***: Linux server + systemd unit.
@@ -71,6 +117,6 @@ jobs:
           Built automatically from ${GITHUB_SHA::7}.
           NOTES
             sed -i 's/^          //' notes.md
-            gh release create "$TAG" $FILES --target "$GITHUB_SHA" --title "The House Always Wins $TAG" --notes-file notes.md
+            gh release create "$TAG" files/* --target "$GITHUB_SHA" --title "The House Always Wins $TAG" --notes-file notes.md
             echo "Created release $TAG"
           fi

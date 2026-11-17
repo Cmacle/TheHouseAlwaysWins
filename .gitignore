@@ -11,3 +11,11 @@ client.json
 /data/
 /assets/
 *.log
+
+# android build
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/app/libs/*.aar
+/android/app/libs/*.jar
+/android/local.properties
