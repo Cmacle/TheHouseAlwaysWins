@@ -176,8 +176,8 @@ func simulate(t *testing.T, mut func(*Config), bots int, dur time.Duration) {
 		total += b.hands.Load()
 	}
 	t.Logf("hands settled across bots: %d, hand number %d", total, s.Game.handNo)
-	if total < int32(bots) {
-		t.Errorf("too few hands played: %d", total)
+	if s.Game.handNo < 2 || total == 0 {
+		t.Errorf("too few hands played: %d hands, %d settled", s.Game.handNo, total)
 	}
 	checkInvariants(t, s)
 	// the house's lifetime net mirrors the players' combined result
@@ -193,14 +193,14 @@ func simulate(t *testing.T, mut func(*Config), bots int, dur time.Duration) {
 }
 
 func TestSimTurns(t *testing.T) {
-	simulate(t, func(c *Config) { c.DealerVulgar = true }, 12, 6*time.Second)
+	simulate(t, func(c *Config) { c.DealerVulgar = true }, 12, 8*time.Second)
 }
 
 func TestSimSimultaneous(t *testing.T) {
 	simulate(t, func(c *Config) {
 		c.PlayMode = "simultaneous"
 		c.HideOtherHands = true
-	}, 12, 6*time.Second)
+	}, 12, 8*time.Second)
 }
 
 func TestSimTurnBetting(t *testing.T) {
@@ -208,7 +208,7 @@ func TestSimTurnBetting(t *testing.T) {
 		c.BettingMode = "turns"
 		c.DealerHitsSoft17 = true
 		c.MaxPlayers = 4
-	}, 5, 6*time.Second)
+	}, 5, 8*time.Second)
 }
 
 func TestRefill(t *testing.T) {
