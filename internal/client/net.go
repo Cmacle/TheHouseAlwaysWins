@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
@@ -24,10 +23,7 @@ type NetClient struct {
 
 // Dial connects to host:port (default port 7777).
 func Dial(addr string) (*NetClient, error) {
-	addr = strings.TrimSpace(addr)
-	if _, _, err := net.SplitHostPort(addr); err != nil {
-		addr = net.JoinHostPort(addr, "7777")
-	}
+	addr = normAddr(addr)
 	c, err := net.DialTimeout("tcp", addr, 6*time.Second)
 	if err != nil {
 		return nil, err

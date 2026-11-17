@@ -12,7 +12,9 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -94,6 +96,7 @@ type App struct {
 	// login screen
 	loginMode    int
 	fServer      string
+	fPort        string
 	fUser        string
 	fPass        string
 	fPass2       string
@@ -140,9 +143,9 @@ func New(p Platform, cfg *Config, assets *Assets) *App {
 		cardSeen:   map[string]time.Time{},
 		cardHidden: map[string]bool{},
 		flipAt:     map[string]time.Time{},
-		fServer:    cfg.Server,
 		fUser:      cfg.Username,
 	}
+	a.fServer, a.fPort = splitServer(cfg.Server)
 	if cfg.RememberMe && cfg.Token != "" && cfg.Username != "" && cfg.Server != "" {
 		a.reconnectAt = time.Now()
 	}
@@ -214,12 +217,53 @@ func (a *App) Frame(in Input) *image.RGBA {
 
 // ---------------------------------------------------------------- networking
 
-func normAddr(s string) string {
+// DefaultPort is used when no port is given.
+const DefaultPort = "7777"
+
+// cleanHost strips things people paste by accident: a URL scheme, a path or a
+// trailing slash ("https://play.example.com/" -> "play.example.com").
+func cleanHost(s string) string {
 	s = strings.TrimSpace(s)
-	if !strings.Contains(s, ":") {
-		s += ":7777"
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	if i := strings.IndexAny(s, "/?#"); i >= 0 {
+		s = s[:i]
 	}
 	return s
+}
+
+// splitServer splits "host:port" (or a bare host or domain) into host and port.
+func splitServer(s string) (host, port string) {
+	s = cleanHost(s)
+	if h, p, err := net.SplitHostPort(s); err == nil {
+		return h, p
+	}
+	return strings.Trim(s, "[]"), DefaultPort
+}
+
+// joinServer builds the dial address from separate host and port values. A
+// port pasted into the host box ("example.com:9001") wins over the port box.
+func joinServer(host, port string) string {
+	h, p := splitServer(host)
+	if _, _, err := net.SplitHostPort(cleanHost(host)); err == nil {
+		port = p
+	}
+	port = strings.TrimSpace(port)
+	if port == "" {
+		port = DefaultPort
+	}
+	return net.JoinHostPort(h, port)
+}
+
+func normAddr(s string) string {
+	h, p := splitServer(s)
+	return net.JoinHostPort(h, p)
+}
+
+func validPort(p string) bool {
+	n, err := strconv.Atoi(strings.TrimSpace(p))
+	return err == nil && n >= 1 && n <= 65535
 }
 
 func (a *App) connect(addr string, then func()) {
