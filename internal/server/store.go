@@ -253,6 +253,7 @@ type Store struct {
 
 	// CrownMin: the crown needs strictly more chips than this (the refill amount).
 	CrownMin int64
+	house    proto.HouseStats
 	topRich  string
 	topNet   string
 	unlocks  []Unlock
@@ -282,7 +283,81 @@ func OpenStore(dir string) (*Store, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
+	if b, err := os.ReadFile(filepath.Join(dir, "house.json")); err == nil {
+		_ = json.Unmarshal(b, &s.house)
+	}
 	return s, nil
+}
+
+// RecordRound adds one settled round to the house's lifetime stats.
+// houseDelta is what the house gained (negative when it paid out).
+func (s *Store) RecordRound(houseDelta int64, playerHands int, dealerBJ, dealerBust bool, playerBusts int) proto.HouseStats {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	h := &s.house
+	h.HandsDealt++
+	h.PlayerHands += playerHands
+	h.Net += houseDelta
+	switch {
+	case houseDelta > 0:
+		h.Won += houseDelta
+		h.RoundsWon++
+	case houseDelta < 0:
+		h.Lost += -houseDelta
+		h.RoundsLost++
+	}
+	if houseDelta > h.BiggestWin {
+		h.BiggestWin = houseDelta
+	}
+	if -houseDelta > h.BiggestLoss {
+		h.BiggestLoss = -houseDelta
+	}
+	if dealerBJ {
+		h.DealerBlackjacks++
+	}
+	if dealerBust {
+		h.DealerBusts++
+	}
+	h.PlayerBusts += playerBusts
+	s.dirty = true
+	return *h
+}
+
+// House returns the house's lifetime stats.
+func (s *Store) House() proto.HouseStats {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.house
+}
+
+// LoseStreak returns a player's current run of losing hands.
+func (s *Store) LoseStreak(username string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.accounts[strings.ToLower(username)]; ok {
+		return a.LoseStreak
+	}
+	return 0
+}
+
+// Worst returns the username in last place on the lifetime board, if there
+// are at least three accounts and they're losing.
+func (s *Store) Worst() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.accounts) < 3 {
+		return ""
+	}
+	var worst *Account
+	for _, a := range s.accounts {
+		if worst == nil || a.Net < worst.Net {
+			worst = a
+		}
+	}
+	if worst == nil || worst.Net >= 0 {
+		return ""
+	}
+	return worst.Username
 }
 
 // Save writes accounts to disk if anything changed.
@@ -298,7 +373,11 @@ func (s *Store) Save() error {
 		list = append(list, &cp)
 	}
 	s.dirty = false
+	house := s.house
 	s.mu.Unlock()
+	if hb, err := json.MarshalIndent(house, "", "  "); err == nil {
+		_ = writeAtomic(filepath.Join(s.dir, "house.json"), hb)
+	}
 	sort.Slice(list, func(i, j int) bool { return strings.ToLower(list[i].Username) < strings.ToLower(list[j].Username) })
 	b, err := json.MarshalIndent(list, "", "  ")
 	if err != nil {

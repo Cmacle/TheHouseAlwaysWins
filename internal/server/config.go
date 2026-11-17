@@ -92,6 +92,13 @@ type Config struct {
 	DealDelayMS        int `json:"deal_delay_ms"`
 	DealerDelayMS      int `json:"dealer_delay_ms"`
 
+	// The dealer talks trash: calls out players for busting, standing scared,
+	// big losses, lifetime scores and so on, in a speech bubble.
+	DealerTrashTalk bool `json:"dealer_trash_talk"`
+	// Uncensored dealer: swearing, crude insults, grumpy old-man rants, and a
+	// cigar-smoking scumbag sprite. Needs dealer_trash_talk.
+	DealerVulgar bool `json:"dealer_vulgar"`
+
 	HTTPLeaderboard HTTPConfig    `json:"http_leaderboard"`
 	Discord         DiscordConfig `json:"discord"`
 
@@ -135,6 +142,8 @@ func DefaultConfig() *Config {
 		ResultsTimeSeconds: 5,
 		DealDelayMS:        350,
 		DealerDelayMS:      700,
+		DealerTrashTalk:    true,
+		DealerVulgar:       false,
 		HTTPLeaderboard:    HTTPConfig{Enabled: false, Address: "0.0.0.0", Port: 8090},
 		Discord: DiscordConfig{
 			SlashCommands:         true,

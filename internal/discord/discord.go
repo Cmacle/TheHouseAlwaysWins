@@ -51,6 +51,7 @@ type Data interface {
 	Leaderboard(n int, rich bool) []proto.Profile
 	Profile(name string) (proto.Profile, bool)
 	TableSummary() string
+	House() proto.HouseStats
 }
 
 // Bot is the Discord integration.
@@ -343,11 +344,20 @@ func (b *Bot) boardEmbed(n int, which string) embed {
 		sb.WriteString("**📈 Lifetime gain / loss**\n")
 		sb.WriteString(b.boardLines(n, false))
 	}
+	if h := b.data.House(); h.HandsDealt > 0 {
+		sb.WriteString("\n")
+		sb.WriteString(houseLine(h))
+	}
 	e.Description = truncate(sb.String(), 4000)
 	e.Footer = &struct {
 		Text string `json:"text"`
 	}{Text: "Lifetime = won minus lost, minus daily refills · 👑 = the crown"}
 	return e
+}
+
+func houseLine(h proto.HouseStats) string {
+	return fmt.Sprintf("**🎩 The House:** `%s` lifetime over %s rounds · won %s · lost %s · dealer blackjacks %d · dealer busts %d\n",
+		signed(h.Net), commas(int64(h.HandsDealt)), commas(h.Won), commas(h.Lost), h.DealerBlackjacks, h.DealerBusts)
 }
 
 func (b *Bot) boardLoop(stop <-chan struct{}) {

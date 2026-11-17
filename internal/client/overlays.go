@@ -31,8 +31,8 @@ func (a *App) drawLeaderboard() {
 		return
 	}
 	// tabs
-	tabs := []struct{ sort, label string }{{"balance", "RICHEST NOW"}, {"net", "LIFETIME GAIN"}}
-	tx := r.Min.X + r.Dx()/2 - 104
+	tabs := []struct{ sort, label string }{{"balance", "RICHEST NOW"}, {"net", "LIFETIME GAIN"}, {"house", "THE HOUSE"}}
+	tx := r.Min.X + r.Dx()/2 - 158
 	for _, t := range tabs {
 		style := styleRed
 		if a.lbSort == t.sort {
@@ -40,23 +40,40 @@ func (a *App) drawLeaderboard() {
 		}
 		if a.button("lbt_"+t.sort, image.Rect(tx, r.Min.Y+32, tx+100, r.Min.Y+48), t.label, btn{enabled: true, style: style}) && a.lbSort != t.sort {
 			a.lbSort = t.sort
-			a.leaderboard = nil
+			if t.sort != "house" {
+				a.leaderboard = nil
+			}
 			a.lbScroll = 0
 			a.requestLeaderboard()
 		}
 		tx += 108
 	}
 	if a.in.key(KeyLeft) || a.in.key(KeyRight) {
-		if a.lbSort == "balance" {
-			a.lbSort = "net"
-		} else {
-			a.lbSort = "balance"
+		order := []string{"balance", "net", "house"}
+		i := 0
+		for k, v := range order {
+			if v == a.lbSort {
+				i = k
+			}
 		}
-		a.leaderboard = nil
+		if a.in.key(KeyRight) {
+			i = (i + 1) % len(order)
+		} else {
+			i = (i + len(order) - 1) % len(order)
+		}
+		a.lbSort = order[i]
+		if a.lbSort != "house" {
+			a.leaderboard = nil
+		}
+		a.lbScroll = 0
 		a.requestLeaderboard()
 	}
 	if a.now.Sub(a.lbAt).Seconds() > 10 {
 		a.requestLeaderboard()
+	}
+	if a.lbSort == "house" {
+		a.drawHouse(r)
+		return
 	}
 	rich := a.lbSort == "balance"
 	x0 := r.Min.X + 14

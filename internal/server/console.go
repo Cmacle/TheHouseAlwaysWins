@@ -34,6 +34,7 @@ func (s *Server) RunConsole(r io.Reader, w io.Writer, reload func() error, quit 
   leaderboard [n] [rich]      top n by lifetime net (or by chips with "rich")
   stats <user>                account details
   accounts                    list all accounts
+  house                       the dealer's lifetime results
   give <user> <amount>        add chips (negative removes); does not change lifetime net
   refill <user|all>           top up to the refill amount now (counts against net, like the daily refill)
   resetstats <user>           zero lifetime stats and set balance to the refill amount
@@ -61,6 +62,10 @@ func (s *Server) RunConsole(r io.Reader, w io.Writer, reload func() error, quit 
 			for i, p := range s.Store.Leaderboard(n, by) {
 				fmt.Fprintf(w, "  %3d. %-16s net %+d  balance %d  hands %d\n", i+1, p.Username, p.Net, p.Balance, p.HandsPlayed)
 			}
+		case "house", "dealer":
+			h := s.Store.House()
+			fmt.Fprintf(w, "  house net %+d over %d rounds (%d player hands)\n  won %d in %d rounds, lost %d in %d rounds\n  dealer blackjacks %d, dealer busts %d, player busts %d\n  best round %+d, worst round -%d\n",
+				h.Net, h.HandsDealt, h.PlayerHands, h.Won, h.RoundsWon, h.Lost, h.RoundsLost, h.DealerBlackjacks, h.DealerBusts, h.PlayerBusts, h.BiggestWin, h.BiggestLoss)
 		case "accounts":
 			names := s.Store.Usernames()
 			fmt.Fprintf(w, "  %d account(s): %s\n", len(names), strings.Join(names, ", "))

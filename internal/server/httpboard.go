@@ -48,6 +48,9 @@ img{width:32px;height:32px;image-rendering:pixelated;vertical-align:middle;margi
 .pos{color:#7dff8a}.neg{color:#ff6b6b}.on{color:#7dff8a;font-size:12px}.t{font-size:12px;display:block;margin-left:44px;margin-top:-6px}p{text-align:center;color:#9bb}
 </style></head><body>
 <h1>{{.Name}}</h1>
+{{with .House}}{{if .HandsDealt}}<p style="font-size:1.1em;color:#f3ead2">&#127913; <b style="color:#f2c14e">The House</b>:
+<b class="{{if gt .Net 0}}pos{{else if lt .Net 0}}neg{{end}}">{{signed .Net}}</b> lifetime over {{.HandsDealt}} rounds &middot;
+won {{commas .Won}} &middot; lost {{commas .Lost}} &middot; dealer blackjacks {{.DealerBlackjacks}} &middot; dealer busts {{.DealerBusts}}</p>{{end}}{{end}}
 {{range .Boards}}<h2>{{.Title}}</h2>
 <table><tr><th>#</th><th class="n">Player</th><th>Chips now</th><th>Lifetime</th><th>Hands</th><th>Blackjacks</th></tr>
 {{$by := .By}}{{range $i, $p := .Entries}}<tr><td>{{if eq $i 0}}{{if eq $by "balance"}}&#128081;{{else}}&#127942;{{end}}{{else}}{{inc $i}}{{end}}</td>
@@ -98,7 +101,8 @@ func (s *Server) StartHTTP() {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = boardTmpl.Execute(w, map[string]any{
-			"Name": s.cfg().ServerName,
+			"Name":  s.cfg().ServerName,
+			"House": s.Store.House(),
 			"Boards": []board{
 				{"Richest Right Now", SortBalance, s.Store.Leaderboard(50, SortBalance)},
 				{"Lifetime Gain / Loss", SortNet, s.Store.Leaderboard(50, SortNet)},

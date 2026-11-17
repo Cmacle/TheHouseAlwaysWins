@@ -39,6 +39,8 @@ type Theme struct {
 	HatHeight      int               `json:"hat_height"`
 	HatOverlap     int               `json:"hat_overlap"` // rows of the hat drawn over the avatar
 	FrameSize      int               `json:"frame_size"`
+	CigarX         int               `json:"cigar_x"` // cigar tip in dealer_vulgar.png (smoke origin)
+	CigarY         int               `json:"cigar_y"`
 	PanelEdge      int               `json:"panel_border"`
 	Colors         map[string]string `json:"colors"`
 	colors         map[string]color.RGBA
@@ -50,7 +52,7 @@ func defaultTheme() Theme {
 		ChipValues:    []int64{5, 10, 25, 100, 500, 1000},
 		FontCellWidth: 6, FontCellHeight: 8, FontColumns: 16, FontFirstChar: 32, FontSpaceWidth: 4,
 		NineSliceEdge: 4, PanelEdge: 5,
-		HatWidth: 32, HatHeight: 20, HatOverlap: 6, FrameSize: 36,
+		HatWidth: 32, HatHeight: 20, HatOverlap: 6, FrameSize: 36, CigarX: 36, CigarY: 14,
 		Colors: map[string]string{
 			"text":       "#f3ead2",
 			"text_dim":   "#9fb8a4",
@@ -68,6 +70,9 @@ func defaultTheme() Theme {
 			"error":      "#ff8a7a",
 			"button_txt": "#fff4dc",
 			"online":     "#7dff8a",
+			"bubble":     "#fbf7ea",
+			"bubble_txt": "#1a1a22",
+			"smoke":      "#c8c8d0b0",
 		},
 	}
 }
@@ -81,14 +86,14 @@ type Assets struct {
 	Table, Cards, CardBack, Chips, Dealer, Shoe, Logo, DefaultAvatar *image.RGBA
 	Button, ButtonHover, ButtonDown, ButtonDisabled, ButtonGold      *image.RGBA
 	ButtonGoldHover, Field, FieldFocus, Panel, Checkbox, Arrow       *image.RGBA
-	Hats, Frames                                                     *image.RGBA
+	Hats, Frames, DealerVulgar                                       *image.RGBA
 
 	Sounds map[string][]byte
 	Icon   []byte // raw PNG for the window icon
 }
 
 // SoundNames lists the sound files the client knows about.
-var SoundNames = []string{"card", "chip", "click", "win", "blackjack", "lose", "push", "bust", "turn", "refill", "shuffle", "error"}
+var SoundNames = []string{"card", "chip", "click", "win", "blackjack", "lose", "push", "bust", "turn", "refill", "shuffle", "error", "talk"}
 
 // ExportDefaults writes every default asset that does not yet exist in dir, so
 // players can see and replace them.
@@ -200,6 +205,7 @@ func LoadAssets(dir string) (*Assets, error) {
 	a.Checkbox = a.image("checkbox.png")
 	a.Arrow = a.image("arrow.png")
 	a.Hats = a.image("hats.png")
+	a.DealerVulgar = a.image("dealer_vulgar.png")
 	a.Frames = a.image("frames.png")
 	a.Font = newFont(a.image("font.png"), a.Theme)
 	a.Icon, _ = a.read("icon.png")
@@ -282,6 +288,8 @@ up by whole pixels, so draw at 1x.
   chips.png             a row of chips, chip_size square each, one per
                         entry in theme.json "chip_values"
   dealer.png            32x32 dealer portrait
+  dealer_vulgar.png     the dealer when dealer_vulgar is on (any size; cigar
+                        smoke rises from cigar_x, cigar_y in theme.json)
   shoe.png              the card shoe (cards fly out of it)
   logo.png              title logo on the login screen
   default_avatar.png    32x32 picture for players without one
@@ -309,7 +317,7 @@ up by whole pixels, so draw at 1x.
   arrow.png             marker shown above the hand whose turn it is
 
 Sounds (WAV, PCM): card, chip, click, win, blackjack, lose, push, bust, turn,
-refill, shuffle, error (.wav)
+refill, shuffle, error, talk (.wav; talk plays when the dealer speaks)
 
 theme.json            sizes, chip values and text colours (#rrggbb or
                       #rrggbbaa)

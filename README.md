@@ -29,6 +29,13 @@ optional web page and Discord.
   more. Harder goals have flashier rewards. **Whoever has the most chips right
   now automatically wears The Crown**, and the #1 lifetime earner gets the golden
   Laurel Wreath.
+- **A dealer with a mouth on him** (optional): he calls out players by name in
+  a speech bubble. Busting, standing scared, splitting tens, big losses, losing
+  streaks, going broke and lifetime scores all get roasted. A **vulgar mode**
+  turns on swearing, crude insults and grumpy old-man rants, and swaps the
+  dealer for a fat, cigar-smoking scumbag.
+- **The house keeps score too**: a lifetime tracker for the dealer's winnings
+  and losses, dealer blackjacks and busts, on its own leaderboard tab.
 - Standard library only. Only Go is needed to build, and the client needs no
   cgo or other dependencies.
 
@@ -166,6 +173,32 @@ Taking the crown is announced to everyone.
 | Owns The House | Unique | Be #1 on the Richest leaderboard |
 | The G.O.A.T. | Unique | Be #1 on the Lifetime leaderboard |
 
+## The dealer
+
+With `dealer_trash_talk` on, the dealer reacts to what happens at the table
+and calls players out by name in a speech bubble:
+
+- **Decisions:** busting (extra abuse for hitting a hard 17+), standing scared
+  on 12–16 against a strong up card, standing on 11 or less, splitting tens,
+  surrendering, doubling.
+- **Bets and results:** min, max and all-in bets, sitting a hand out, big
+  losses (with the amount), losing streaks, going broke, blackjacks, sweeps.
+- **Small talk:** greetings and between-hand roasts based on lifetime scores
+  (worst on the board, the crown holder, deep in the red, suspiciously up),
+  bragging about the house's lifetime take, and rambling.
+
+There are about 450 lines across both modes. They're dealt like a shuffled
+deck per situation, and recently used lines are skipped, so repeats are rare.
+`dealer_vulgar` adds the uncensored set and swaps in the cigar-smoking dealer
+sprite (`dealer_vulgar.png`). Lines live in `internal/banter/lines.go` if you
+want to write your own.
+
+**The house's lifetime stats** (net, total taken, total paid out, rounds
+won/lost, best and worst round, dealer blackjacks and busts, player busts) are
+saved in `data/house.json`. They show on the leaderboard's **THE HOUSE** tab,
+in the top bar, on the web page, in Discord, and via the `house` console
+command.
+
 ## Server configuration (`server.json`)
 
 | Key | Default | Meaning |
@@ -198,6 +231,8 @@ Taking the crown is announced to everyone.
 | `play_time_seconds` | 30 | Shared timer in `simultaneous` play mode |
 | `results_time_seconds` | 5 | How long results stay up |
 | `deal_delay_ms` / `dealer_delay_ms` | 350 / 700 | Pacing of the deal and the dealer's draws |
+| `dealer_trash_talk` | true | The dealer roasts players in a speech bubble |
+| `dealer_vulgar` | false | Uncensored dealer: swearing, crude insults, cigar-smoking scumbag sprite |
 | `http_leaderboard` | disabled, port 8090 | Optional web page with both leaderboards (`/`, `/leaderboard.json?sort=balance\|net`) |
 | `discord` | disabled | See below |
 
@@ -261,7 +296,7 @@ The server uses almost no CPU when the table is empty.
 Type these into the server window:
 
 ```
-players | leaderboard [n] [rich] | stats <user> | accounts
+players | leaderboard [n] [rich] | stats <user> | accounts | house
 give <user> <amount>        add/remove chips without touching lifetime net
 refill <user|all>           immediate top-up (counts against net)
 resetstats <user> | setpassword <user> <pass> | delete <user> | kick <user>
@@ -276,7 +311,7 @@ say <message> | reload | save | quit
 | Enter | Deal (place bet) |
 | R / C | Rebet last amount / clear |
 | H S D P U | Hit, Stand, Double, Split, Surrender |
-| L | Leaderboard (left/right switches Richest / Lifetime) |
+| L | Leaderboard (left/right switches Richest / Lifetime / The House) |
 | W (in Profile) | Wardrobe: hats, frames, titles |
 | M | Sound on/off |
 | F1 or ? | How to play |
@@ -340,6 +375,7 @@ cmd/client        client entry point (Windows)
 internal/blackjack  cards, shoe, rules, settlement
 internal/proto      JSON-lines wire protocol
 internal/cosmetics  catalogue of hats, frames and titles + unlock rules
+internal/banter     the dealer's trash talk lines and no-repeat picker
 internal/server     game loop, accounts, refill, console, web leaderboard
 internal/discord    Discord REST + gateway (built-in websocket client)
 internal/client     renderer, UI, screens (platform independent)

@@ -175,8 +175,9 @@ type AvatarSet struct {
 }
 
 type Leaderboard struct {
-	Sort    string    `json:"sort"`
-	Entries []Profile `json:"entries"`
+	Sort    string     `json:"sort"`
+	Entries []Profile  `json:"entries"`
+	House   HouseStats `json:"house"`
 }
 
 type Event struct {
@@ -215,6 +216,24 @@ type Settings struct {
 	Surrender        bool   `json:"surrender"`
 	RefillAmount     int64  `json:"refill_amount"`
 	ServerName       string `json:"server_name"`
+	DealerTrashTalk  bool   `json:"dealer_trash_talk"`
+	DealerVulgar     bool   `json:"dealer_vulgar"`
+}
+
+// HouseStats are the dealer's lifetime results.
+type HouseStats struct {
+	HandsDealt       int   `json:"hands_dealt"`  // rounds dealt
+	PlayerHands      int   `json:"player_hands"` // player hands settled
+	Net              int64 `json:"net"`          // house gain (+) or loss (-)
+	Won              int64 `json:"won"`          // total from rounds the house won
+	Lost             int64 `json:"lost"`         // total from rounds the house lost
+	RoundsWon        int   `json:"rounds_won"`
+	RoundsLost       int   `json:"rounds_lost"`
+	DealerBlackjacks int   `json:"dealer_blackjacks"`
+	DealerBusts      int   `json:"dealer_busts"`
+	PlayerBusts      int   `json:"player_busts"`
+	BiggestWin       int64 `json:"biggest_win"`  // best single round for the house
+	BiggestLoss      int64 `json:"biggest_loss"` // worst single round for the house
 }
 
 // HandView is a hand as seen by one client.
@@ -270,4 +289,9 @@ type TableState struct {
 	Settings   Settings   `json:"settings"`
 	Spectators int        `json:"spectators"`
 	ShoeLeft   int        `json:"shoe_left"`
+
+	DealerSay      string `json:"dealer_say,omitempty"`
+	DealerSayID    int    `json:"dealer_say_id,omitempty"`
+	DealerSayUntil int64  `json:"dealer_say_until,omitempty"` // unix ms
+	HouseNet       int64  `json:"house_net"`
 }
