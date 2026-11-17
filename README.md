@@ -41,9 +41,9 @@ optional web page and Discord.
 
 ![Table](docs/table.png)
 
-| Leaderboard | Wardrobe |
-|---|---|
-| ![Leaderboard](docs/leaderboard.png) | ![Wardrobe](docs/wardrobe.png) |
+| Leaderboard | Wardrobe | The House |
+|---|---|---|
+| ![Leaderboard](docs/leaderboard.png) | ![Wardrobe](docs/wardrobe.png) | ![The House](docs/house.png) |
 
 ## Quick start
 
@@ -187,10 +187,40 @@ and calls players out by name in a speech bubble:
   (worst on the board, the crown holder, deep in the red, suspiciously up),
   bragging about the house's lifetime take, and rambling.
 
-There are about 450 lines across both modes. They're dealt like a shuffled
+He also makes up humiliating stories about players ("{name} is the kind of guy
+who falls in the toilet at least once a week"), tells stories from his past,
+shares hot takes on random topics, and says ominous, cryptic things.
+
+He has a name and a past: **Dale "The House" Kroft**, dealing since 1979 on a
+Mississippi riverboat that sank, three ex-wives, a timeshare in Branson, and an
+iguana named Comp. His bio is on the leaderboard's **THE HOUSE** tab.
+
+**He dresses by how the house is doing.** His outfit follows the house's
+lifetime net in big steps, so it doesn't flip back and forth:
+
+| House lifetime | Look |
+|---|---|
+| -$50,000 or worse | Destitute: rags, beard, cardboard sign |
+| -$20,000 | Broke: stained tank top, cigarette butt |
+| -$5,000 | Struggling: crooked tie, torn visor |
+| between | Working stiff |
+| +$10,000 | Comfortable: velvet jacket, gold chain |
+| +$50,000 | Rich: white tux, two chains |
+| +$150,000 | Loaded: fur coat, gold tooth, diamond rings |
+| +$500,000 | Tycoon: top hat, diamond monocle |
+| +$1,500,000 | Emperor: gold crown, royal cape, scepter |
+
+Moving away from even happens as soon as a line is crossed. Moving back needs
+a buffer of 10% (at least $2,000), so a single hand can't flip him back and
+forth. He thanks whoever paid for each upgrade, very rudely. When he loses an
+outfit he's incredibly petty with whoever won it off him. When he's down, he
+begs for sympathy, badly. The house tab shows where his next upgrade and
+downgrade kick in. Players' titles show under their names at the table.
+
+There are about 1,000 lines across both modes. They're dealt like a shuffled
 deck per situation, and recently used lines are skipped, so repeats are rare.
 `dealer_vulgar` adds the uncensored set and swaps in the cigar-smoking dealer
-sprite (`dealer_vulgar.png`). Lines live in `internal/banter/lines.go` if you
+sprite row in `dealers.png`. Lines live in `internal/banter/lines.go` if you
 want to write your own.
 
 **The house's lifetime stats** (net, total taken, total paid out, rounds

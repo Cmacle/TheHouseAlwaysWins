@@ -45,6 +45,13 @@ const (
 	EvIdle       = "idle"
 	EvHouseUp    = "house_up"
 	EvHouseDown  = "house_down"
+	EvUpgrade    = "upgrade"   // tier went up (positive): {item} he bought, {name} who paid
+	EvDowngrade  = "downgrade" // tier went down but still >= 0: {item} he lost
+	EvFallen     = "fallen"    // fell into a negative tier: {item} he lost
+	EvRecover    = "recover"   // climbed back toward even: {item} he got back
+	EvFlex       = "flex"      // bragging about current riches: {item}
+	EvSympathy   = "sympathy"  // while down: begging, badly
+	EvPetty      = "petty"     // house lost a round: {name} won {amount}
 )
 
 // Vars fill the placeholders in a line.
@@ -56,6 +63,7 @@ type Vars struct {
 	Balance int64
 	Streak  int
 	Up      string
+	Item    string
 }
 
 // Picker hands out lines without repeating: each event's pool is dealt like a
@@ -195,6 +203,7 @@ func Fill(line string, v Vars) string {
 		"{balance}", Money(v.Balance),
 		"{streak}", strconv.Itoa(v.Streak),
 		"{up}", v.Up,
+		"{item}", v.Item,
 	)
 	return r.Replace(line)
 }

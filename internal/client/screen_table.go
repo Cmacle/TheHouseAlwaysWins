@@ -142,7 +142,7 @@ func (a *App) seatPos(i, n int) (x, avatarCY int) {
 	}
 	dx := (float64(x) - 320) / 420
 	rail := 40 + 222*math.Sqrt(math.Max(0, 1-dx*dx))
-	return x, int(rail) - 2
+	return x, int(rail) - 10
 }
 
 type cardPos struct {
@@ -406,14 +406,11 @@ func (a *App) drawTable() {
 			nameCol = a.A.C("gold")
 		}
 		a.text(x, ar.Max.Y+4, fitText(a.A.Font, sv.Username, seatW), nameCol, alignCenter)
-		line, lc := a.seatLine(st, sv)
-		if line == "" {
-			if name, c, ok := titleOf(sv.Title); ok && sv.Title != "t_rookie" {
-				line, lc = fitText(a.A.Font, name, seatW+10), c
-			}
+		if name, c, ok := titleOf(sv.Title); ok {
+			a.text(x, ar.Max.Y+13, fitText(a.A.Font, name, seatW+16), c, alignCenter)
 		}
-		if line != "" {
-			a.text(x, ar.Max.Y+13, line, lc, alignCenter)
+		if line, lc := a.seatLine(st, sv); line != "" {
+			a.text(x, ar.Max.Y+22, line, lc, alignCenter)
 		}
 		// hover tooltip with balance
 		if a.hovered(ar) {
