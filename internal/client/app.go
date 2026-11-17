@@ -133,6 +133,9 @@ type App struct {
 	wardSel     string
 	fields      map[string]*fieldState
 	caretAt     int
+	house       proto.HouseStats
+	sayID       int
+	sayAt       time.Time
 }
 
 // New creates the client app.
@@ -445,8 +448,13 @@ func (a *App) handleMsg(m proto.Msg) {
 		a.sound("error")
 	case proto.SLeaderboard:
 		var lb proto.Leaderboard
-		if decode(m, &lb) && (lb.Sort == a.lbSort || a.lbSort == "") {
-			a.leaderboard = lb.Entries
+		if decode(m, &lb) {
+			a.house = lb.House
+			if lb.Sort == a.lbSort || a.lbSort == "" || a.lbSort == "house" {
+				if a.lbSort != "house" {
+					a.leaderboard = lb.Entries
+				}
+			}
 		}
 	case proto.SAvatar:
 		var av proto.Avatar

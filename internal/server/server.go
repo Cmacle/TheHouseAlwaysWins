@@ -48,6 +48,7 @@ func (d discordData) Leaderboard(n int, rich bool) []proto.Profile {
 	return d.s.Store.Leaderboard(n, SortNet)
 }
 func (d discordData) Profile(name string) (proto.Profile, bool) { return d.s.Store.Profile(name) }
+func (d discordData) House() proto.HouseStats                   { return d.s.Store.House() }
 func (d discordData) TableSummary() string {
 	phase, seated, names, hand := d.s.Game.Summary()
 	if seated == 0 {

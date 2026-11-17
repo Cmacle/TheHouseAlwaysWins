@@ -312,7 +312,11 @@ func (b *Bot) handleInteraction(raw json.RawMessage) {
 			},
 		}
 	case "table":
-		e = embed{Title: b.data.ServerName(), Description: b.data.TableSummary(), Color: colorTeal}
+		desc := b.data.TableSummary()
+		if h := b.data.House(); h.HandsDealt > 0 {
+			desc += "\n\n" + houseLine(h)
+		}
+		e = embed{Title: b.data.ServerName(), Description: desc, Color: colorTeal}
 	default:
 		return
 	}

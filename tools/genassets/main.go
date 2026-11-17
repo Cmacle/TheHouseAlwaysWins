@@ -34,6 +34,7 @@ func main() {
 	genUI()
 	genAvatar()
 	genDealer()
+	genScumbag()
 	genShoe()
 	genLogo()
 	genIcon()
@@ -677,6 +678,123 @@ func genDealer() {
 	save("dealer.png", img)
 }
 
+// genScumbag draws the vulgar-mode dealer: fat, greasy, cigar, gold chain.
+// 40x34. The cigar tip is at (36, 15); smoke is animated in the client.
+func genScumbag() {
+	const W, H = 40, 34
+	img := newImg(W, H)
+	in := func(x, y int, cx, cy, rx, ry float64) bool {
+		dx, dy := (float64(x)-cx)/rx, (float64(y)-cy)/ry
+		return dx*dx+dy*dy < 1
+	}
+	skin, skinD, cheek := hex("eeb08a"), hex("c98a62"), hex("d86a5a")
+	stub := hex("a98468")
+	hair := hex("2e2016")
+	jacket, jacketD := hex("6a1a2a"), hex("4a0f1c")
+	shirt, stain := hex("e6dfc6"), hex("cfc27a")
+	gold, goldD := hex("f2c14e"), hex("a8741a")
+	cig, band := hex("7a4a22"), hex("d9a227")
+	for y := 0; y < H; y++ {
+		for x := 0; x < W; x++ {
+			switch {
+			case in(x, y, 20, 40, 19.5, 17): // big body
+				c := jacket
+				if x > 28 || (x < 12 && y > 28) {
+					c = jacketD
+				}
+				// open shirt, a V that widens downward
+				half := 3 + (y-22)/2
+				if x >= 20-half && x <= 20+half && y >= 22 {
+					c = shirt
+					if (x*7+y*3)%11 == 0 || (x > 21 && y > 29 && (x+y)%3 == 0) {
+						c = stain
+					}
+					if y >= 24 && y <= 28 && (x+y)%3 == 0 && x > 17 && x < 23 {
+						c = stub // chest hair
+					}
+				}
+				set(img, x, y, c)
+			case in(x, y, 20, 21.5, 10, 3.5): // double chin / neck
+				set(img, x, y, skinD)
+			}
+		}
+	}
+	// head
+	for y := 0; y < H; y++ {
+		for x := 0; x < W; x++ {
+			if in(x, y, 20, 12, 10, 9.5) {
+				c := skin
+				if y >= 14 && (x+y)%2 == 0 {
+					c = stub
+				}
+				if x >= 27 && y > 6 {
+					c = skinD
+				}
+				set(img, x, y, c)
+			}
+		}
+	}
+	// cheeks, nose
+	fill(img, 12, 14, 2, 1, cheek)
+	fill(img, 27, 14, 2, 1, cheek)
+	fill(img, 19, 12, 3, 2, cheek)
+	set(img, 20, 11, cheek)
+	// greasy comb-over
+	for x := 12; x <= 28; x++ {
+		if x%3 != 1 {
+			set(img, x, 3, hair)
+		}
+		if x%2 == 0 {
+			set(img, x+1, 4, hair)
+		}
+	}
+	fill(img, 10, 8, 2, 6, hair)
+	fill(img, 29, 8, 2, 6, hair)
+	// sunglasses
+	fill(img, 12, 8, 7, 3, hex("111116"))
+	fill(img, 22, 8, 7, 3, hex("111116"))
+	fill(img, 19, 8, 3, 1, hex("111116"))
+	set(img, 13, 8, hex("ffffff"))
+	set(img, 23, 8, hex("ffffff"))
+	set(img, 14, 9, hex("5a5a70"))
+	set(img, 24, 9, hex("5a5a70"))
+	// smirk
+	fill(img, 16, 16, 6, 1, hex("5a2a20"))
+	set(img, 22, 15, hex("5a2a20"))
+	// cigar out of the corner of the mouth
+	fill(img, 22, 15, 13, 2, cig)
+	fill(img, 22, 15, 13, 1, hex("9a6232"))
+	fill(img, 26, 15, 1, 2, band)
+	fill(img, 35, 15, 1, 2, hex("ff5a1a"))
+	set(img, 36, 15, hex("bdbdbd"))
+	set(img, 36, 16, hex("ffb03a"))
+	// gold chain + medallion
+	for x := 15; x <= 25; x++ {
+		dy := int(math.Round(2.5 * (1 - math.Pow((float64(x)-20)/5, 2))))
+		set(img, x, 22+dy, gold)
+	}
+	fill(img, 19, 25, 3, 3, gold)
+	set(img, 20, 26, goldD)
+	// outline everything
+	out := newImg(W, H)
+	copy(out.Pix, img.Pix)
+	for y := 0; y < H; y++ {
+		for x := 0; x < W; x++ {
+			if img.NRGBAAt(x, y).A != 0 {
+				continue
+			}
+			for _, d := range [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+				nx, ny := x+d[0], y+d[1]
+				if nx >= 0 && ny >= 0 && nx < W && ny < H && img.NRGBAAt(nx, ny).A != 0 {
+					out.SetNRGBA(x, y, hex("15151a"))
+					break
+				}
+			}
+		}
+	}
+	save("dealer_vulgar.png", out)
+}
+
 func genShoe() {
 	img := newImg(30, 22)
 	fill(img, 0, 4, 30, 18, hex("15151a"))
@@ -886,5 +1004,12 @@ func genSounds() {
 		sh = mix(sh, noise(0.05, 0.6, 50, int64(i+3), 0.5), float64(i)*0.045)
 	}
 	writeWav("shuffle.wav", sh)
+	talk := []float64{}
+	rng := rand.New(rand.NewSource(42))
+	for i := 0; i < 5; i++ {
+		f := 180 + rng.Float64()*120
+		talk = mix(talk, tone(f, 0.05, 0.25, "square", 25), float64(i)*0.055)
+	}
+	writeWav("talk.wav", talk)
 	writeWav("error.wav", mix(tone(220, 0.12, 0.3, "square", 8), tone(180, 0.15, 0.3, "square", 8), 0.1))
 }

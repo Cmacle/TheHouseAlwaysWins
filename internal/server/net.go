@@ -202,7 +202,7 @@ func (c *conn) handle(m proto.Msg) bool {
 		if req.Sort == SortBalance {
 			by = SortBalance
 		}
-		c.send(proto.SLeaderboard, proto.Leaderboard{Sort: by, Entries: s.Store.Leaderboard(100, by)})
+		c.send(proto.SLeaderboard, proto.Leaderboard{Sort: req.Sort, Entries: s.Store.Leaderboard(100, by), House: s.Store.House()})
 		return true
 	case proto.CAvatarGet:
 		var a proto.AvatarGet

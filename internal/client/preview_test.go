@@ -127,6 +127,9 @@ func TestPreview(t *testing.T) {
 	st.Seats[6].Status = "sitting_out"
 	st.Seats[7].Status, st.Seats[7].PendingBet = "bet_placed", 25
 	st.Seats[9].Status, st.Seats[9].Connected = "away", false
+	st.DealerSay = "LuckyLou bets the minimum. Big spender."
+	st.DealerSayID = 2
+	st.DealerSayUntil = time.Now().Add(time.Hour).UnixMilli()
 	a.st = nil
 	a.onState(st)
 	a.betDraft = 150
@@ -158,6 +161,11 @@ func TestPreview(t *testing.T) {
 	st.Seats[4].ActiveHand = 1
 	st.Seats[7].Hands = []proto.HandView{{Cards: []bj.Card{{}, {}}, Bet: 25}}
 	st.Actions = []string{"hit", "stand", "double"}
+	st.Settings.DealerVulgar = true
+	st.DealerSay = "Standing on 13, Big_Tony? Grow a pair. Hit the goddamn card, you spineless chickenshit."
+	st.DealerSayID = 1
+	st.DealerSayUntil = time.Now().Add(time.Hour).UnixMilli()
+	st.HouseNet = 48210
 	for _, i := range []int{0, 2, 3, 4, 7} {
 		st.Seats[i].Status = "playing"
 	}
@@ -220,6 +228,10 @@ func TestPreview(t *testing.T) {
 	a.lbSort = "balance"
 	a.lbAt = time.Now()
 	save(t, dir, "06_leaderboard.png", frame())
+	a.house = proto.HouseStats{HandsDealt: 1843, PlayerHands: 7210, Net: 48210, Won: 212400, Lost: 164190, RoundsWon: 1011, RoundsLost: 702, DealerBlackjacks: 88, DealerBusts: 512, PlayerBusts: 1290, BiggestWin: 6200, BiggestLoss: 4800}
+	a.lbSort = "house"
+	save(t, dir, "06b_house.png", frame())
+	a.lbSort = "balance"
 	a.overlay = ovProfile
 	save(t, dir, "07_profile.png", frame())
 	a.overlay = ovHelp

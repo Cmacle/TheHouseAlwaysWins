@@ -22,7 +22,8 @@ func (fakeData) Leaderboard(n int, rich bool) []proto.Profile {
 func (fakeData) Profile(name string) (proto.Profile, bool) {
 	return proto.Profile{Username: name, Net: 5, HandsPlayed: 2, HandsWon: 1}, name == "alice_x"
 }
-func (fakeData) TableSummary() string { return "empty" }
+func (fakeData) TableSummary() string    { return "empty" }
+func (fakeData) House() proto.HouseStats { return proto.HouseStats{HandsDealt: 10, Net: 1234} }
 
 func TestBoardAndInteraction(t *testing.T) {
 	var mu sync.Mutex

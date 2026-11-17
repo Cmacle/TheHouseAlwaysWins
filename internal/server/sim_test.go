@@ -180,10 +180,20 @@ func simulate(t *testing.T, mut func(*Config), bots int, dur time.Duration) {
 		t.Errorf("too few hands played: %d", total)
 	}
 	checkInvariants(t, s)
+	// the house's lifetime net mirrors the players' combined result
+	var players int64
+	for _, u := range s.Store.Usernames() {
+		p, _ := s.Store.Profile(u)
+		players += p.Net + p.RefillTotal
+	}
+	if h := s.Store.House(); h.Net != -players {
+		t.Errorf("house net %d, players %d", h.Net, players)
+	}
+	t.Logf("house: %+v", s.Store.House())
 }
 
 func TestSimTurns(t *testing.T) {
-	simulate(t, nil, 12, 6*time.Second)
+	simulate(t, func(c *Config) { c.DealerVulgar = true }, 12, 6*time.Second)
 }
 
 func TestSimSimultaneous(t *testing.T) {

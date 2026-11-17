@@ -74,3 +74,21 @@ func TestSeatOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestHouseStats(t *testing.T) {
+	st, _ := OpenStore(t.TempDir())
+	st.RecordRound(500, 3, true, false, 1)
+	st.RecordRound(-200, 2, false, true, 0)
+	h := st.House()
+	if h.Net != 300 || h.Won != 500 || h.Lost != 200 || h.HandsDealt != 2 || h.DealerBusts != 1 || h.DealerBlackjacks != 1 || h.BiggestLoss != 200 {
+		t.Fatalf("%+v", h)
+	}
+	st.dirty = true
+	if err := st.Save(); err != nil {
+		t.Fatal(err)
+	}
+	st2, _ := OpenStore(st.dir)
+	if st2.House().Net != 300 {
+		t.Fatal("house stats not persisted")
+	}
+}

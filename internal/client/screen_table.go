@@ -59,6 +59,11 @@ func (a *App) onState(st *proto.TableState) {
 		}
 	})
 	a.cardSeen, a.cardHidden = seen, hidden
+	if st.DealerSayID != 0 && st.DealerSayID != a.sayID && st.DealerSay != "" {
+		a.sayID = st.DealerSayID
+		a.sayAt = a.now
+		a.sound("talk")
+	}
 	if st.Phase == proto.PhaseBetting && (prev == nil || prev.Phase != proto.PhaseBetting) {
 		a.betDraft = a.lastBet
 		if me := a.mySeat(st); me != nil && a.betDraft > me.Balance {
@@ -310,7 +315,7 @@ func (a *App) drawTable() {
 
 	// dealer
 	blit(a.fb, a.A.Shoe, shoeX-6, shoeY-2)
-	blit(a.fb, a.A.Dealer, ScreenW/2-16, 20)
+	a.drawDealer(st)
 	if n := len(st.Dealer.Cards); n > 0 {
 		cw := a.A.Theme.CardWidth
 		step := 14
@@ -499,6 +504,7 @@ func (a *App) drawTable() {
 		blit(a.fb, f.img, f.x, f.y)
 	}
 
+	a.drawSpeech(st)
 	a.drawTopBar(st)
 	a.drawHUD(st)
 	a.blocked = false
@@ -578,6 +584,7 @@ func (a *App) drawTopBar(st *proto.TableState) {
 	if st.Spectators > 0 {
 		info += fmt.Sprintf("  -  %d watching", st.Spectators)
 	}
+	info += "  -  House " + signedMoney(st.HouseNet)
 	a.text(6, 14, info, a.A.C("text_dim"), alignLeft)
 
 	y := 4
@@ -800,7 +807,7 @@ func (a *App) drawBetting(st *proto.TableState, me *proto.SeatView, x0, x1 int) 
 			a.betDraft = limit
 		}
 	}
-	a.text(x0+4, hudTop+42, "click adds, right-click removes", a.A.C("text_dim"), alignLeft)
+	a.text(x0+4, hudTop+42, "right-click removes", a.A.C("text_dim"), alignLeft)
 
 	bx := x0 + 158
 	label := "YOUR BET"

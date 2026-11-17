@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/banter"
 	bj "github.com/Cmacle/TheHouseAlwaysWins/internal/blackjack"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/cosmetics"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
@@ -91,6 +92,8 @@ type Game struct {
 	message    string
 	lastPeriod string
 	lastRich   string
+	banter     *banter.Picker
+	speech     speech
 	idleLogged bool
 }
 
@@ -103,6 +106,7 @@ func NewGame(cfg *Config, store *Store, n Notifier, lg *log.Logger) *Game {
 	rich, _ := store.Tops()
 	return &Game{
 		lastRich: rich,
+		banter:   banter.NewPicker(),
 		cfg:      cfg, store: store, notify: n, log: lg,
 		shoe:       bj.NewShoe(cfg.Decks, cfg.Penetration),
 		rules:      cfg.Rules(),
@@ -243,12 +247,13 @@ func (g *Game) join(c *conn, user string) {
 	}
 	if g.phase == proto.PhaseWaiting {
 		g.startBetting()
-		return
+	} else {
+		if g.phase == proto.PhaseBetting && g.cfg.BettingMode == "simultaneous" && p.seat >= 0 && g.canPlay(p) {
+			p.eligible = true
+		}
+		g.broadcast()
 	}
-	if g.phase == proto.PhaseBetting && g.cfg.BettingMode == "simultaneous" && p.seat >= 0 && g.canPlay(p) {
-		p.eligible = true
-	}
-	g.broadcast()
+	g.greet(p)
 }
 
 // seatOrder lists seat indexes from the middle of the table outward,
@@ -451,6 +456,9 @@ func (g *Game) processUnlocks() {
 		if rich != "" {
 			g.eventAll(proto.Event{Kind: "crown", Seat: -1, Text: rich + " has the most chips and takes the crown!"})
 			g.notify.NewTop(rich)
+			if p := g.byUser[strings.ToLower(rich)]; p != nil {
+				g.say(banter.EvCrown, p, banter.Vars{}, 1, prioHigh)
+			}
 			g.log.Printf("%s takes the crown", rich)
 		}
 	}
@@ -557,11 +565,13 @@ func (g *Game) startBetting() {
 	if g.shoe.NeedsShuffle() {
 		g.shoe.Shuffle()
 		g.eventAll(proto.Event{Kind: "shuffle", Text: "Shuffling the shoe...", Seat: -1})
+		defer g.say(banter.EvShuffle, nil, banter.Vars{}, 0.5, prioLow)
 	}
 	g.phase = proto.PhaseBetting
 	if g.cfg.BettingMode == "turns" {
 		g.betTurn = -1
 		g.advanceBetTurn()
+		g.chatter()
 		return
 	}
 	g.betTurn = -1
@@ -569,6 +579,7 @@ func (g *Game) startBetting() {
 	g.setDeadline(secs(g.cfg.BettingTimeSeconds))
 	g.after(secs(g.cfg.BettingTimeSeconds), g.endBetting)
 	g.broadcast()
+	g.chatter()
 }
 
 func (g *Game) onBet(p *player, amt int64) {
@@ -591,6 +602,14 @@ func (g *Game) onBet(p *player, amt int64) {
 	}
 	p.pendingBet, p.betPlaced = amt, true
 	g.eventAll(proto.Event{Kind: "chip", Seat: p.seat})
+	switch bal := g.store.Balance(p.user); {
+	case amt == bal && bal >= g.cfg.MinBet*5:
+		g.say(banter.EvAllIn, p, banter.Vars{Amount: amt}, 0.9, prioNormal)
+	case amt == g.cfg.MaxBet:
+		g.say(banter.EvMaxBet, p, banter.Vars{Amount: amt}, 0.5, prioNormal)
+	case amt == g.cfg.MinBet:
+		g.say(banter.EvMinBet, p, banter.Vars{Amount: amt}, 0.3, prioLow)
+	}
 	if turns {
 		g.advanceBetTurn()
 		return
@@ -672,6 +691,9 @@ func (g *Game) endBetting() {
 				inHand++
 			}
 		} else if p.eligible && !p.betPlaced {
+			if p.conn != nil {
+				defer g.say(banter.EvNoBet, p, banter.Vars{}, 0.35, prioLow)
+			}
 			p.missed++
 			if p.missed >= 3 && !p.sitOut {
 				p.sitOut = true
@@ -730,6 +752,7 @@ func (g *Game) afterDeal() {
 		if bj.IsBlackjack(g.dealer) {
 			g.holeHidden = false
 			g.message = "Dealer has Blackjack!"
+			defer g.say(banter.EvDealerBJ, nil, banter.Vars{}, 1, prioHigh)
 			g.eventAll(proto.Event{Kind: "card", Seat: -1})
 			for _, p := range g.seats {
 				if p != nil && p.inHand {
@@ -748,6 +771,7 @@ func (g *Game) afterDeal() {
 		if p != nil && p.inHand && p.hands[0].Natural() {
 			p.hands[0].Done = true
 			g.eventAll(proto.Event{Kind: "blackjack_dealt", Seat: p.seat, Text: p.user + " has Blackjack!"})
+			defer g.say(banter.EvPlayerBJ, p, banter.Vars{}, 0.7, prioNormal)
 		}
 	}
 	g.startPlay()
@@ -863,6 +887,13 @@ func (g *Game) onAction(p *player, act string) {
 	}
 	h := p.hands[idx]
 	r := g.rules
+	before, beforeSoft := h.Total()
+	splitTens := act == "split" && len(h.Cards) == 2 && h.Cards[0].Value() == 10 && h.Cards[1].Value() == 10
+	defer func() {
+		if g.phase == proto.PhasePlaying || g.phase == proto.PhaseDealer {
+			g.reactToAction(p, act, h, before, beforeSoft, splitTens)
+		}
+	}()
 	switch act {
 	case "hit":
 		if !r.CanHit(h) {
@@ -999,21 +1030,36 @@ func (g *Game) settle() {
 	default:
 		g.message = fmt.Sprintf("Dealer stands on %d.", dt)
 	}
+	var results []roundResult
+	var houseDelta int64
+	playerHands, playerBusts := 0, 0
 	for _, p := range g.seats {
 		if p == nil || !p.inHand {
 			continue
 		}
 		var res []HandResult
+		var staked int64
+		doubleLost := false
 		var delta int64
 		bjCount := 0
 		for _, h := range p.hands {
 			g.rules.Settle(h, g.dealer)
 			res = append(res, HandResult{Wagered: h.Bet, Payout: h.Payout, Result: h.Result, Blackjack: h.Result == "blackjack", Doubled: h.Doubled, FromSplit: h.FromSplit})
 			delta += h.Payout - h.Bet
+			staked += h.Bet
 			if h.Result == "blackjack" {
 				bjCount++
 			}
+			if h.Result == "bust" {
+				playerBusts++
+			}
+			if h.Doubled && h.Payout < h.Bet {
+				doubleLost = true
+			}
+			playerHands++
 		}
+		houseDelta -= delta
+		results = append(results, roundResult{p: p, delta: delta, before: g.store.Balance(p.user) + staked, doubleLost: doubleLost})
 		g.store.Settle(p.user, res)
 		g.sendProfile(p)
 		kind := "push"
@@ -1032,8 +1078,12 @@ func (g *Game) settle() {
 			g.notify.BigWin(p.user, delta)
 		}
 	}
+	if len(results) > 0 {
+		g.store.RecordRound(houseDelta, playerHands, bj.IsBlackjack(g.dealer), dt > 21, playerBusts)
+	}
 	g.processUnlocks()
 	g.notify.LeaderboardChanged()
+	defer g.reactToResults(results, dt > 21, bj.IsBlackjack(g.dealer))
 	g.setDeadline(secs(g.cfg.ResultsTimeSeconds))
 	g.after(secs(g.cfg.ResultsTimeSeconds), g.endRound)
 	g.broadcast()
@@ -1115,6 +1165,7 @@ func (g *Game) settings() proto.Settings {
 		BettingMode: c.BettingMode, PlayMode: c.PlayMode, HideOtherHands: c.HideOtherHands,
 		Decks: c.Decks, DealerHitsSoft17: c.DealerHitsSoft17, BlackjackPays: c.BlackjackPays,
 		Surrender: c.AllowSurrender, RefillAmount: c.RefillAmount, ServerName: c.ServerName,
+		DealerTrashTalk: c.DealerTrashTalk, DealerVulgar: c.DealerTrashTalk && c.DealerVulgar,
 	}
 }
 
@@ -1142,6 +1193,10 @@ func (g *Game) view(viewer *player) proto.TableState {
 		ActiveSeat: -1, YourSeat: viewer.seat, Message: g.message, Settings: g.settings(),
 		Spectators: len(g.spectators), ShoeLeft: g.shoe.Remaining(),
 	}
+	if g.cfg.DealerTrashTalk && time.Now().Before(g.speech.until) {
+		st.DealerSay, st.DealerSayID, st.DealerSayUntil = g.speech.text, g.speech.id, g.speech.until.UnixMilli()
+	}
+	st.HouseNet = g.store.House().Net
 	if !g.deadline.IsZero() {
 		st.Deadline = g.deadline.UnixMilli()
 		st.TimerTotal = g.timerTotal.Milliseconds()
