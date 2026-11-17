@@ -831,12 +831,33 @@ func genSounds() {
 		sh = mix(sh, noise(0.05, 0.6, 50, int64(i+3), 0.5), float64(i)*0.045)
 	}
 	writeWav("shuffle.wav", sh)
-	talk := []float64{}
-	rng := rand.New(rand.NewSource(42))
-	for i := 0; i < 5; i++ {
-		f := 180 + rng.Float64()*120
-		talk = mix(talk, tone(f, 0.05, 0.25, "square", 25), float64(i)*0.055)
+	// Dealer "voice" blips, one per word, picked at random so it sounds like
+	// babbling. Regular dealer: bright square-wave chirps. Vulgar dealer: low,
+	// gravelly grunts (square wave + a little noise, pitch dropping).
+	for i, f := range []float64{520, 600, 680, 760} {
+		b := tone(f, 0.055, 0.22, "square", 30)
+		b = mix(b, tone(f*2, 0.03, 0.05, "square", 60), 0)
+		writeWav(fmt.Sprintf("talk%d.wav", i+1), b)
 	}
-	writeWav("talk.wav", talk)
+	for i, f := range []float64{82, 95, 108, 122} {
+		dur := 0.085
+		n := int(dur * sr)
+		b := make([]float64, n)
+		rng := rand.New(rand.NewSource(int64(100 + i)))
+		ph := 0.0
+		for k := range b {
+			t := float64(k) / sr
+			freq := f * (1 - 0.25*t/0.085) // pitch sags like a grumble
+			ph += freq / sr
+			v := 0.5
+			if math.Mod(ph, 1) > 0.5 {
+				v = -0.5
+			}
+			v += (rng.Float64() - 0.5) * 0.25 // gravel
+			env := math.Exp(-t*14) * math.Min(1, float64(k)/(0.004*sr)) * math.Min(1, float64(n-k)/(0.01*sr))
+			b[k] = v * 0.55 * env
+		}
+		writeWav(fmt.Sprintf("talklow%d.wav", i+1), b)
+	}
 	writeWav("error.wav", mix(tone(220, 0.12, 0.3, "square", 8), tone(180, 0.15, 0.3, "square", 8), 0.1))
 }

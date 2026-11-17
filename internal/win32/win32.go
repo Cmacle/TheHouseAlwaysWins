@@ -2,7 +2,7 @@
 
 // Package win32 is the Windows platform layer for the client: a plain Win32
 // window that shows the 640x360 frame buffer scaled by whole pixels, plus
-// input, sound (PlaySound), the open-file dialog and the clipboard. It uses
+// input, sound (waveOut, so sounds overlap), the open-file dialog and the clipboard. It uses
 // only syscall, so the client builds without cgo.
 package win32
 
@@ -239,6 +239,7 @@ type window struct {
 	cfg    *client.Config
 	minW   int32
 	minH   int32
+	frames int
 }
 
 var win *window
@@ -464,6 +465,9 @@ func (p platform) PlaySound(_ string, wav []byte) {
 	if len(wav) == 0 {
 		return
 	}
+	if playWave(wav) {
+		return
+	}
 	pPlaySoundW.Call(uintptr(unsafe.Pointer(&wav[0])), 0, sndMemory|sndAsync|sndNoDefault)
 }
 
@@ -626,6 +630,9 @@ func Run(cfg *client.Config, assets *client.Assets, icon []byte) error {
 
 		fb := app.Frame(in)
 		w.present(fb)
+		if w.frames++; w.frames%30 == 0 {
+			reapVoices()
+		}
 
 		// reset per-frame input
 		w.in.Pressed, w.in.Released, w.in.RightPressed = false, false, false
@@ -640,6 +647,7 @@ func Run(cfg *client.Config, assets *client.Assets, icon []byte) error {
 			next = time.Now()
 		}
 	}
+	stopAllSounds()
 	cfg.Save()
 	return nil
 }

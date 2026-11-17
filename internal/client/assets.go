@@ -23,29 +23,32 @@ var defaultFS embed.FS
 
 // Theme holds sizes and colours that can be overridden with assets/theme.json.
 type Theme struct {
-	CardWidth      int               `json:"card_width"`
-	CardHeight     int               `json:"card_height"`
-	CardFanStep    int               `json:"card_fan_step"`
-	ChipSize       int               `json:"chip_size"`
-	ChipValues     []int64           `json:"chip_values"`
-	FontCellWidth  int               `json:"font_cell_width"`
-	FontCellHeight int               `json:"font_cell_height"`
-	FontColumns    int               `json:"font_columns"`
-	FontFirstChar  int               `json:"font_first_char"`
-	FontSpaceWidth int               `json:"font_space_width"`
-	FontMonospace  bool              `json:"font_monospace"`
-	NineSliceEdge  int               `json:"nine_slice_border"`
-	HatWidth       int               `json:"hat_width"`
-	HatHeight      int               `json:"hat_height"`
-	HatOverlap     int               `json:"hat_overlap"` // rows of the hat drawn over the avatar
-	FrameSize      int               `json:"frame_size"`
-	DealerCellW    int               `json:"dealer_cell_width"`
-	DealerCellH    int               `json:"dealer_cell_height"`
-	CigarX         int               `json:"cigar_x"` // cigar tip inside a vulgar dealer cell (smoke origin)
-	CigarY         int               `json:"cigar_y"`
-	PanelEdge      int               `json:"panel_border"`
-	Colors         map[string]string `json:"colors"`
-	colors         map[string]color.RGBA
+	CardWidth      int     `json:"card_width"`
+	CardHeight     int     `json:"card_height"`
+	CardFanStep    int     `json:"card_fan_step"`
+	ChipSize       int     `json:"chip_size"`
+	ChipValues     []int64 `json:"chip_values"`
+	FontCellWidth  int     `json:"font_cell_width"`
+	FontCellHeight int     `json:"font_cell_height"`
+	FontColumns    int     `json:"font_columns"`
+	FontFirstChar  int     `json:"font_first_char"`
+	FontSpaceWidth int     `json:"font_space_width"`
+	FontMonospace  bool    `json:"font_monospace"`
+	NineSliceEdge  int     `json:"nine_slice_border"`
+	HatWidth       int     `json:"hat_width"`
+	HatHeight      int     `json:"hat_height"`
+	HatOverlap     int     `json:"hat_overlap"` // rows of the hat drawn over the avatar
+	FrameSize      int     `json:"frame_size"`
+	DealerCellW    int     `json:"dealer_cell_width"`
+	DealerCellH    int     `json:"dealer_cell_height"`
+	CigarX         int     `json:"cigar_x"` // cigar tip inside a vulgar dealer cell (smoke origin)
+	CigarY         int     `json:"cigar_y"`
+	// Where the dealer's mouth opens while talking, inside a dealer cell:
+	// [x, y, width] for the regular row and the vulgar row.
+	Mouth     [2][3]int         `json:"mouth"`
+	PanelEdge int               `json:"panel_border"`
+	Colors    map[string]string `json:"colors"`
+	colors    map[string]color.RGBA
 }
 
 func defaultTheme() Theme {
@@ -55,6 +58,7 @@ func defaultTheme() Theme {
 		FontCellWidth: 6, FontCellHeight: 8, FontColumns: 16, FontFirstChar: 32, FontSpaceWidth: 4,
 		NineSliceEdge: 4, PanelEdge: 5,
 		HatWidth: 32, HatHeight: 20, HatOverlap: 6, FrameSize: 36, DealerCellW: 48, DealerCellH: 48, CigarX: 41, CigarY: 26,
+		Mouth: [2][3]int{{22, 28, 5}, {20, 28, 6}},
 		Colors: map[string]string{
 			"text":       "#f3ead2",
 			"text_dim":   "#9fb8a4",
@@ -95,7 +99,8 @@ type Assets struct {
 }
 
 // SoundNames lists the sound files the client knows about.
-var SoundNames = []string{"card", "chip", "click", "win", "blackjack", "lose", "push", "bust", "turn", "refill", "shuffle", "error", "talk"}
+var SoundNames = []string{"card", "chip", "click", "win", "blackjack", "lose", "push", "bust", "turn", "refill", "shuffle", "error",
+	"talk1", "talk2", "talk3", "talk4", "talklow1", "talklow2", "talklow3", "talklow4"}
 
 // ExportDefaults writes every default asset that does not yet exist in dir, so
 // players can see and replace them.
@@ -322,7 +327,9 @@ up by whole pixels, so draw at 1x.
   arrow.png             marker shown above the hand whose turn it is
 
 Sounds (WAV, PCM): card, chip, click, win, blackjack, lose, push, bust, turn,
-refill, shuffle, error, talk (.wav; talk plays when the dealer speaks)
+refill, shuffle, error (.wav). The dealer's voice blips (one plays per word
+he says): talk1-talk4 for the regular dealer, talklow1-talklow4 for the
+vulgar one.
 
 theme.json            sizes, chip values and text colours (#rrggbb or
                       #rrggbbaa)
