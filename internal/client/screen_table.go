@@ -40,7 +40,7 @@ func cardKeys(st *proto.TableState, fn func(key string, c bj.Card)) {
 
 func (a *App) onState(st *proto.TableState) {
 	prev := a.st
-	a.clockOffset = st.ServerTime - a.now.UnixMilli()
+	a.clockOffset = st.ServerTime - time.Now().UnixMilli()
 	seen := map[string]time.Time{}
 	hidden := map[string]bool{}
 	past := a.now.Add(-time.Hour)
@@ -62,7 +62,7 @@ func (a *App) onState(st *proto.TableState) {
 	a.cardSeen, a.cardHidden = seen, hidden
 	if st.DealerSayID != 0 && st.DealerSayID != a.sayID && st.DealerSay != "" {
 		a.sayID = st.DealerSayID
-		a.sayAt = a.now
+		a.sayAt = time.Now()
 		a.sayWords = banter.Words(st.DealerSay)
 		a.sayStarts = a.sayStarts[:0]
 		var t time.Duration
@@ -524,6 +524,8 @@ func (a *App) drawTable() {
 		a.drawHelp()
 	case ovWardrobe:
 		a.drawWardrobe()
+	case ovSettings:
+		a.drawSettings()
 	}
 	if a.overlay == ovNone && a.profileHatOnTop() {
 		a.drawHat(a.profile.Hat, 10, hudTop+12)
@@ -758,13 +760,17 @@ func (a *App) drawHUD(st *proto.TableState) {
 			a.send(proto.CSitOut, proto.SitOut{On: on})
 		}
 	}
-	snd := "SOUND ON"
-	if !a.Cfg.Sound {
-		snd = "SOUND OFF"
+	if a.button("settings", image.Rect(rx1-half, hudTop+32, rx1, hudTop+50), "SETTINGS", btn{enabled: true, hotkey: 'o'}) {
+		a.overlay = ovSettings
 	}
-	if a.button("snd", image.Rect(rx1-half, hudTop+32, rx1, hudTop+50), snd, btn{enabled: true, hotkey: 'm'}) {
+	if !a.blocked && a.in.hotkey('m') && a.focusID == "" {
 		a.Cfg.Sound = !a.Cfg.Sound
 		a.Cfg.Save()
+		if a.Cfg.Sound {
+			a.toast("Sound on", a.A.C("text"), 1.2, 1)
+		} else {
+			a.toast("Sound muted", a.A.C("text"), 1.2, 1)
+		}
 	}
 }
 

@@ -461,7 +461,7 @@ func (w *window) toggleFullscreen() {
 
 type platform struct{ w *window }
 
-func (p platform) PlaySound(_ string, wav []byte) {
+func (p platform) PlaySound(_ string, wav []byte, _ float64) {
 	if len(wav) == 0 {
 		return
 	}

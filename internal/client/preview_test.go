@@ -17,11 +17,11 @@ import (
 
 type fakePlatform struct{}
 
-func (fakePlatform) PlaySound(string, []byte)      {}
-func (fakePlatform) OpenImageFile() (string, bool) { return "", false }
-func (fakePlatform) ClipboardText() string         { return "" }
-func (fakePlatform) ToggleFullscreen()             {}
-func (fakePlatform) Quit()                         {}
+func (fakePlatform) PlaySound(string, []byte, float64) {}
+func (fakePlatform) OpenImageFile() (string, bool)     { return "", false }
+func (fakePlatform) ClipboardText() string             { return "" }
+func (fakePlatform) ToggleFullscreen()                 {}
+func (fakePlatform) Quit()                             {}
 
 func card(r, s uint8) bj.Card { return bj.Card{Rank: r, Suit: s} }
 
@@ -248,6 +248,9 @@ func TestPreview(t *testing.T) {
 	save(t, dir, "07_profile.png", frame())
 	a.overlay = ovHelp
 	save(t, dir, "08_help.png", frame())
+	a.Cfg.Volume, a.Cfg.EffectsVolume, a.Cfg.VoiceVolume = 80, 100, 0
+	a.overlay = ovSettings
+	save(t, dir, "08b_settings.png", frame())
 	a.overlay = ovWardrobe
 	a.wardSel = "tiara"
 	save(t, dir, "09_wardrobe_hats.png", frame())

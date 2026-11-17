@@ -22,9 +22,11 @@ import (
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
 )
 
-// Platform is implemented by the OS layer.
+// Platform is implemented by the OS layer. PlaySound gets the WAV already
+// scaled to the volume (desktop) and the volume itself (0..1, for platforms
+// that play sounds by name, like Android).
 type Platform interface {
-	PlaySound(name string, wav []byte)
+	PlaySound(name string, wav []byte, volume float64)
 	OpenImageFile() (string, bool)
 	ClipboardText() string
 	ToggleFullscreen()
@@ -66,6 +68,7 @@ const (
 	ovProfile
 	ovHelp
 	ovWardrobe
+	ovSettings
 )
 
 type dialRes struct {
@@ -154,6 +157,7 @@ type App struct {
 	caretAt     int
 	house       proto.HouseStats
 	pickTarget  string
+	soundCache  map[string][]byte
 	kbOn        bool
 	sayID       int
 	sayAt       time.Time
@@ -195,11 +199,12 @@ func (a *App) Close() {
 }
 
 func (a *App) sound(name string) {
-	if !a.Cfg.Sound {
+	vol := a.volumeFor(name)
+	if vol <= 0.001 {
 		return
 	}
-	if b := a.A.Sounds[name]; b != nil {
-		a.P.PlaySound(name, b)
+	if b := a.scaledSound(name, vol); b != nil {
+		a.P.PlaySound(name, b, vol)
 	}
 }
 
