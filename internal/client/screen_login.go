@@ -82,10 +82,18 @@ func (a *App) drawLogin() {
 		fx1 := x1 - 80
 		label(pr.Min.Y+46, "USERNAME")
 		enter = a.textField("ruser", image.Rect(x0, pr.Min.Y+56, fx1, pr.Min.Y+74), &a.fUser, false, 16, "3-16 letters/numbers", userChar) || enter
+		half := (x0 + fx1) / 2
 		label(pr.Min.Y+80, "PASSWORD")
-		enter = a.textField("rpass", image.Rect(x0, pr.Min.Y+90, fx1, pr.Min.Y+108), &a.fPass, true, 128, "", nil) || enter
-		label(pr.Min.Y+114, "CONFIRM PASSWORD")
-		enter = a.textField("rpass2", image.Rect(x0, pr.Min.Y+124, fx1, pr.Min.Y+142), &a.fPass2, true, 128, "", nil) || enter
+		a.text(half+3, pr.Min.Y+80, "CONFIRM", a.A.C("gold"), alignLeft)
+		enter = a.textField("rpass", image.Rect(x0, pr.Min.Y+90, half-3, pr.Min.Y+108), &a.fPass, true, 128, "", nil) || enter
+		enter = a.textField("rpass2", image.Rect(half+3, pr.Min.Y+90, fx1, pr.Min.Y+108), &a.fPass2, true, 128, "", nil) || enter
+		label(pr.Min.Y+114, "SERVER PASSWORD")
+		hint, hintC := "if it has one", a.A.C("text_dim")
+		if a.serverInfo.NeedsPassword && a.net != nil {
+			hint, hintC = "required", a.A.C("gold")
+		}
+		a.text(x0+a.A.Font.Width("SERVER PASSWORD")+6, pr.Min.Y+114, hint, hintC, alignLeft)
+		enter = a.textField("rspass", image.Rect(x0, pr.Min.Y+124, fx1, pr.Min.Y+142), &a.fServerPass, true, 128, "", nil) || enter
 
 		// avatar picker
 		ax := fx1 + 10
@@ -176,7 +184,7 @@ func (a *App) doRegister() {
 	}
 	a.Cfg.Server = addr
 	a.Cfg.Save()
-	reg := proto.Register{Username: a.fUser, Password: a.fPass, Avatar: a.regAvatar}
+	reg := proto.Register{Username: a.fUser, Password: a.fPass, Avatar: a.regAvatar, ServerPassword: a.fServerPass}
 	a.tokenTry = false
 	a.connect(addr, func() {
 		a.send(proto.CRegister, reg)

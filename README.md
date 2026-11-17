@@ -200,9 +200,26 @@ He also makes up humiliating stories about players ("{name} is the kind of guy
 who falls in the toilet at least once a week"), tells stories from his past,
 shares hot takes on random topics, and says ominous, cryptic things.
 
-He has a name and a past: **Dale "The House" Kroft**, dealing since 1979 on a
-Mississippi riverboat that sank, three ex-wives, a timeshare in Branson, and an
-iguana named Comp. His bio is on the leaderboard's **THE HOUSE** tab.
+He has a name and a past: **Dale "The House" Kroft**, born in 1951 on a card
+table in Cape Girardeau, Missouri, and dealing since 1979, when he took his
+late father's seat on a riverboat that later sank. Three ex-wives, a son who
+won't call, a timeshare in Branson, an iguana named Comp, and a cut of
+everything the house takes. His bio is on the leaderboard's **THE HOUSE** tab,
+and his whole life story is in [docs/DALE.md](docs/DALE.md). Every line he
+says fits it.
+
+**He tells long stories.** Every so often, between hands, he launches into one
+of 17 multi-paragraph stories about his life: the night the Lucky Lady sank,
+his father's last shuffle, the six minutes he was dead, the Applebee's riblets
+incident, how he won Comp in a Shreveport tire shop. They're told a bubble at
+a time. Small talk waits until he's done; if something big happens mid-story
+(a bust, a blackjack), he stops to rub it in and then picks the story back up
+where he left off. At the normal pace he starts one at most every 6 minutes.
+
+**The dealer log.** The little speech bubble next to the dealer (or **T**)
+opens everything he's said lately, stories included, so you can catch up on
+what you missed. A red dot means there's something new. Players who join get
+the recent history too.
 
 **He dresses by how the house is doing.** His outfit follows the house's
 lifetime net in big steps, so it doesn't flip back and forth:
@@ -228,7 +245,8 @@ downgrade kick in. Players' titles show under their names at the table.
 
 He talks like an old 8-bit RPG character: words pop into the bubble one at a
 time, his mouth flaps, and each word makes a little blip. The vulgar dealer's
-voice is a low, gravelly grumble.
+voice is a low, gravelly grumble. Lines stay up long enough to read, longer
+for long ones, and anything too long for the bubble is split into pages.
 
 There are about 1,000 lines across both modes. They're dealt like a shuffled
 deck per situation, and recently used lines are skipped, so repeats are rare.
@@ -253,6 +271,7 @@ command.
 | `max_players` | 10 | Seats at the table (1–16) |
 | `max_spectators` | 20 | People allowed to wait on the rail when seats are full |
 | `allow_registration` | true | Let new players create accounts |
+| `server_password` | "" | If set, new players must enter it to create an account (existing accounts log in normally) |
 | `refill_amount` | 1000 | Starting chips, and the daily top-up level |
 | `refill_time` | `00:00` | When the daily refill happens (24h) |
 | `timezone` | `Local` | Time zone for `refill_time`, e.g. `America/Chicago` |
@@ -269,11 +288,12 @@ command.
 | `max_split_hands` | 4 | |
 | `resplit_aces` / `hit_split_aces` | false / false | |
 | `allow_surrender` | false | Late surrender |
-| `betting_time_seconds` | 15 | Betting timer (per player in `turns` betting) |
-| `turn_time_seconds` | 20 | Per-turn timer in `turns` play mode |
-| `play_time_seconds` | 30 | Shared timer in `simultaneous` play mode |
-| `results_time_seconds` | 5 | How long results stay up |
-| `deal_delay_ms` / `dealer_delay_ms` | 350 / 700 | Pacing of the deal and the dealer's draws |
+| `turbo_mode` | false | The old fast pace: 15s bets, 20s turns, quick dealing, a chattier dealer. Ignores the six timing settings below |
+| `betting_time_seconds` | 20 | Betting timer (per player in `turns` betting) |
+| `turn_time_seconds` | 25 | Per-turn timer in `turns` play mode |
+| `play_time_seconds` | 40 | Shared timer in `simultaneous` play mode |
+| `results_time_seconds` | 8 | How long results stay up |
+| `deal_delay_ms` / `dealer_delay_ms` | 700 / 1100 | Pacing of the deal and the dealer's draws (the deal delay is also the pause between players' turns) |
 | `dealer_trash_talk` | true | The dealer roasts players in a speech bubble |
 | `dealer_vulgar` | false | Uncensored dealer: swearing, crude insults, cigar-smoking scumbag sprite |
 | `http_leaderboard` | disabled, port 8090 | Optional web page with both leaderboards (`/`, `/leaderboard.json?sort=balance\|net`) |
@@ -282,6 +302,9 @@ command.
 When you update the server, any settings added in the new version are written
 into your existing `server.json` with their default values the next time it
 starts (your values are kept), and the log says which ones were added.
+Coming from a version before `turbo_mode`, any timing you never changed moves
+to the new slower default; timings you set yourself are kept. Set
+`turbo_mode` to true to get the old pace back.
 
 Table changes from `reload` take effect at the start of the next hand. Changing
 the port or turning on the web page or Discord needs a restart.
@@ -357,6 +380,7 @@ say <message> | reload | save | quit
 | Click chips / right-click | Add / remove from your bet (mouse wheel also adjusts) |
 | Enter | Deal (place bet) |
 | R / C | Rebet last amount / clear |
+| T | Dealer log: everything he's said lately |
 | H S D P U | Hit, Stand, Double, Split, Surrender |
 | L | Leaderboard (left/right switches Richest / Lifetime / The House) |
 | W (in Profile) | Wardrobe: hats, frames, titles |

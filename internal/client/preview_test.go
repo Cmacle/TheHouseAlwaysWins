@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"fmt"
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/banter"
 	"image"
 	"image/color"
 	"image/png"
@@ -251,6 +252,24 @@ func TestPreview(t *testing.T) {
 	a.Cfg.Volume, a.Cfg.EffectsVolume, a.Cfg.VoiceVolume = 80, 100, 0
 	a.overlay = ovSettings
 	save(t, dir, "08b_settings.png", frame())
+	// a story page in the bubble, and the log
+	a.overlay = ovNone
+	story := banter.Pool(banter.EvStory, true)[1]
+	pages := banter.Pages(banter.Fill(story, banter.Vars{Name: "Big_Tony"}))
+	for i, pg := range pages {
+		a.addLog(proto.DealerLine{ID: 100 + i, Text: pg.Text, Cont: i > 0, Para: pg.Para, At: time.Now().Add(-3 * time.Minute).UnixMilli()})
+	}
+	a.addLog(proto.DealerLine{ID: 200, Text: "Standing on 13, Big_Tony? Grow a pair. Hit the goddamn card, you spineless worm.", At: time.Now().UnixMilli()})
+	a.st.Settings.DealerTrashTalk = true
+	a.st.DealerSay, a.st.DealerSayID, a.st.DealerSayUntil = pages[2].Text, 999, time.Now().Add(time.Minute).UnixMilli()
+	a.st.ServerTime = time.Now().UnixMilli()
+	a.onState(a.st)
+	a.sayAt = time.Now().Add(-time.Minute)
+	a.logUnread = true
+	save(t, dir, "08c_story.png", frame())
+	a.overlay = ovDealerLog
+	a.logScroll = 0
+	save(t, dir, "08d_dealer_log.png", frame())
 	a.overlay = ovWardrobe
 	a.wardSel = "tiara"
 	save(t, dir, "09_wardrobe_hats.png", frame())

@@ -15,12 +15,14 @@ import (
 )
 
 const (
-	hudTop    = 298
-	animSecs  = 0.30
-	flipSecs  = 0.22
-	shoeX     = 588
-	shoeY     = 24
-	dealerTop = 58
+	hudTop   = 298
+	animSecs = 0.30
+	// dealStagger spaces out cards that show up in the same update
+	dealStagger = 160 * time.Millisecond
+	flipSecs    = 0.22
+	shoeX       = 588
+	shoeY       = 24
+	dealerTop   = 58
 )
 
 // ---------------------------------------------------------------- state updates
@@ -43,23 +45,60 @@ func (a *App) onState(st *proto.TableState) {
 	a.clockOffset = st.ServerTime - time.Now().UnixMilli()
 	seen := map[string]time.Time{}
 	hidden := map[string]bool{}
+	vals := map[string]bj.Card{}
 	past := a.now.Add(-time.Hour)
+	// A split moves a card into a new hand, which gives it a new key: it
+	// keeps its arrival time instead of flying in from the shoe again.
+	type seatCard struct {
+		seat string
+		c    bj.Card
+	}
+	now := map[string]bj.Card{}
+	cardKeys(st, func(k string, c bj.Card) { now[k] = c })
+	moved := map[seatCard][]time.Time{}
+	for k, c := range a.cardVal {
+		if nc, ok := now[k]; !c.Hidden() && (!ok || nc != c) {
+			sc := seatCard{seatOf(k), c}
+			moved[sc] = append(moved[sc], a.cardSeen[k])
+		}
+	}
+	fresh := 0
 	cardKeys(st, func(k string, c bj.Card) {
-		hidden[k] = c.Hidden()
+		hidden[k], vals[k] = c.Hidden(), c
 		if prev == nil {
 			seen[k] = past
 			return
 		}
-		if t, ok := a.cardSeen[k]; ok {
+		if t, ok := a.cardSeen[k]; ok && (a.cardVal[k] == c || a.cardHidden[k]) {
 			seen[k] = t
 			if a.cardHidden[k] && !c.Hidden() {
 				a.flipAt[k] = a.now
 			}
-		} else {
-			seen[k] = a.now
+			return
 		}
+		sc := seatCard{seatOf(k), c}
+		if ts := moved[sc]; len(ts) > 0 {
+			seen[k], moved[sc] = ts[0], ts[1:]
+			return
+		}
+		// several new cards in one update (a slow connection bunches them
+		// up): deal them one after another anyway
+		seen[k] = a.now.Add(time.Duration(fresh) * dealStagger)
+		fresh++
 	})
-	a.cardSeen, a.cardHidden = seen, hidden
+	a.cardSeen, a.cardHidden, a.cardVal = seen, hidden, vals
+	if len(st.DealerLog) > 0 {
+		a.sayLog = nil
+		for _, l := range st.DealerLog {
+			a.addLog(l)
+		}
+	}
+	if st.DealerSayID != 0 && st.DealerSayID != a.sayID && st.DealerSay != "" && st.DealerSayID != a.logID {
+		a.addLog(proto.DealerLine{ID: st.DealerSayID, Text: st.DealerSay, Cont: st.DealerSayCont, Para: st.DealerSayPara, At: time.Now().UnixMilli()})
+		if a.overlay != ovDealerLog {
+			a.logUnread = true
+		}
+	}
 	if st.DealerSayID != 0 && st.DealerSayID != a.sayID && st.DealerSay != "" {
 		a.sayID = st.DealerSayID
 		a.sayAt = time.Now()
@@ -242,6 +281,9 @@ func (a *App) drawCardAt(c bj.Card, key string, x, y int, fly *[]flying) {
 	img := a.A.CardImage(c)
 	if start, ok := a.cardSeen[key]; ok {
 		t := a.now.Sub(start).Seconds() / animSecs
+		if t < 0 {
+			return // still in the shoe
+		}
 		if t < 1 {
 			e := easeOut(math.Max(0, t))
 			fx := float64(shoeX) + (float64(x)-shoeX)*e
@@ -511,6 +553,7 @@ func (a *App) drawTable() {
 	}
 
 	a.drawSpeech(st)
+	a.drawLogButton(st)
 	a.drawTopBar(st)
 	a.drawHUD(st)
 	a.blocked = false
@@ -526,6 +569,8 @@ func (a *App) drawTable() {
 		a.drawWardrobe()
 	case ovSettings:
 		a.drawSettings()
+	case ovDealerLog:
+		a.drawDealerLog()
 	}
 	if a.overlay == ovNone && a.profileHatOnTop() {
 		a.drawHat(a.profile.Hat, 10, hudTop+12)

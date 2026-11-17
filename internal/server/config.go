@@ -56,6 +56,9 @@ type Config struct {
 	MaxSpectators int    `json:"max_spectators"`
 
 	AllowRegistration bool `json:"allow_registration"`
+	// Server password: if set, new players must enter it to create an
+	// account. Existing accounts log in as usual. Leave empty for none.
+	ServerPassword string `json:"server_password"`
 
 	// Daily refill: once per day at RefillTime, any account below RefillAmount is
 	// topped up to RefillAmount and the top-up is subtracted from its lifetime
@@ -85,6 +88,11 @@ type Config struct {
 	ResplitAces      bool    `json:"resplit_aces"`
 	HitSplitAces     bool    `json:"hit_split_aces"`
 	AllowSurrender   bool    `json:"allow_surrender"`
+
+	// Turbo mode: the old fast pace. Ignores the six timing settings below
+	// and uses quick fixed timings (15s bets, 20s turns, snappy dealing), and
+	// the dealer talks more and tells his long stories less often.
+	TurboMode bool `json:"turbo_mode"`
 
 	BettingTimeSeconds int `json:"betting_time_seconds"`
 	TurnTimeSeconds    int `json:"turn_time_seconds"`
@@ -137,12 +145,12 @@ func DefaultConfig() *Config {
 		ResplitAces:        false,
 		HitSplitAces:       false,
 		AllowSurrender:     false,
-		BettingTimeSeconds: 15,
-		TurnTimeSeconds:    20,
-		PlayTimeSeconds:    30,
-		ResultsTimeSeconds: 5,
-		DealDelayMS:        350,
-		DealerDelayMS:      700,
+		BettingTimeSeconds: 20,
+		TurnTimeSeconds:    25,
+		PlayTimeSeconds:    40,
+		ResultsTimeSeconds: 8,
+		DealDelayMS:        700,
+		DealerDelayMS:      1100,
 		DealerTrashTalk:    true,
 		DealerVulgar:       false,
 		HTTPLeaderboard:    HTTPConfig{Enabled: false, Address: "0.0.0.0", Port: 8090},
@@ -173,6 +181,9 @@ func LoadConfig(path string) (*Config, bool, error) {
 	} else if err := json.Unmarshal(b, cfg); err != nil {
 		return nil, false, fmt.Errorf("parse %s: %w", path, err)
 	}
+	if !created && !hasKey(b, "turbo_mode") {
+		cfg.migratePace()
+	}
 	if err := cfg.validate(); err != nil {
 		return nil, false, err
 	}
@@ -188,6 +199,65 @@ func LoadConfig(path string) (*Config, bool, error) {
 		}
 	}
 	return cfg, created, nil
+}
+
+// Timing is the effective pace of the game.
+type Timing struct {
+	Betting, Turn, Play, Results time.Duration
+	Deal, Dealer                 time.Duration // between cards
+	TurnGap                      time.Duration // pause before the next player's turn
+}
+
+// turboTiming is the original fast pace.
+var turboTiming = Timing{
+	Betting: 15 * time.Second, Turn: 20 * time.Second, Play: 30 * time.Second, Results: 5 * time.Second,
+	Deal: 350 * time.Millisecond, Dealer: 700 * time.Millisecond,
+}
+
+// Timing returns the pace to use: the fixed turbo timings, or the configured ones.
+func (c *Config) Timing() Timing {
+	if c.TurboMode {
+		return turboTiming
+	}
+	sec := func(n int) time.Duration { return time.Duration(n) * time.Second }
+	msd := func(n int) time.Duration { return time.Duration(n) * time.Millisecond }
+	return Timing{
+		Betting: sec(c.BettingTimeSeconds), Turn: sec(c.TurnTimeSeconds),
+		Play: sec(c.PlayTimeSeconds), Results: sec(c.ResultsTimeSeconds),
+		Deal: msd(c.DealDelayMS), Dealer: msd(c.DealerDelayMS),
+		TurnGap: msd(c.DealDelayMS),
+	}
+}
+
+// migratePace moves a config from before turbo_mode existed onto the new,
+// slower default pace, but only for timings that were never changed.
+func (c *Config) migratePace() {
+	d := DefaultConfig()
+	old := []struct {
+		v        *int
+		was, now int
+	}{
+		{&c.BettingTimeSeconds, 15, d.BettingTimeSeconds},
+		{&c.TurnTimeSeconds, 20, d.TurnTimeSeconds},
+		{&c.PlayTimeSeconds, 30, d.PlayTimeSeconds},
+		{&c.ResultsTimeSeconds, 5, d.ResultsTimeSeconds},
+		{&c.DealDelayMS, 350, d.DealDelayMS},
+		{&c.DealerDelayMS, 700, d.DealerDelayMS},
+	}
+	for _, o := range old {
+		if *o.v == o.was {
+			*o.v = o.now
+		}
+	}
+}
+
+func hasKey(b []byte, key string) bool {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(b, &m) != nil {
+		return true
+	}
+	_, ok := m[key]
+	return ok
 }
 
 // addedKeys lists settings LoadConfig added to an existing file (for logging).

@@ -15,9 +15,12 @@ const (
 	prioLow = iota
 	prioNormal
 	prioHigh
+	prioStory // only used for the bubble: nothing small interrupts a story
 )
 
 type speech struct {
+	page  banter.Page
+	cont  bool
 	text  string
 	id    int
 	prio  int
@@ -53,18 +56,30 @@ func (g *Game) say(ev string, p *player, v banter.Vars, chance float64, prio int
 		return false
 	}
 	now := time.Now()
-	cur := g.speech
-	if now.Before(cur.until) {
-		age := now.Sub(cur.at)
-		// let him finish the sentence unless something more important happens
-		finish := banter.SpeakTime(cur.text)
-		if prio < cur.prio || (prio == cur.prio && age < finish+800*time.Millisecond) || age < 1200*time.Millisecond {
-			return false
+	if !g.cfg.TurboMode && !g.forceSay {
+		// he runs his mouth a bit less at the normal pace
+		switch prio {
+		case prioLow:
+			chance *= 0.55
+		case prioNormal:
+			chance *= 0.75
 		}
+	}
+	if !g.forceSay && g.busyTalking(prio, now) {
+		return false
 	}
 	if g.banter.Chance() >= chance {
 		return false
 	}
+	line := g.banter.Line(ev, g.cfg.DealerVulgar, g.fillVars(p, v))
+	if line == "" {
+		return false
+	}
+	g.speak(line, prio)
+	return true
+}
+
+func (g *Game) fillVars(p *player, v banter.Vars) banter.Vars {
 	if p != nil {
 		v.Name = p.user
 		if prof, ok := g.store.Profile(p.user); ok {
@@ -75,21 +90,168 @@ func (g *Game) say(ev string, p *player, v banter.Vars, chance float64, prio int
 	if v.Up == "" && len(g.dealer) > 0 {
 		v.Up = upCardName(g.dealer[0])
 	}
-	line := g.banter.Line(ev, g.cfg.DealerVulgar, v)
+	return v
+}
+
+// busyTalking reports whether a new line at this priority has to wait.
+func (g *Game) busyTalking(prio int, now time.Time) bool {
+	cur := g.speech
+	// a story only gets interrupted by something big
+	if g.story != nil && prio < prioHigh {
+		return true
+	}
+	if cur.prio == prioStory {
+		cur.prio = prioLow
+	}
+	talking := now.Before(cur.until) || len(g.sayQueue) > 0
+	if talking {
+		age := now.Sub(cur.at)
+		// let him finish the sentence unless something more important happens
+		finish := banter.SpeakTime(cur.text)
+		if prio < cur.prio || (prio == cur.prio && (age < finish+800*time.Millisecond || len(g.sayQueue) > 0)) || age < 1200*time.Millisecond {
+			return true
+		}
+	}
+	// at the normal pace he takes a breath between the small stuff
+	if !g.cfg.TurboMode && prio < prioHigh && now.Before(cur.until.Add(3*time.Second)) {
+		return true
+	}
+	return false
+}
+
+// speak puts a line in the bubble, a page at a time if it's long. If he was
+// in the middle of a story, the story is put on hold and picks up afterwards.
+func (g *Game) speak(text string, prio int) {
+	if g.story != nil && g.story.held == nil {
+		rest := g.sayQueue
+		// if he got cut off mid-page, he'll say that page again
+		if time.Since(g.speech.at) < banter.SpeakTime(g.speech.text) && g.speech.page.Text != "" {
+			rest = append([]banter.Page{g.speech.page}, rest...)
+		}
+		g.story.held = rest
+		if g.story.held == nil {
+			g.story.held = []banter.Page{}
+		}
+	}
+	g.sayQueue = banter.Pages(text)
+	g.sayPrio = prio
+	g.nextPage(false)
+}
+
+// tellStory starts one of his long stories.
+func (g *Game) tellStory(p *player) bool {
+	line := g.banter.Line(banter.EvStory, g.cfg.DealerVulgar, g.fillVars(p, banter.Vars{}))
 	if line == "" {
 		return false
 	}
-	// time to say it word by word, then let it sit there a moment
-	d := banter.SpeakTime(line) + 2500*time.Millisecond
-	if d < 3500*time.Millisecond {
-		d = 3500 * time.Millisecond
-	}
-	if d > 14*time.Second {
-		d = 14 * time.Second
-	}
-	g.speech = speech{text: line, id: cur.id + 1, prio: prio, at: now, until: now.Add(d)}
-	g.broadcast()
+	g.lastStory = time.Now()
+	g.story = &storyRun{}
+	g.sayQueue = banter.Pages(line)
+	g.sayPrio = prioLow
+	g.nextPage(false)
 	return true
+}
+
+// nextPage shows the next page of whatever he's saying. cont marks a page
+// that continues the previous one in the log.
+func (g *Game) nextPage(cont bool) {
+	if len(g.sayQueue) == 0 {
+		return
+	}
+	pg := g.sayQueue[0]
+	g.sayQueue = g.sayQueue[1:]
+	now := time.Now()
+	last := len(g.sayQueue) == 0
+	d := g.pageTime(pg.Text, last)
+	g.speech = speech{text: pg.Text, page: pg, id: g.speech.id + 1, prio: g.sayPrio, at: now, until: now.Add(d), cont: cont}
+	if g.story != nil && g.story.held == nil {
+		g.speech.prio = prioStory
+	}
+	g.logLine(proto.DealerLine{ID: g.speech.id, Text: pg.Text, Cont: cont, Para: cont && pg.Para, At: now.UnixMilli()})
+	g.armSayTimer(d)
+	g.broadcast()
+}
+
+// pageTime is how long a page stays up: the time to say it plus time to
+// read it. Long lines stay longer.
+func (g *Game) pageTime(text string, last bool) time.Duration {
+	speak := banter.SpeakTime(text)
+	if g.cfg.TurboMode {
+		d := speak + 2500*time.Millisecond
+		return min(max(d, 3500*time.Millisecond), 14*time.Second)
+	}
+	n := time.Duration(len(text))
+	if !last {
+		return speak + 1800*time.Millisecond + n*18*time.Millisecond
+	}
+	linger := min(3500*time.Millisecond+n*25*time.Millisecond, 9*time.Second)
+	return max(speak+linger, 5*time.Second)
+}
+
+func (g *Game) armSayTimer(d time.Duration) {
+	if g.sayTimer != nil {
+		g.sayTimer.Stop()
+	}
+	g.sayTimer = time.NewTimer(d)
+}
+
+// onSayTimer runs when a page has been up long enough.
+func (g *Game) onSayTimer() {
+	g.sayTimer = nil
+	if !g.cfg.DealerTrashTalk {
+		g.sayQueue, g.story = nil, nil
+		return
+	}
+	if len(g.sayQueue) > 0 {
+		g.nextPage(true)
+		return
+	}
+	if g.story == nil {
+		return
+	}
+	if g.listeners() == 0 {
+		g.story = nil // nobody left to hear it
+		return
+	}
+	if g.story.held != nil {
+		// back to the story after an interruption
+		rest := g.story.held
+		g.story.held = nil
+		if len(rest) == 0 {
+			g.story = nil
+			return
+		}
+		resume := g.banter.Line(banter.EvResume, g.cfg.DealerVulgar, banter.Vars{})
+		g.sayQueue = append(banter.Pages(resume), rest...)
+		g.sayPrio = prioLow
+		g.nextPage(false)
+		return
+	}
+	g.story = nil
+	g.lastStory = time.Now()
+}
+
+func (g *Game) listeners() int {
+	n := 0
+	for _, p := range g.seats {
+		if p != nil && p.conn != nil {
+			n++
+		}
+	}
+	return n
+}
+
+func (g *Game) logLine(l proto.DealerLine) {
+	g.sayLog = append(g.sayLog, l)
+	if len(g.sayLog) > 80 {
+		g.sayLog = append([]proto.DealerLine(nil), g.sayLog[len(g.sayLog)-80:]...)
+	}
+}
+
+// storyRun is a story in progress. held is set while he's been interrupted:
+// the pages still to tell once he's done with the interruption.
+type storyRun struct {
+	held []banter.Page
 }
 
 func (g *Game) greet(p *player) {
@@ -123,6 +285,15 @@ func (g *Game) chatter() {
 		}
 	}
 	pick := func() *player { return seated[g.banter.Intn(len(seated))] }
+	// now and then, a long story
+	gap, chance := 6*time.Minute, 0.3
+	if g.cfg.TurboMode {
+		gap, chance = 12*time.Minute, 0.2
+	}
+	if len(seated) > 0 && g.story == nil && time.Since(g.lastStory) > gap && !time.Now().Before(g.speech.until) &&
+		g.banter.Chance() < chance && g.tellStory(pick()) {
+		return
+	}
 	if tier := g.store.House().Tier; tier != 0 && len(seated) > 0 && g.banter.Chance() < 0.3 {
 		if tier > 0 {
 			g.say(banter.EvFlex, pick(), banter.Vars{Item: banter.TierItems[tier]}, 1, prioLow)
@@ -322,9 +493,10 @@ func (g *Game) tierChanged(from, to int, res []roundResult) {
 	} else {
 		g.eventAll(proto.Event{Kind: "info", Seat: -1, Text: "The dealer is looking rough: " + name + "."})
 	}
-	// talking is optional; the outfit changes either way
-	speech := g.speech
-	g.speech.until = time.Time{} // this beats whatever he was saying
+	// talking is optional; the outfit changes either way. This beats
+	// whatever he was saying.
+	g.forceSay = true
+	defer func() { g.forceSay = false }()
 	switch {
 	case to > from && to > 0:
 		g.say(banter.EvUpgrade, loser, banter.Vars{Item: banter.TierItems[to]}, 1, prioHigh)
@@ -334,9 +506,6 @@ func (g *Game) tierChanged(from, to int, res []roundResult) {
 		g.say(banter.EvDowngrade, winner, banter.Vars{Item: banter.TierItems[from]}, 1, prioHigh)
 	default:
 		g.say(banter.EvFallen, winner, banter.Vars{Item: banter.TierItems[to]}, 1, prioHigh)
-	}
-	if g.speech.id == speech.id {
-		g.speech = speech
 	}
 	g.broadcast()
 }

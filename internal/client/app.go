@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/blackjack"
 	"image"
 	"image/color"
 	_ "image/gif"
@@ -69,6 +70,7 @@ const (
 	ovHelp
 	ovWardrobe
 	ovSettings
+	ovDealerLog
 )
 
 type dialRes struct {
@@ -122,6 +124,7 @@ type App struct {
 	fUser        string
 	fPass        string
 	fPass2       string
+	fServerPass  string
 	regAvatar    []byte
 	regAvatarImg *image.RGBA
 	status       string
@@ -138,6 +141,7 @@ type App struct {
 	toasts      []toast
 	cardSeen    map[string]time.Time
 	cardHidden  map[string]bool
+	cardVal     map[string]blackjack.Card
 	flipAt      map[string]time.Time
 	betDraft    int64
 	lastBet     int64
@@ -165,6 +169,16 @@ type App struct {
 	sayStarts   []time.Duration
 	sayEnd      time.Duration
 	sayBlipped  int
+	sayLog      []logEntry // what the dealer said recently, newest last
+	logID       int        // id of the last line added to sayLog
+	logUnread   bool
+	logScroll   int
+}
+
+// logEntry is one thing the dealer said (a whole story is one entry).
+type logEntry struct {
+	text string
+	at   time.Time
 }
 
 // New creates the client app.
@@ -446,7 +460,7 @@ func (a *App) handleMsg(m proto.Msg) {
 		a.screen = scrTable
 		a.st = nil
 		a.tokenTry = false
-		a.fPass, a.fPass2 = "", ""
+		a.fPass, a.fPass2, a.fServerPass = "", "", ""
 		a.focusID = ""
 		a.setStatus("", false)
 		a.cardSeen = map[string]time.Time{}
