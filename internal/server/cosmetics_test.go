@@ -1,6 +1,9 @@
 package server
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestUnlocksAndCrown(t *testing.T) {
 	st, _ := OpenStore(t.TempDir())
@@ -90,5 +93,25 @@ func TestHouseStats(t *testing.T) {
 	st2, _ := OpenStore(st.dir)
 	if st2.House().Net != 300 {
 		t.Fatal("house stats not persisted")
+	}
+}
+
+func TestDealerTierSpeech(t *testing.T) {
+	s := testServer(t, func(c *Config) { c.DealerVulgar = true })
+	p := &player{user: "victim", seat: 0}
+	res := []roundResult{{p: p, delta: -500}}
+	for _, step := range [][2]int{{0, 1}, {1, 2}, {2, 1}, {1, 0}, {0, -1}, {-1, -3}, {-3, -2}, {-2, 0}} {
+		var line string
+		s.Game.DoWait(func() {
+			s.Game.tierChanged(step[0], step[1], res)
+			line = s.Game.speech.text
+		})
+		if line == "" {
+			t.Fatalf("no line for tier %d -> %d", step[0], step[1])
+		}
+		if strings.Contains(line, "{") {
+			t.Fatalf("unfilled: %q", line)
+		}
+		t.Logf("%d -> %d: %s", step[0], step[1], line)
 	}
 }

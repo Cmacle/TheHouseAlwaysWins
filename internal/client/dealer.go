@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/banter"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
 )
 
@@ -20,11 +21,31 @@ func signedMoney(n int64) string {
 	return "$0"
 }
 
+// dealerSprite picks the dealer's cell: column = wealth tier, row = vulgar.
 func (a *App) dealerSprite(st *proto.TableState) *image.RGBA {
-	if st != nil && st.Settings.DealerVulgar && a.A.DealerVulgar.Rect.Dx() > 1 {
-		return a.A.DealerVulgar
+	w, h := a.A.Theme.DealerCellW, a.A.Theme.DealerCellH
+	col, row := 3, 0
+	if st != nil {
+		col = st.HouseTier - banter.MinTier
+		if st.Settings.DealerVulgar {
+			row = 1
+		}
 	}
-	return a.A.Dealer
+	if col < 0 {
+		col = 0
+	}
+	if col > banter.MaxTier-banter.MinTier {
+		col = banter.MaxTier - banter.MinTier
+	}
+	r := image.Rect(col*w, row*h, col*w+w, row*h+h)
+	if w <= 0 || h <= 0 || !r.In(a.A.Dealers.Rect) {
+		return a.A.Dealers
+	}
+	return a.A.Dealers.SubImage(r).(*image.RGBA)
+}
+
+func (a *App) dealerVulgar(st *proto.TableState) bool {
+	return st != nil && st.Settings.DealerVulgar
 }
 
 func (a *App) talking(st *proto.TableState) bool {
@@ -41,8 +62,8 @@ func (a *App) drawDealer(st *proto.TableState) {
 		y--
 	}
 	blit(a.fb, spr, x, y)
-	if spr != a.A.DealerVulgar {
-		return
+	if !a.dealerVulgar(st) || st.HouseTier <= -2 {
+		return // no cigar for the poorest
 	}
 	// smoke: a few puffs rising and drifting from the cigar tip
 	ox, oy := x+a.A.Theme.CigarX, y+a.A.Theme.CigarY
@@ -68,8 +89,7 @@ func (a *App) drawSpeech(st *proto.TableState) {
 	if !a.talking(st) {
 		return
 	}
-	spr := a.dealerSprite(st)
-	mouthX := ScreenW/2 + spr.Rect.Dx()/2
+	mouthX := ScreenW/2 + 16
 	lines := a.wrap(st.DealerSay, bubbleWrap)
 	if len(lines) > bubbleMaxLines {
 		lines = lines[:bubbleMaxLines]
@@ -82,7 +102,7 @@ func (a *App) drawSpeech(st *proto.TableState) {
 		}
 	}
 	lh := 9
-	bx := mouthX + 8
+	bx := mouthX + 14
 	by := 22
 	// pop in
 	if age := a.now.Sub(a.sayAt); age < 120*time.Millisecond {
@@ -119,10 +139,11 @@ func (a *App) drawHouse(r image.Rectangle) {
 	h := a.house
 	spr := a.dealerSprite(a.st)
 	pw, ph := spr.Rect.Dx()*2, spr.Rect.Dy()*2
-	px, py := r.Min.X+40, r.Min.Y+70
+	px, py := r.Min.X+28, r.Min.Y+50
 	fillRect(a.fb, image.Rect(px-4, py-4, px+pw+4, py+ph+4), color.RGBA{0, 0, 0, 120})
 	blitScaled(a.fb, spr, image.Rect(px, py, px+pw, py+ph))
-	a.text(px+pw/2, py+ph+10, "THE DEALER", a.A.C("gold"), alignCenter)
+	a.text(px+pw/2, py+ph+10, strings.ToUpper(banter.TierNames[h.Tier]), a.A.C("gold"), alignCenter)
+
 	x := r.Min.X + 170
 	y := r.Min.Y + 64
 	nc := a.A.C("text")
@@ -131,6 +152,7 @@ func (a *App) drawHouse(r image.Rectangle) {
 	} else if h.Net < 0 {
 		nc = a.A.C("lose")
 	}
+	a.text(x, y-14, banter.DealerName, a.A.C("gold"), alignLeft)
 	a.text(x, y, "LIFETIME", a.A.C("text_dim"), alignLeft)
 	a.textBig(x, y+10, signedMoney(h.Net), nc, 2, alignLeft)
 	y += 34
@@ -156,7 +178,25 @@ func (a *App) drawHouse(r image.Rectangle) {
 	row("Dealer blackjacks", commas(int64(h.DealerBlackjacks)), txt)
 	row("Dealer busts", commas(int64(h.DealerBusts))+"  ("+pct(h.DealerBusts, h.HandsDealt)+")", txt)
 	row("Player busts", commas(int64(h.PlayerBusts)), txt)
+	up, ok, down, dok := banter.Thresholds(h.Tier)
+	if ok {
+		row("Next outfit upgrade at", signedMoney(up), a.A.C("highlight"))
+	}
+	if dok {
+		row("Outfit downgrade below", signedMoney(down), a.A.C("highlight"))
+	}
 	if h.HandsDealt == 0 {
-		a.text(r.Min.X+r.Dx()/2, r.Max.Y-30, "No hands dealt yet.", a.A.C("text_dim"), alignCenter)
+		a.text(x, y, "No hands dealt yet.", a.A.C("text_dim"), alignLeft)
+	}
+	by := y + 8
+	if lab := py + ph + 22; lab > by {
+		by = lab
+	}
+	for _, l := range a.wrap(banter.Bio, r.Dx()-48) {
+		if by > r.Max.Y-16 {
+			break
+		}
+		a.text(r.Min.X+24, by, l, a.A.C("text_dim"), alignLeft)
+		by += 10
 	}
 }

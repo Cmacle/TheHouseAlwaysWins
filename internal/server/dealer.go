@@ -6,6 +6,7 @@ import (
 
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/banter"
 	bj "github.com/Cmacle/TheHouseAlwaysWins/internal/blackjack"
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
 )
 
 // Dealer trash talk. Lines have a priority: a line only interrupts the one
@@ -115,9 +116,18 @@ func (g *Game) chatter() {
 			seated = append(seated, p)
 		}
 	}
+	pick := func() *player { return seated[g.banter.Intn(len(seated))] }
+	if tier := g.store.House().Tier; tier != 0 && len(seated) > 0 && g.banter.Chance() < 0.3 {
+		if tier > 0 {
+			g.say(banter.EvFlex, pick(), banter.Vars{Item: banter.TierItems[tier]}, 1, prioLow)
+		} else {
+			g.say(banter.EvSympathy, nil, banter.Vars{}, 1, prioLow)
+		}
+		return
+	}
 	switch {
-	case r < 0.30 && len(seated) > 0:
-		p := seated[g.banter.Intn(len(seated))]
+	case r < 0.22 && len(seated) > 0:
+		p := pick()
 		prof, _ := g.store.Profile(p.user)
 		rich, _ := g.store.Tops()
 		switch {
@@ -130,17 +140,32 @@ func (g *Game) chatter() {
 		case prof.Net >= 500:
 			g.say(banter.EvRoastUp, p, banter.Vars{}, 1, prioLow)
 		default:
-			g.say(banter.EvIdle, nil, banter.Vars{}, 1, prioLow)
+			g.say(banter.EvInvent, p, banter.Vars{}, 1, prioLow)
 		}
-	case r < 0.38:
+	case r < 0.44 && len(seated) > 0:
+		g.say(banter.EvInvent, pick(), banter.Vars{}, 1, prioLow)
+	case r < 0.51:
 		h := g.store.House()
 		if h.Net >= 0 {
 			g.say(banter.EvHouseUp, nil, banter.Vars{Amount: h.Net}, 1, prioLow)
 		} else {
 			g.say(banter.EvHouseDown, nil, banter.Vars{Amount: -h.Net}, 1, prioLow)
 		}
-	case r < 0.55:
+	case r < 0.63:
+		g.say(banter.EvBackstory, nil, banter.Vars{}, 1, prioLow)
+	case r < 0.75:
+		g.say(banter.EvOpinion, nil, banter.Vars{}, 1, prioLow)
+	case r < 0.81:
+		g.say(banter.EvCryptic, nil, banter.Vars{}, 1, prioLow)
+	case r < 0.88:
 		g.say(banter.EvIdle, nil, banter.Vars{}, 1, prioLow)
+	}
+}
+
+// heckleTurn sometimes picks on whoever's turn it is.
+func (g *Game) heckleTurn(p *player) {
+	if g.cfg.DealerTrashTalk {
+		g.say(banter.EvInvent, p, banter.Vars{}, 0.1, prioLow)
 	}
 }
 
@@ -197,10 +222,11 @@ type roundResult struct {
 }
 
 // reactToResults picks the juiciest thing to say about a settled round.
-func (g *Game) reactToResults(res []roundResult, dealerBust, dealerBJ bool) {
+func (g *Game) reactToResults(res []roundResult, houseDelta int64, dealerBust, dealerBJ bool) {
 	if !g.cfg.DealerTrashTalk || len(res) == 0 {
 		return
 	}
+	tier := g.store.House().Tier
 	// someone went broke
 	for _, r := range res {
 		if g.store.Balance(r.p.user) < g.cfg.MinBet {
@@ -231,6 +257,16 @@ func (g *Game) reactToResults(res []roundResult, dealerBust, dealerBJ bool) {
 			}
 		}
 	}
+	// the house lost the round: get petty, extra petty when he's broke
+	if houseDelta < 0 && winner != nil && winner.delta > 0 {
+		chance := 0.35
+		if tier < 0 {
+			chance = 0.85
+		}
+		if g.say(banter.EvPetty, winner.p, banter.Vars{Amount: winner.delta}, chance, prioNormal) {
+			return
+		}
+	}
 	if dealerBust && g.say(banter.EvDealerBust, nil, banter.Vars{}, 0.7, prioNormal) {
 		return
 	}
@@ -252,4 +288,49 @@ func (g *Game) reactToResults(res []roundResult, dealerBust, dealerBJ bool) {
 			}
 		}
 	}
+	// nothing juicy happened: make something up about somebody
+	if g.say(banter.EvInvent, res[g.banter.Intn(len(res))].p, banter.Vars{}, 0.25, prioLow) {
+		return
+	}
+	g.say(banter.EvCryptic, nil, banter.Vars{}, 0.08, prioLow)
+}
+
+// tierChanged announces the dealer's new outfit. The biggest loser of the
+// round gets thanked for upgrades; the biggest winner gets blamed for
+// downgrades.
+func (g *Game) tierChanged(from, to int, res []roundResult) {
+	var loser, winner *player
+	var lo, hi int64
+	for _, r := range res {
+		if loser == nil || r.delta < lo {
+			loser, lo = r.p, r.delta
+		}
+		if winner == nil || r.delta > hi {
+			winner, hi = r.p, r.delta
+		}
+	}
+	name := banter.TierNames[to]
+	g.log.Printf("dealer wealth tier %d -> %d (%s)", from, to, name)
+	if to > from {
+		g.eventAll(proto.Event{Kind: "info", Seat: -1, Text: "The dealer upgraded his look: " + name + "!"})
+	} else {
+		g.eventAll(proto.Event{Kind: "info", Seat: -1, Text: "The dealer is looking rough: " + name + "."})
+	}
+	// talking is optional; the outfit changes either way
+	speech := g.speech
+	g.speech.until = time.Time{} // this beats whatever he was saying
+	switch {
+	case to > from && to > 0:
+		g.say(banter.EvUpgrade, loser, banter.Vars{Item: banter.TierItems[to]}, 1, prioHigh)
+	case to > from:
+		g.say(banter.EvRecover, loser, banter.Vars{Item: banter.RecoverItems[to]}, 1, prioHigh)
+	case to >= 0:
+		g.say(banter.EvDowngrade, winner, banter.Vars{Item: banter.TierItems[from]}, 1, prioHigh)
+	default:
+		g.say(banter.EvFallen, winner, banter.Vars{Item: banter.TierItems[to]}, 1, prioHigh)
+	}
+	if g.speech.id == speech.id {
+		g.speech = speech
+	}
+	g.broadcast()
 }

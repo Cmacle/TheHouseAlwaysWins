@@ -852,6 +852,7 @@ func (g *Game) nextTurn() {
 		g.armTurnTimer()
 		p.conn.event(proto.Event{Kind: "turn", Text: "Your turn!", Seat: i})
 		g.broadcast()
+		g.heckleTurn(p)
 		return
 	}
 	g.dealerPlay()
@@ -1079,11 +1080,14 @@ func (g *Game) settle() {
 		}
 	}
 	if len(results) > 0 {
-		g.store.RecordRound(houseDelta, playerHands, bj.IsBlackjack(g.dealer), dt > 21, playerBusts)
+		house, prevTier := g.store.RecordRound(houseDelta, playerHands, bj.IsBlackjack(g.dealer), dt > 21, playerBusts)
+		if house.Tier != prevTier {
+			defer g.tierChanged(prevTier, house.Tier, results)
+		}
 	}
 	g.processUnlocks()
 	g.notify.LeaderboardChanged()
-	defer g.reactToResults(results, dt > 21, bj.IsBlackjack(g.dealer))
+	defer g.reactToResults(results, houseDelta, dt > 21, bj.IsBlackjack(g.dealer))
 	g.setDeadline(secs(g.cfg.ResultsTimeSeconds))
 	g.after(secs(g.cfg.ResultsTimeSeconds), g.endRound)
 	g.broadcast()
@@ -1196,7 +1200,8 @@ func (g *Game) view(viewer *player) proto.TableState {
 	if g.cfg.DealerTrashTalk && time.Now().Before(g.speech.until) {
 		st.DealerSay, st.DealerSayID, st.DealerSayUntil = g.speech.text, g.speech.id, g.speech.until.UnixMilli()
 	}
-	st.HouseNet = g.store.House().Net
+	house := g.store.House()
+	st.HouseNet, st.HouseTier = house.Net, house.Tier
 	if !g.deadline.IsZero() {
 		st.Deadline = g.deadline.UnixMilli()
 		st.TimerTotal = g.timerTotal.Milliseconds()

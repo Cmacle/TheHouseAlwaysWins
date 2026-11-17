@@ -234,6 +234,7 @@ type HouseStats struct {
 	PlayerBusts      int   `json:"player_busts"`
 	BiggestWin       int64 `json:"biggest_win"`  // best single round for the house
 	BiggestLoss      int64 `json:"biggest_loss"` // worst single round for the house
+	Tier             int   `json:"tier"`         // dealer wealth tier, -3 (destitute) .. 5 (emperor)
 }
 
 // HandView is a hand as seen by one client.
@@ -294,4 +295,5 @@ type TableState struct {
 	DealerSayID    int    `json:"dealer_say_id,omitempty"`
 	DealerSayUntil int64  `json:"dealer_say_until,omitempty"` // unix ms
 	HouseNet       int64  `json:"house_net"`
+	HouseTier      int    `json:"house_tier"`
 }

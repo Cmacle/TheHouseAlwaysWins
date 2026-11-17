@@ -33,3 +33,22 @@ func TestPlaceholders(t *testing.T) {
 	c, v := Count()
 	t.Logf("%d clean lines, %d vulgar lines", c, v)
 }
+
+func TestTier(t *testing.T) {
+	steps := []struct {
+		net  int64
+		want int
+	}{
+		{0, 0}, {9_999, 0}, {10_000, 1}, {9_000, 1}, {7_999, 0}, {9_999, 0},
+		{60_000, 2}, {2_000_000, 5}, {1_400_000, 5}, {1_340_000, 4},
+		{0, 0}, {-5_000, -1}, {-4_000, -1}, {-2_999, 0}, {-60_000, -3}, {-48_000, -3}, {-44_000, -2},
+		{200_000, 3},
+	}
+	tier := 0
+	for _, s := range steps {
+		tier = Tier(s.net, tier)
+		if tier != s.want {
+			t.Fatalf("net %d: tier %d want %d", s.net, tier, s.want)
+		}
+	}
+}

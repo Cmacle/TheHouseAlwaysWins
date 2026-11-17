@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/banter"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/cosmetics"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/imgutil"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
@@ -285,16 +286,19 @@ func OpenStore(dir string) (*Store, error) {
 	}
 	if b, err := os.ReadFile(filepath.Join(dir, "house.json")); err == nil {
 		_ = json.Unmarshal(b, &s.house)
+		s.house.Tier = banter.Tier(s.house.Net, s.house.Tier)
 	}
 	return s, nil
 }
 
 // RecordRound adds one settled round to the house's lifetime stats.
 // houseDelta is what the house gained (negative when it paid out).
-func (s *Store) RecordRound(houseDelta int64, playerHands int, dealerBJ, dealerBust bool, playerBusts int) proto.HouseStats {
+// It returns the updated stats and the dealer's previous wealth tier.
+func (s *Store) RecordRound(houseDelta int64, playerHands int, dealerBJ, dealerBust bool, playerBusts int) (proto.HouseStats, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	h := &s.house
+	prevTier := h.Tier
 	h.HandsDealt++
 	h.PlayerHands += playerHands
 	h.Net += houseDelta
@@ -319,8 +323,9 @@ func (s *Store) RecordRound(houseDelta int64, playerHands int, dealerBJ, dealerB
 		h.DealerBusts++
 	}
 	h.PlayerBusts += playerBusts
+	h.Tier = banter.Tier(h.Net, h.Tier)
 	s.dirty = true
-	return *h
+	return *h, prevTier
 }
 
 // House returns the house's lifetime stats.

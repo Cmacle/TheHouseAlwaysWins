@@ -177,6 +177,13 @@ func TestPreview(t *testing.T) {
 	}
 	settle()
 	save(t, dir, "04_playing.png", frame())
+	for _, tier := range []int{-3, 5} {
+		st.HouseTier = tier
+		a.onState(st)
+		save(t, dir, fmt.Sprintf("04_tier%d.png", tier), frame())
+	}
+	st.HouseTier = 0
+	a.onState(st)
 
 	// results
 	st2 := *st
@@ -228,9 +235,11 @@ func TestPreview(t *testing.T) {
 	a.lbSort = "balance"
 	a.lbAt = time.Now()
 	save(t, dir, "06_leaderboard.png", frame())
-	a.house = proto.HouseStats{HandsDealt: 1843, PlayerHands: 7210, Net: 48210, Won: 212400, Lost: 164190, RoundsWon: 1011, RoundsLost: 702, DealerBlackjacks: 88, DealerBusts: 512, PlayerBusts: 1290, BiggestWin: 6200, BiggestLoss: 4800}
+	a.house = proto.HouseStats{Tier: 1, HandsDealt: 1843, PlayerHands: 7210, Net: 48210, Won: 212400, Lost: 164190, RoundsWon: 1011, RoundsLost: 702, DealerBlackjacks: 88, DealerBusts: 512, PlayerBusts: 1290, BiggestWin: 6200, BiggestLoss: 4800}
 	a.lbSort = "house"
+	a.st.HouseTier = 1
 	save(t, dir, "06b_house.png", frame())
+	a.st.HouseTier = 0
 	a.lbSort = "balance"
 	a.overlay = ovProfile
 	save(t, dir, "07_profile.png", frame())
