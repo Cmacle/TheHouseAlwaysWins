@@ -24,11 +24,30 @@ import (
 
 // Platform is implemented by the OS layer.
 type Platform interface {
-	PlaySound(wav []byte)
+	PlaySound(name string, wav []byte)
 	OpenImageFile() (string, bool)
 	ClipboardText() string
 	ToggleFullscreen()
 	Quit()
+}
+
+// AsyncImagePicker is implemented by platforms whose picture picker can't
+// block (Android). PickImageAsync starts the picker; the platform later calls
+// App.ImagePicked with the chosen file.
+type AsyncImagePicker interface {
+	PickImageAsync()
+}
+
+// TextInputHost is implemented by platforms with an on-screen keyboard; it is
+// told when a text field gains or loses focus.
+type TextInputHost interface {
+	SetTextInput(on bool)
+}
+
+// TouchPlatform is implemented by touch-screen platforms (no mouse, no
+// physical keyboard), so the UI can adjust hints.
+type TouchPlatform interface {
+	IsTouch() bool
 }
 
 const (
@@ -134,6 +153,8 @@ type App struct {
 	fields      map[string]*fieldState
 	caretAt     int
 	house       proto.HouseStats
+	pickTarget  string
+	kbOn        bool
 	sayID       int
 	sayAt       time.Time
 }
@@ -174,7 +195,7 @@ func (a *App) sound(name string) {
 		return
 	}
 	if b := a.A.Sounds[name]; b != nil {
-		a.P.PlaySound(b)
+		a.P.PlaySound(name, b)
 	}
 }
 
@@ -212,6 +233,13 @@ func (a *App) Frame(in Input) *image.RGBA {
 	a.blocked = false
 	a.handleTab()
 	a.drawToasts()
+	if ti, ok := a.P.(TextInputHost); ok {
+		on := a.focusID != "" && a.screen == scrLogin
+		if on != a.kbOn {
+			a.kbOn = on
+			ti.SetTextInput(on)
+		}
+	}
 	if in.Released || !in.Down {
 		if !in.Down {
 			a.activeID = ""
@@ -531,13 +559,43 @@ func (a *App) avatarImg(user, version string, size int) *image.RGBA {
 	return img
 }
 
-// pickAvatar opens a file dialog and returns a normalised 32x32 PNG.
-func (a *App) pickAvatar() ([]byte, *image.RGBA, error) {
-	path, ok := a.P.OpenImageFile()
+// choosePicture opens the picture picker. target is "register" (new
+// account form) or "profile" (change your picture now).
+func (a *App) choosePicture(target string) {
 	a.activeID = ""
-	if !ok {
-		return nil, nil, nil
+	a.pickTarget = target
+	if ap, ok := a.P.(AsyncImagePicker); ok {
+		ap.PickImageAsync()
+		return
 	}
+	if path, ok := a.P.OpenImageFile(); ok {
+		a.ImagePicked(path)
+	}
+}
+
+// ImagePicked receives the file chosen in the picture picker.
+func (a *App) ImagePicked(path string) {
+	data, im, err := loadAvatarFile(path)
+	switch a.pickTarget {
+	case "register":
+		if err != nil {
+			a.setStatus(err.Error(), true)
+			return
+		}
+		a.regAvatar, a.regAvatarImg = data, im
+		a.setStatus("Looking sharp! Pictures are pixelated to 32x32.", false)
+	case "profile":
+		if err != nil {
+			a.toast(err.Error(), a.A.C("error"), 3, 1)
+			return
+		}
+		a.send(proto.CAvatarSet, proto.AvatarSet{Data: data})
+		a.toast("Picture updated!", a.A.C("win"), 2, 1)
+	}
+}
+
+// loadAvatarFile reads a picture and returns a normalised 32x32 PNG.
+func loadAvatarFile(path string) ([]byte, *image.RGBA, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, nil, err
@@ -553,6 +611,11 @@ func (a *App) pickAvatar() ([]byte, *image.RGBA, error) {
 		return nil, nil, err
 	}
 	return buf.Bytes(), toRGBA(small), nil
+}
+
+func (a *App) isTouch() bool {
+	t, ok := a.P.(TouchPlatform)
+	return ok && t.IsTouch()
 }
 
 // ---------------------------------------------------------------- toasts

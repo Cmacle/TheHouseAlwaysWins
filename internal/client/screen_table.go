@@ -804,7 +804,11 @@ func (a *App) drawBetting(st *proto.TableState, me *proto.SeatView, x0, x1 int) 
 			a.betDraft = limit
 		}
 	}
-	a.text(x0+4, hudTop+42, "right-click removes", a.A.C("text_dim"), alignLeft)
+	if a.isTouch() {
+		a.text(x0+4, hudTop+42, "tap chips to add", a.A.C("text_dim"), alignLeft)
+	} else {
+		a.text(x0+4, hudTop+42, "right-click removes", a.A.C("text_dim"), alignLeft)
+	}
 
 	bx := x0 + 158
 	label := "YOUR BET"
@@ -870,9 +874,11 @@ func (a *App) drawActions(st *proto.TableState, me *proto.SeatView, x0, x1 int) 
 		}
 		x += w + gap
 	}
-	keys := "keys: H hit  S stand  D double  P split"
-	if st.Settings.Surrender {
-		keys += "  U surrender"
+	if !a.isTouch() {
+		keys := "keys: H hit  S stand  D double  P split"
+		if st.Settings.Surrender {
+			keys += "  U surrender"
+		}
+		a.text((x0+x1)/2, hudTop+45, keys, a.A.C("text_dim"), alignCenter)
 	}
-	a.text((x0+x1)/2, hudTop+45, keys, a.A.C("text_dim"), alignCenter)
 }
