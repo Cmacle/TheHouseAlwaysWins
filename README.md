@@ -47,9 +47,16 @@ optional web page and Discord.
    want to, then restart (or type `reload` in the server window).
 3. Forward **TCP port 7777** on your router (or whatever `port` you set) if
    people will connect from outside your network.
-4. **Players:** run `TheHouseAlwaysWins.exe`, enter the server address (for
-   example `203.0.113.7:7777` or `blackjack.example.com`), pick **New account**,
-   choose a username, password and picture, and you're seated.
+4. **Players:** run `TheHouseAlwaysWins.exe`, type the server's IP or domain
+   (for example `203.0.113.7` or `blackjack.example.com`) and the port (7777 by
+   default) into their own boxes, pick **New account**, choose a username,
+   password and picture, and you're seated.
+
+**Using a domain:** point it at your public IP with a DNS **A record**, or a
+dynamic DNS name (DuckDNS, No-IP) if your home IP changes. A registrar's "URL
+forwarding" or "web redirect" only works for web browsers and won't work for
+the game. The domain must resolve straight to your IP, with TCP 7777 forwarded
+on your router. Leave `listen_address` as `0.0.0.0`.
 
 The client creates `client.json` and an `assets` folder next to itself on first
 run.
