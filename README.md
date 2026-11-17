@@ -360,14 +360,15 @@ say <message> | reload | save | quit
 | H S D P U | Hit, Stand, Double, Split, Surrender |
 | L | Leaderboard (left/right switches Richest / Lifetime / The House) |
 | W (in Profile) | Wardrobe: hats, frames, titles |
-| M | Sound on/off |
+| O or SETTINGS | Volume: master, sound effects, dealer voice (0 = muted) |
+| M | Mute / unmute everything |
 | F1 or ? | How to play |
 | F11 or Alt+Enter | Fullscreen |
 | Esc | Close a window |
 
 `client.json` stores the server address, your remembered login (a revocable
-token, never your password), sound, `window_scale` (0 = automatic) and
-`fullscreen`. Logging out forgets the saved login.
+token, never your password), the volume settings (`volume`, `effects_volume`,
+`voice_volume`, 0-100), `window_scale` (0 = automatic) and `fullscreen`. Logging out forgets the saved login.
 
 ### Replacing the art
 

@@ -125,10 +125,11 @@ public class MainActivity extends Activity implements Host {
     // ------------------------------------------------------------------ Host
 
     @Override
-    public void playSound(String name) {
+    public void playSound(String name, double volume) {
         Integer id = sounds.get(name);
         if (id != null && pool != null) {
-            pool.play(id, 1f, 1f, 1, 0, 1f);
+            float v = (float) Math.max(0, Math.min(1, volume));
+            pool.play(id, v, v, 1, 0, 1f);
         }
     }
 

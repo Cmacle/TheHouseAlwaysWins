@@ -6,11 +6,11 @@ import (
 
 type fakeHost struct{ kb []bool }
 
-func (f *fakeHost) PlaySound(string)       {}
-func (f *fakeHost) PickImage()             {}
-func (f *fakeHost) ClipboardText() string  { return "" }
-func (f *fakeHost) ShowKeyboard(show bool) { f.kb = append(f.kb, show) }
-func (f *fakeHost) Quit()                  {}
+func (f *fakeHost) PlaySound(string, float64) {}
+func (f *fakeHost) PickImage()                {}
+func (f *fakeHost) ClipboardText() string     { return "" }
+func (f *fakeHost) ShowKeyboard(show bool)    { f.kb = append(f.kb, show) }
+func (f *fakeHost) Quit()                     {}
 
 func TestBridge(t *testing.T) {
 	dir := t.TempDir()

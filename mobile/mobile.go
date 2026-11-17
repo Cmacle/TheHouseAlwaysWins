@@ -15,7 +15,7 @@ import (
 
 // Host is implemented in Java.
 type Host interface {
-	PlaySound(name string)
+	PlaySound(name string, volume float64)
 	PickImage()
 	ClipboardText() string
 	ShowKeyboard(show bool)
@@ -48,9 +48,9 @@ var (
 
 type platform struct{}
 
-func (platform) PlaySound(name string, _ []byte) {
+func (platform) PlaySound(name string, _ []byte, volume float64) {
 	if host != nil {
-		go host.PlaySound(name)
+		go host.PlaySound(name, volume)
 	}
 }
 func (platform) OpenImageFile() (string, bool) { return "", false }
