@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/banter"
 	bj "github.com/Cmacle/TheHouseAlwaysWins/internal/blackjack"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/cosmetics"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
@@ -62,7 +63,15 @@ func (a *App) onState(st *proto.TableState) {
 	if st.DealerSayID != 0 && st.DealerSayID != a.sayID && st.DealerSay != "" {
 		a.sayID = st.DealerSayID
 		a.sayAt = a.now
-		a.sound("talk")
+		a.sayWords = banter.Words(st.DealerSay)
+		a.sayStarts = a.sayStarts[:0]
+		var t time.Duration
+		for _, w := range a.sayWords {
+			a.sayStarts = append(a.sayStarts, t)
+			t += banter.WordDelay(w)
+		}
+		a.sayEnd = t
+		a.sayBlipped = 0
 	}
 	if st.Phase == proto.PhaseBetting && (prev == nil || prev.Phase != proto.PhaseBetting) {
 		a.betDraft = a.lastBet

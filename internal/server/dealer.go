@@ -56,7 +56,9 @@ func (g *Game) say(ev string, p *player, v banter.Vars, chance float64, prio int
 	cur := g.speech
 	if now.Before(cur.until) {
 		age := now.Sub(cur.at)
-		if prio < cur.prio || (prio == cur.prio && age < 2500*time.Millisecond) || age < 1200*time.Millisecond {
+		// let him finish the sentence unless something more important happens
+		finish := banter.SpeakTime(cur.text)
+		if prio < cur.prio || (prio == cur.prio && age < finish+800*time.Millisecond) || age < 1200*time.Millisecond {
 			return false
 		}
 	}
@@ -77,9 +79,13 @@ func (g *Game) say(ev string, p *player, v banter.Vars, chance float64, prio int
 	if line == "" {
 		return false
 	}
-	d := 3500*time.Millisecond + time.Duration(len(line))*45*time.Millisecond
-	if d > 8*time.Second {
-		d = 8 * time.Second
+	// time to say it word by word, then let it sit there a moment
+	d := banter.SpeakTime(line) + 2500*time.Millisecond
+	if d < 3500*time.Millisecond {
+		d = 3500 * time.Millisecond
+	}
+	if d > 14*time.Second {
+		d = 14 * time.Second
 	}
 	g.speech = speech{text: line, id: cur.id + 1, prio: prio, at: now, until: now.Add(d)}
 	g.broadcast()

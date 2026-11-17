@@ -157,6 +157,10 @@ type App struct {
 	kbOn        bool
 	sayID       int
 	sayAt       time.Time
+	sayWords    []string
+	sayStarts   []time.Duration
+	sayEnd      time.Duration
+	sayBlipped  int
 }
 
 // New creates the client app.

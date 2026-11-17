@@ -7,6 +7,8 @@ optional web page and Discord.
 
 - **Headless server** (`HouseServer.exe`, or a Linux binary) built to run 24/7.
   With nobody connected the table stops and the process just waits.
+- **Android app** (`TheHouseAlwaysWins.apk`): the same game on your phone, in
+  landscape, with touch controls and the on-screen keyboard.
 - **Game client** (`TheHouseAlwaysWins.exe`): pixel art at 640x360, scaled up by
   whole pixels. Every image, sound and colour can be replaced (see
   [Replacing the art](#replacing-the-art)).
@@ -67,6 +69,13 @@ on your router. Leave `listen_address` as `0.0.0.0`.
 
 The client creates `client.json` and an `assets` folder next to itself on first
 run.
+
+**Android:** download `TheHouseAlwaysWins.apk` on your phone and open it. Your
+browser or file manager will ask to allow installing apps: say yes for that
+app. Updates install over the old version and keep your login. Tap to press
+buttons, drag up and down to scroll the leaderboard, and use the phone's back
+button to close windows. The replaceable art lives in
+`Android/data/com.cmacle.thehousealwayswins/files/assets` on the phone.
 
 ## How a hand works
 
@@ -216,6 +225,10 @@ forth. He thanks whoever paid for each upgrade, very rudely. When he loses an
 outfit he's incredibly petty with whoever won it off him. When he's down, he
 begs for sympathy, badly. The house tab shows where his next upgrade and
 downgrade kick in. Players' titles show under their names at the table.
+
+He talks like an old 8-bit RPG character: words pop into the bubble one at a
+time, his mouth flaps, and each word makes a little blip. The vulgar dealer's
+voice is a low, gravelly grumble.
 
 There are about 1,000 lines across both modes. They're dealt like a shuffled
 deck per situation, and recently used lines are skipped, so repeats are rare.
@@ -369,7 +382,8 @@ name and layout, then restart the client. Delete a file to get the default back.
 - `font.png` is a 16x6 grid of ASCII glyphs. Character widths are measured
   automatically.
 - Sounds are WAV files: card, chip, click, win, blackjack, lose, push, bust,
-  turn, refill, shuffle, error.
+  turn, refill, shuffle, error, plus the dealer's voice blips (talk1-4, and
+  talklow1-4 for the vulgar dealer).
 - `theme.json` holds card/chip sizes, chip values, the 9-slice border and every
   text colour.
 
@@ -386,6 +400,25 @@ go build -o house-server ./cmd/server  # Linux/macOS server
 ```
 
 On Windows you can just run `scripts\build.bat`.
+
+### Android build
+
+The APK is built by GitHub Actions: `gomobile bind` compiles `./mobile` (the
+Go bridge) into `android/app/libs/housecore.aar`, then Gradle builds the small
+Java app in `android/`. To build it yourself you need the Android SDK and NDK,
+Java 17 and Gradle 8.11:
+
+```sh
+go install golang.org/x/mobile/cmd/gomobile@latest && gomobile init
+go get golang.org/x/mobile/bind
+gomobile bind -target=android/arm64,android/arm -androidapi 21 -o android/app/libs/housecore.aar ./mobile
+cd android && gradle assembleRelease
+```
+
+The APK is signed with `android/app/release.keystore` (password
+`thehousealwayswins`), which is committed so every build can update the
+installed app. It only identifies this app; it isn't a secret worth guarding
+for a friends-only game.
 
 ### Automatic releases
 
@@ -414,13 +447,15 @@ internal/server     game loop, accounts, refill, console, web leaderboard
 internal/discord    Discord REST + gateway (built-in websocket client)
 internal/client     renderer, UI, screens (platform independent)
 internal/win32      Windows window/input/sound layer (no cgo)
+mobile              bridge for the Android app (gomobile bind)
+android             the Android app (Java): drawing, touch, keyboard, sound
 tools/genassets     generates the default pixel art and sounds
 ```
 
 ## Notes
 
-- The client is Windows-only for now. Only the platform layer
-  (`internal/win32`) is OS-specific, so porting means writing one more of those.
+- The game runs on Windows and Android. Only the platform layers
+  (`internal/win32`, `mobile` + `android`) are OS-specific.
 - Insurance and even money aren't offered. The dealer peeks with an ace or a
   ten showing, so you never lose a double or split to a dealer blackjack.
 - Chips are play money with no cash value.

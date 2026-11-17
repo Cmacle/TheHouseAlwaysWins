@@ -52,16 +52,89 @@ func (a *App) talking(st *proto.TableState) bool {
 	return st.DealerSay != "" && a.now.UnixMilli()+a.clockOffset < st.DealerSayUntil
 }
 
-// drawDealer draws the dealer (bobbing while talking) and cigar smoke.
+// wordsShown is how many words of the current line have been said so far.
+func (a *App) wordsShown() int {
+	el := a.now.Sub(a.sayAt)
+	n := 0
+	for n < len(a.sayStarts) && a.sayStarts[n] <= el {
+		n++
+	}
+	return n
+}
+
+// mouthOpen reports whether the dealer's mouth is open right now: open for
+// the first part of each word, shut in between and after the line is done.
+func (a *App) mouthOpen(st *proto.TableState) bool {
+	if !a.talking(st) || len(a.sayStarts) == 0 {
+		return false
+	}
+	el := a.now.Sub(a.sayAt)
+	if el >= a.sayEnd {
+		return false
+	}
+	i := a.wordsShown() - 1
+	if i < 0 {
+		return false
+	}
+	into := el - a.sayStarts[i]
+	d := banter.WordDelay(a.sayWords[i])
+	// flap twice on long words
+	if len(a.sayWords[i]) > 6 {
+		half := d / 2
+		into %= half
+		d = half
+	}
+	return into < d*55/100
+}
+
+// blip plays one voice blip per newly said word.
+func (a *App) blip(st *proto.TableState) {
+	if !a.talking(st) {
+		return
+	}
+	shown := a.wordsShown()
+	if shown <= a.sayBlipped {
+		return
+	}
+	a.sayBlipped = shown
+	w := a.sayWords[shown-1]
+	if strings.Trim(w, ".,!?;:-'\"()") == "" {
+		return
+	}
+	name := "talk"
+	if a.dealerVulgar(st) {
+		name = "talklow"
+	}
+	a.sound(name + string(rune('1'+a.frame%4)))
+}
+
+// drawDealer draws the dealer (bobbing and flapping his mouth while he
+// talks) and cigar smoke.
 func (a *App) drawDealer(st *proto.TableState) {
 	spr := a.dealerSprite(st)
 	w, h := spr.Rect.Dx(), spr.Rect.Dy()
 	x := ScreenW/2 - w/2
 	y := 52 - h
-	if a.talking(st) && (a.frame/6)%2 == 0 {
+	open := a.mouthOpen(st)
+	if open {
 		y--
 	}
 	blit(a.fb, spr, x, y)
+	if open {
+		row := 0
+		if a.dealerVulgar(st) {
+			row = 1
+		}
+		m := a.A.Theme.Mouth[row]
+		mx, my, mw := x+m[0], y+m[1], m[2]
+		if mw > 0 {
+			fillRect(a.fb, image.Rect(mx, my, mx+mw, my+3), color.RGBA{42, 10, 10, 255})
+			fillRect(a.fb, image.Rect(mx+1, my, mx+mw-1, my+1), color.RGBA{232, 224, 208, 255}) // teeth
+			if row == 1 && st.HouseTier >= 3 {
+				fillRect(a.fb, image.Rect(mx+2, my, mx+3, my+1), color.RGBA{242, 193, 78, 255}) // gold tooth
+			}
+		}
+	}
 	if !a.dealerVulgar(st) || st.HouseTier <= -2 {
 		return // no cigar for the poorest
 	}
@@ -90,10 +163,16 @@ func (a *App) drawSpeech(st *proto.TableState) {
 		return
 	}
 	mouthX := ScreenW/2 + 16
+	a.blip(st)
 	lines := a.wrap(st.DealerSay, bubbleWrap)
 	if len(lines) > bubbleMaxLines {
 		lines = lines[:bubbleMaxLines]
 		lines[len(lines)-1] = strings.TrimRight(lines[len(lines)-1], ".,!? ") + "..."
+	}
+	// the bubble is sized for the whole line; words fill in as he says them
+	shown := len(a.sayWords)
+	if a.sayID == st.DealerSayID {
+		shown = a.wordsShown()
 	}
 	w := 0
 	for _, l := range lines {
@@ -124,8 +203,17 @@ func (a *App) drawSpeech(st *proto.TableState) {
 	}
 	fillRect(a.fb, image.Rect(r.Min.X-6, ty+2, r.Min.X, ty+3), edge)
 	fillRect(a.fb, image.Rect(r.Min.X, ty, r.Min.X+1, ty+3), bub)
+	left := shown
 	for i, l := range lines {
-		a.A.Font.Draw(a.fb, r.Min.X+6, r.Min.Y+4+i*lh, l, a.A.C("bubble_txt"))
+		ws := strings.Fields(l)
+		if left <= 0 {
+			break
+		}
+		if left < len(ws) {
+			ws = ws[:left]
+		}
+		left -= len(ws)
+		a.A.Font.Draw(a.fb, r.Min.X+6, r.Min.Y+4+i*lh, strings.Join(ws, " "), a.A.C("bubble_txt"))
 	}
 }
 

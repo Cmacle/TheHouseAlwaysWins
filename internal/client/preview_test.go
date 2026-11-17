@@ -132,6 +132,7 @@ func TestPreview(t *testing.T) {
 	st.DealerSayUntil = time.Now().Add(time.Hour).UnixMilli()
 	a.st = nil
 	a.onState(st)
+	a.sayAt = time.Now().Add(-time.Minute)
 	a.betDraft = 150
 	a.lastBet = 100
 	save(t, dir, "03_betting.png", frame())
@@ -174,12 +175,14 @@ func TestPreview(t *testing.T) {
 		for k := range a.cardSeen {
 			a.cardSeen[k] = time.Now().Add(-time.Minute)
 		}
+		a.sayAt = time.Now().Add(-time.Minute) // dealer finished talking
 	}
 	settle()
 	save(t, dir, "04_playing.png", frame())
 	for _, tier := range []int{-3, 5} {
 		st.HouseTier = tier
 		a.onState(st)
+		settle()
 		save(t, dir, fmt.Sprintf("04_tier%d.png", tier), frame())
 	}
 	st.HouseTier = 0
