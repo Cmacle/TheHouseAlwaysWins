@@ -251,9 +251,31 @@ func (g *Game) join(c *conn, user string) {
 	g.broadcast()
 }
 
+// seatOrder lists seat indexes from the middle of the table outward,
+// alternating sides: for 10 seats 4,5,3,6,2,7,1,8,0,9.
+func seatOrder(n int) []int {
+	order := make([]int, 0, n)
+	lo, hi := (n-1)/2, (n-1)/2+1
+	if n%2 == 1 {
+		order = append(order, lo)
+		lo, hi = lo-1, lo+1
+	}
+	for lo >= 0 || hi < n {
+		if lo >= 0 {
+			order = append(order, lo)
+			lo--
+		}
+		if hi < n {
+			order = append(order, hi)
+			hi++
+		}
+	}
+	return order
+}
+
 func (g *Game) seatPlayer(p *player) bool {
-	for i, s := range g.seats {
-		if s == nil {
+	for _, i := range seatOrder(len(g.seats)) {
+		if s := g.seats[i]; s == nil {
 			g.seats[i] = p
 			p.seat = i
 			return true

@@ -54,3 +54,23 @@ func TestUnlocksAndCrown(t *testing.T) {
 		t.Fatalf("splits %d busts %d doubles %d", b.Splits, b.Busts, b.DoublesWon)
 	}
 }
+
+func TestSeatOrder(t *testing.T) {
+	cases := map[int][]int{
+		1:  {0},
+		2:  {0, 1},
+		5:  {2, 1, 3, 0, 4},
+		10: {4, 5, 3, 6, 2, 7, 1, 8, 0, 9},
+	}
+	for n, want := range cases {
+		got := seatOrder(n)
+		if len(got) != n {
+			t.Fatalf("n=%d got %v", n, got)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("n=%d got %v want %v", n, got, want)
+			}
+		}
+	}
+}
