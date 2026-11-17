@@ -1,6 +1,7 @@
 package server
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -113,5 +114,35 @@ func TestDealerTierSpeech(t *testing.T) {
 			t.Fatalf("unfilled: %q", line)
 		}
 		t.Logf("%d -> %d: %s", step[0], step[1], line)
+	}
+}
+
+func TestConfigAddsMissingKeys(t *testing.T) {
+	path := t.TempDir() + "/server.json"
+	old := `{"server_name":"Friends Only","port":9000,"min_bet":25,"discord":{"enabled":true,"bot_token":"abc"}}`
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ServerName != "Friends Only" || cfg.Port != 9000 || cfg.MinBet != 25 || cfg.Discord.BotToken != "abc" || !cfg.DealerTrashTalk {
+		t.Fatalf("values not kept: %+v", cfg)
+	}
+	b, _ := os.ReadFile(path)
+	for _, k := range []string{`"dealer_vulgar": false`, `"dealer_trash_talk": true`, `"announce_refills"`, `"Friends Only"`, `"bot_token": "abc"`} {
+		if !strings.Contains(string(b), k) {
+			t.Errorf("rewritten config missing %s", k)
+		}
+	}
+	// a complete file is left alone
+	st, _ := os.Stat(path)
+	if _, _, err := LoadConfig(path); err != nil {
+		t.Fatal(err)
+	}
+	st2, _ := os.Stat(path)
+	if !st2.ModTime().Equal(st.ModTime()) {
+		t.Error("complete config was rewritten")
 	}
 }

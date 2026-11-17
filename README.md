@@ -266,6 +266,10 @@ command.
 | `http_leaderboard` | disabled, port 8090 | Optional web page with both leaderboards (`/`, `/leaderboard.json?sort=balance\|net`) |
 | `discord` | disabled | See below |
 
+When you update the server, any settings added in the new version are written
+into your existing `server.json` with their default values the next time it
+starts (your values are kept), and the log says which ones were added.
+
 Table changes from `reload` take effect at the start of the next hand. Changing
 the port or turning on the web page or Discord needs a restart.
 
