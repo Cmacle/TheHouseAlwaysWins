@@ -10,6 +10,11 @@ on:
 permissions:
   contents: write
 
+# one release job at a time so two quick pushes don't race each other
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -26,7 +31,7 @@ jobs:
         run: go test -race ./...
       - name: Build
         run: |
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then export VERSION="${GITHUB_REF_NAME#v}"; else export VERSION="dev-${GITHUB_SHA::7}"; fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then export VERSION="${GITHUB_REF_NAME#v}"; else export VERSION="$(tr -d '[:space:]' < VERSION)"; fi
           ./scripts/build.sh
       - name: Package
         run: |
@@ -40,8 +45,32 @@ jobs:
         with:
           name: TheHouseAlwaysWins
           path: "*.zip"
+      # Pushes to main publish to the release named after the VERSION file
+      # (v1.0.0, ...). Bump VERSION for a new release; any other push to main
+      # rebuilds and replaces the files on the current one. Pushing a v* tag
+      # also works.
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" *.zip --title "The House Always Wins $GITHUB_REF_NAME" --generate-notes
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then TAG="$GITHUB_REF_NAME"; else TAG="v$(tr -d '[:space:]' < VERSION)"; fi
+          cp dist/TheHouseAlwaysWins.exe dist/HouseServer.exe dist/house-server-linux-amd64 dist/house-server-linux-arm64 .
+          FILES="TheHouseAlwaysWins.exe HouseServer.exe house-server-linux-amd64 house-server-linux-arm64 *.zip"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" $FILES --clobber
+            echo "Updated files on release $TAG"
+          else
+            cat > notes.md <<NOTES
+          ## Downloads
+          - **TheHouseAlwaysWins.exe**: the game (Windows). Run it, enter the server address, create an account.
+          - **HouseServer.exe**: the headless server (Windows). Creates \`server.json\` and \`data/\` next to itself on first run.
+          - **TheHouseAlwaysWins-Server-Windows.zip**: server + default \`server.json\` + \`run-server.bat\` (auto-restart).
+          - **TheHouseAlwaysWins-Server-Linux.zip** / **house-server-linux-***: Linux server + systemd unit.
+
+          Built automatically from ${GITHUB_SHA::7}.
+          NOTES
+            sed -i 's/^          //' notes.md
+            gh release create "$TAG" $FILES --target "$GITHUB_SHA" --title "The House Always Wins $TAG" --notes-file notes.md
+            echo "Created release $TAG"
+          fi

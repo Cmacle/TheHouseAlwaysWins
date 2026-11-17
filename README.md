@@ -40,8 +40,8 @@ optional web page and Discord.
 
 ## Quick start
 
-1. Download the latest zip from **Releases**, or download the build artifact from
-   the latest **Actions** run.
+1. Download `TheHouseAlwaysWins.exe` (players) and `HouseServer.exe` (host) from
+   the latest **[Release](https://github.com/Cmacle/TheHouseAlwaysWins/releases/latest)**.
 2. **Server:** put `HouseServer.exe` in its own folder and run it. The first run
    creates `server.json` and a `data` folder next to it. Edit `server.json` if you
    want to, then restart (or type `reload` in the server window).
@@ -309,8 +309,18 @@ GOOS=windows GOARCH=amd64 go build -o HouseServer.exe ./cmd/server
 go build -o house-server ./cmd/server  # Linux/macOS server
 ```
 
-On Windows you can just run `scripts\build.bat`. Pushing a tag like `v1.0.0`
-makes GitHub Actions build everything and attach the zips to a release.
+On Windows you can just run `scripts\build.bat`.
+
+### Automatic releases
+
+Every push to `main` makes GitHub Actions run the tests, build everything and
+publish it to the GitHub Release named after the `VERSION` file (for example
+`v1.0.0`): the two exes, the Linux server binaries and the zips.
+
+- Change `VERSION` (say to `1.1.0`) and push to cut a **new** release.
+- Any other push to `main` rebuilds and **replaces the files** on the current
+  release, so the download links always have the latest build.
+- Pushing a tag like `v1.2.3` also creates a release for that tag.
 
 To render every client screen to PNG without Windows (useful when changing art):
 `PREVIEW_DIR=out go test -run TestPreview ./internal/client/`
