@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -175,7 +176,43 @@ func LoadConfig(path string) (*Config, bool, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, false, err
 	}
+	// Settings added in newer versions get written into an existing file
+	// (with their defaults) so they're easy to find. Existing values are kept.
+	if !created {
+		def, _ := json.Marshal(DefaultConfig())
+		if missing := missingKeys(b, def, ""); len(missing) > 0 {
+			out, _ := json.MarshalIndent(cfg, "", "  ")
+			if err := writeAtomic(path, append(out, '\n')); err == nil {
+				addedKeys = missing
+			}
+		}
+	}
 	return cfg, created, nil
+}
+
+// addedKeys lists settings LoadConfig added to an existing file (for logging).
+var addedKeys []string
+
+// missingKeys returns the dotted names of keys present in want but absent in
+// have, looking inside nested objects.
+func missingKeys(have, want []byte, prefix string) []string {
+	var h, w map[string]json.RawMessage
+	if json.Unmarshal(have, &h) != nil || json.Unmarshal(want, &w) != nil {
+		return nil
+	}
+	var out []string
+	for k, wv := range w {
+		hv, ok := h[k]
+		if !ok {
+			out = append(out, prefix+k)
+			continue
+		}
+		if len(wv) > 0 && wv[0] == '{' && len(hv) > 0 && hv[0] == '{' {
+			out = append(out, missingKeys(hv, wv, prefix+k+".")...)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (c *Config) validate() error {

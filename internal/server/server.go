@@ -111,6 +111,9 @@ func Main(configPath string, interactive bool) error {
 	} else {
 		lg.Printf("config: %s", abs)
 	}
+	if len(addedKeys) > 0 {
+		lg.Printf("added new settings to %s with default values: %s", filepath.Base(abs), strings.Join(addedKeys, ", "))
+	}
 
 	s, err := New(cfg, baseDir, lg)
 	if err != nil {
