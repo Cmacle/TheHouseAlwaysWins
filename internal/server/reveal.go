@@ -17,7 +17,13 @@ import (
 type revealing struct {
 	seat, hand, card int // seat -1 is the dealer
 	until            time.Time
+	shown            bool // flipped; the game waits while it's on show
 }
+
+// revealSettle is how long the game waits after a flip: the card stays big
+// and face up, then slides back into the hand (the client's animation).
+// Without it the next reveal would start on top of this one.
+var revealSettle = 1400 * time.Millisecond
 
 func (g *Game) revealDelay() time.Duration {
 	lo, hi := g.cfg.CardRevealMinSeconds, g.cfg.CardRevealMaxSeconds
@@ -43,16 +49,19 @@ func (g *Game) startReveal(seat, hand, card int, outcome func() string, then fun
 	g.reveal = &revealing{seat: seat, hand: hand, card: card, until: time.Now().Add(d)}
 	g.broadcast()
 	g.after(d, func() {
-		g.reveal = nil
+		g.reveal.shown = true // face up now, still no actions
 		g.eventAll(proto.Event{Kind: "reveal", Seat: seat, Text: outcome()})
-		g.broadcast() // everyone sees the card now, whatever happens next
-		then()
-		if g.timer == nil && savedFn != nil && g.phase == proto.PhasePlaying {
-			left := max(savedLeft, 5*time.Second)
-			g.setDeadline(left)
-			g.after(left, savedFn)
-			g.broadcast()
-		}
+		g.broadcast()
+		g.after(revealSettle, func() {
+			g.reveal = nil
+			then()
+			if g.timer == nil && savedFn != nil && g.phase == proto.PhasePlaying {
+				left := max(savedLeft, 5*time.Second)
+				g.setDeadline(left)
+				g.after(left, savedFn)
+				g.broadcast()
+			}
+		})
 	})
 }
 

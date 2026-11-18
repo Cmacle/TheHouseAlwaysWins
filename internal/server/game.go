@@ -1332,7 +1332,7 @@ func (g *Game) view(viewer *player) proto.TableState {
 	}
 	// dealer
 	for i, c := range g.dealer {
-		if (i == 1 && g.holeHidden) || (g.reveal != nil && g.reveal.seat == -1 && g.reveal.card == i) {
+		if (i == 1 && g.holeHidden) || (g.reveal != nil && !g.reveal.shown && g.reveal.seat == -1 && g.reveal.card == i) {
 			st.Dealer.Cards = append(st.Dealer.Cards, bj.Card{})
 			continue
 		}
@@ -1378,7 +1378,7 @@ func (g *Game) view(viewer *player) proto.TableState {
 					hv.Total, hv.Soft = h.Total()
 					hv.Natural = h.Natural()
 				}
-				if rv := g.reveal; rv != nil && rv.seat == i && rv.hand == hi && rv.card < len(hv.Cards) {
+				if rv := g.reveal; rv != nil && !rv.shown && rv.seat == i && rv.hand == hi && rv.card < len(hv.Cards) {
 					// still face down: nobody knows yet, not even its owner
 					hv.Cards[rv.card] = bj.Card{}
 					hv.Total, hv.Soft = bj.Total(hv.Cards)
@@ -1392,7 +1392,7 @@ func (g *Game) view(viewer *player) proto.TableState {
 		}
 		st.Seats[i] = sv
 	}
-	if rv := g.reveal; rv != nil {
+	if rv := g.reveal; rv != nil && !rv.shown {
 		st.Reveal = &proto.RevealView{Seat: rv.seat, Hand: rv.hand, Card: rv.card, Until: rv.until.UnixMilli()}
 	}
 	// what can the viewer do?
