@@ -17,8 +17,8 @@ optional web page and Discord.
 - **Chip gifts:** buy a broke friend back in. Gifts only top someone up to the
   refill amount and don't count as winnings, so nobody can pump an account.
 - **Table chat:** short messages pop up in a bubble by your portrait.
-- **Chip piles:** everyone's chips sit in a pile beside their portrait, taller
-  the more they have, with the amount on top.
+- **Chip piles:** everyone's chips sit in a little heap beside their
+  portrait that fills out the more they have, with the amount on top.
 - **Admins:** make trusted players admins. They get an ADMIN window in the game
   for every server setting and a console, and can type `/commands` in chat as
   if they were at the server, including `/update`.

@@ -4,6 +4,7 @@ package client
 
 import (
 	"fmt"
+	"image"
 	"image/color"
 	"os"
 	"testing"
@@ -119,4 +120,34 @@ func TestPreviewNew(t *testing.T) {
 	a.adminTab = 1
 	frame()
 	save(t, dir, "27_admin_console.png", a.fb)
+}
+
+// TestPreviewPiles renders the chip heap at a range of amounts.
+func TestPreviewPiles(t *testing.T) {
+	dir := os.Getenv("PREVIEW_DIR")
+	if dir == "" {
+		t.Skip("set PREVIEW_DIR to render previews")
+	}
+	assets, err := LoadAssets("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := New(fakePlatform{}, &Config{}, assets)
+	a.SetSize(640, 360)
+	a.computeLayout()
+	a.drawTableBG()
+	for i, amt := range []int64{5, 40, 350, 1300, 9800, 45000, 250000} {
+		x := 60 + i*80
+		for k, left := range []bool{false, true} {
+			y := 100 + k*80
+			ar := image.Rect(x-16, y, x+16, y+32)
+			blit(a.fb, a.A.DefaultAvatar, ar.Min.X, ar.Min.Y)
+			px := ar.Max.X + 3
+			if left {
+				px = ar.Min.X - 3 - pileChip
+			}
+			a.drawChipPile(px, ar.Max.Y, amt, left)
+		}
+	}
+	save(t, dir, "30_piles.png", a.fb)
 }
