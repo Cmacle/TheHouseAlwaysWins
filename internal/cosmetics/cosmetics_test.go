@@ -22,7 +22,7 @@ func TestCatalog(t *testing.T) {
 			t.Errorf("%s has no requirement text", it.ID)
 		}
 	}
-	if len(sprites[Hat]) != 26 || len(sprites[Frame]) != 11 {
+	if len(sprites[Hat]) != 34 || len(sprites[Frame]) != 11 {
 		t.Errorf("sprite counts %d hats %d frames", len(sprites[Hat]), len(sprites[Frame]))
 	}
 }

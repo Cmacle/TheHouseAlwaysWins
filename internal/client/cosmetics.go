@@ -8,6 +8,7 @@ import (
 	"image/draw"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/cosmetics"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
@@ -173,7 +174,10 @@ func statsOf(p proto.Profile) (cosmetics.Stats, map[string]bool) {
 		Wagered: p.Wagered, Peak: p.PeakBalance, Net: p.Net, LowestNet: p.LowestNet, BiggestWin: p.BiggestWin,
 		Hands: p.HandsPlayed, Blackjacks: p.Blackjacks, BestWinStreak: p.BestWinStreak, WorstLoseStreak: p.WorstLoseStreak,
 		Busts: p.Busts, DoublesWon: p.DoublesWon, Splits: p.Splits, Refills: p.RefillCount,
-		RankRich: p.RankRich, RankNet: p.RankNet,
+		RankRich: p.RankRich, RankNet: p.RankNet, RankHands: p.RankHands, RankBet: p.RankBet,
+		PkHands: p.PokerHands, PkFlush: p.PokerFlushes, PkFullHouse: p.PokerFullHouses, PkQuads: p.PokerQuads,
+		PkStrFlush: p.PokerStrFlushes, PkRoyal: p.PokerRoyals, PkBluffs: p.PokerBluffs, PkBeatDale: p.PokerBeatDale,
+		PkBigPot: p.PokerBiggestPot,
 	}, own
 }
 
@@ -194,6 +198,10 @@ func (a *App) drawWardrobe() {
 	}
 	if a.overlayFrame(r, "WARDROBE") {
 		return
+	}
+	if a.now.Sub(a.recordsAt) > 5*time.Second {
+		a.recordsAt = a.now
+		a.send(proto.CRecords, nil)
 	}
 	if a.wardTab == "" {
 		a.wardTab = cosmetics.Hat
@@ -262,6 +270,23 @@ func (a *App) drawWardrobe() {
 		cols := max(1, min(8, (gridW+2)/(cw+2)))
 		if !narrow {
 			cols = 8
+		}
+		// shrink the cells until every item fits above the info box
+		infoTop := r.Max.Y - 66
+		if narrow {
+			infoTop = r.Max.Y - 92
+		}
+		rowsFit := max(1, (infoTop-4-gy)/(ch+2))
+		for (len(items)+cols-1)/cols > rowsFit && cw > 36 {
+			cw -= 2
+			cols = max(1, (gridW+2)/(cw+2))
+			if !narrow {
+				cols = min(cols, 12)
+			}
+		}
+		for (len(items)+cols-1)/cols > rowsFit && ch > 38 {
+			ch -= 2
+			rowsFit = max(1, (infoTop-4-gy)/(ch+2))
 		}
 		for i, it := range items {
 			cx, cy := gx+(i%cols)*(cw+2), gy+(i/cols)*(ch+2)
@@ -386,8 +411,14 @@ func (a *App) drawWardrobe() {
 	} else if it.Dynamic() {
 		status = "HELD BY THE CURRENT #1"
 	}
+	if held, ok := a.recordLine(it); ok {
+		status = held
+	}
 	a.text(ib.Max.X-8, ib.Min.Y+6, status, sc, alignRight)
 	a.text(ib.Min.X+8, ib.Min.Y+32, req, a.A.C("gold"), alignLeft)
+	if mine, ok := a.recordMine(it); ok {
+		a.text(ib.Max.X-8, ib.Min.Y+32, mine, a.A.C("text_dim"), alignRight)
+	}
 	if !it.Dynamic() && it.Metric != cosmetics.MFree {
 		cur, goal := it.Progress(st)
 		if unlocked {
@@ -433,6 +464,9 @@ func (a *App) wardInfoNarrow(ib image.Rectangle, it *cosmetics.Item, st cosmetic
 	} else if it.Dynamic() {
 		status = "HELD BY THE CURRENT #1"
 	}
+	if held, ok := a.recordLine(it); ok {
+		status = held
+	}
 	by := ib.Max.Y - 12
 	a.text(x, by, status, sc, alignLeft)
 	if !it.Dynamic() && it.Metric != cosmetics.MFree {
@@ -447,4 +481,50 @@ func (a *App) wardInfoNarrow(ib image.Rectangle, it *cosmetics.Item, st cosmetic
 		frac := min(float64(cur)/float64(goal), 1)
 		fillRect(a.fb, image.Rect(in.Min.X, in.Min.Y, in.Min.X+int(float64(in.Dx())*frac), in.Max.Y), tierColor(it.Tier))
 	}
+}
+
+// recordUnit is how a record's number reads.
+func recordUnit(metric string, v int64) string {
+	switch metric {
+	case cosmetics.MRankHands:
+		if v == 1 {
+			return "1 hand"
+		}
+		return commas(v) + " hands"
+	case cosmetics.MRankBet:
+		return commas(v) + " chip bet"
+	}
+	return commas(v)
+}
+
+// recordLine says who holds a record-based item ("Held by Lou: 1,204
+// hands"). ok is false for other items.
+func (a *App) recordLine(it *cosmetics.Item) (string, bool) {
+	if it.Metric != cosmetics.MRankHands && it.Metric != cosmetics.MRankBet {
+		return "", false
+	}
+	for _, r := range a.records {
+		if r.Metric != it.Metric {
+			continue
+		}
+		switch {
+		case r.User == "":
+			return "NOBODY HOLDS IT YET", true
+		case strings.EqualFold(r.User, a.username):
+			return "YOURS: " + strings.ToUpper(recordUnit(r.Metric, r.Value)), true
+		}
+		return "HELD BY " + r.User + ": " + strings.ToUpper(recordUnit(r.Metric, r.Value)), true
+	}
+	return "", false
+}
+
+// recordMine is your own number for a record-based item.
+func (a *App) recordMine(it *cosmetics.Item) (string, bool) {
+	switch it.Metric {
+	case cosmetics.MRankHands:
+		return "You: " + recordUnit(it.Metric, int64(a.profile.HandsPlayed+a.profile.PokerHands)), true
+	case cosmetics.MRankBet:
+		return "You: " + recordUnit(it.Metric, a.profile.BiggestBet), true
+	}
+	return "", false
 }

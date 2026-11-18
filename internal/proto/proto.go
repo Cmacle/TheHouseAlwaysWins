@@ -61,6 +61,7 @@ const (
 	CJoinTable   = "join_table"
 	CLeaveTable  = "leave_table" // back to the lobby
 	CPoker       = "poker"       // a poker action
+	CRecords     = "records"     // who holds the record-based cosmetics
 )
 
 // Server -> client message types.
@@ -84,6 +85,7 @@ const (
 	SJoined      = "joined" // you're at a table now
 	SLeft        = "left"   // you're back in the lobby
 	SPoker       = "poker"  // poker table state
+	SRecords     = "records"
 )
 
 type Hello struct {
@@ -130,7 +132,8 @@ type AuthFail struct {
 // Profile is an account's public stats.
 type Profile struct {
 	Username      string `json:"username"`
-	Balance       int64  `json:"balance"`
+	Balance       int64  `json:"balance"`            // all their chips, poker table included
+	AtTable       int64  `json:"at_table,omitempty"` // of which at a poker table
 	Net           int64  `json:"net"`
 	Won           int64  `json:"won"`
 	Lost          int64  `json:"lost"`
@@ -163,6 +166,15 @@ type Profile struct {
 	RankHands       bool     `json:"rank_hands,omitempty"` // currently played the most hands
 	RankBet         bool     `json:"rank_bet,omitempty"`   // holds the biggest-bet record
 	BiggestBet      int64    `json:"biggest_bet,omitempty"`
+	PokerHands      int      `json:"poker_hands,omitempty"`
+	PokerFlushes    int      `json:"poker_flushes,omitempty"`
+	PokerFullHouses int      `json:"poker_full_houses,omitempty"`
+	PokerQuads      int      `json:"poker_quads,omitempty"`
+	PokerStrFlushes int      `json:"poker_straight_flushes,omitempty"`
+	PokerRoyals     int      `json:"poker_royals,omitempty"`
+	PokerBluffs     int      `json:"poker_bluffs,omitempty"`
+	PokerBeatDale   int      `json:"poker_beat_dale,omitempty"`
+	PokerBiggestPot int64    `json:"poker_biggest_pot,omitempty"`
 	Admin           bool     `json:"admin,omitempty"`
 	GiftsIn         int64    `json:"gifts_in,omitempty"`
 	GiftsOut        int64    `json:"gifts_out,omitempty"`
@@ -271,6 +283,19 @@ type SetSetting struct {
 	Table string `json:"table,omitempty"`
 	Key   string `json:"key"`
 	Value string `json:"value"`
+}
+
+// Record is who holds a record-based cosmetic (most hands, biggest bet)
+// and their number.
+type Record struct {
+	Metric string `json:"metric"` // a cosmetics metric (rank_hands, rank_bet)
+	User   string `json:"user,omitempty"`
+	Value  int64  `json:"value"`
+}
+
+// Records answers CRecords.
+type Records struct {
+	Records []Record `json:"records"`
 }
 
 // Games a table can run.
@@ -435,9 +460,11 @@ type HouseStats struct {
 	DealerBlackjacks int   `json:"dealer_blackjacks"`
 	DealerBusts      int   `json:"dealer_busts"`
 	PlayerBusts      int   `json:"player_busts"`
-	BiggestWin       int64 `json:"biggest_win"`  // best single round for the house
-	BiggestLoss      int64 `json:"biggest_loss"` // worst single round for the house
-	Tier             int   `json:"tier"`         // dealer wealth tier, -3 (destitute) .. 5 (emperor)
+	PokerHands       int   `json:"poker_hands,omitempty"` // Hold'em hands Dale played
+	PokerNet         int64 `json:"poker_net,omitempty"`   // what he's won (+) or lost at poker
+	BiggestWin       int64 `json:"biggest_win"`           // best single round for the house
+	BiggestLoss      int64 `json:"biggest_loss"`          // worst single round for the house
+	Tier             int   `json:"tier"`                  // dealer wealth tier, -3 (destitute) .. 5 (emperor)
 }
 
 // HandView is a hand as seen by one client.
