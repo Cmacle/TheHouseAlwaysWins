@@ -1,9 +1,23 @@
 # The House Always Wins
 
-A small multiplayer pixel-art blackjack game. Players connect to an always-on
-headless server and play casino blackjack against a scripted dealer. Every
-account keeps a lifetime gain/loss that shows up on an in-game leaderboard, an
-optional web page and Discord.
+A small multiplayer pixel-art casino. Players connect to an always-on
+server, pick a table in the lobby and play blackjack or Texas Hold'em against
+Dale, the dealer with a mouth on him. Every account keeps a lifetime
+gain/loss that shows up on an in-game leaderboard, an optional web page and
+Discord.
+
+- **Lobby with several tables at once:** after logging in you pick a table.
+  Every table runs on its own, so a blackjack game, a Hold'em game and the
+  Beggars Table can all be going at the same time. Admins open, rename and
+  close tables and change each one's settings from the lobby.
+- **Texas Hold'em** (no-limit): buy in with chips from your bank, and Dale
+  sits in seat 0 and plays too, so you always have someone to play against.
+  His wins and losses count toward the house's totals. Poker has its own
+  voice lines, hats and titles.
+- **The Beggars Table:** broke and nobody to buy you back in? With fewer than
+  50 chips you can roll five dice as often as you like. Five sixes (1 in
+  1,000, a setting) pays 50 chips. It's a handout, so it doesn't count toward
+  lifetime winnings.
 
 - **Server** (`HouseServer.exe`, or a Linux binary) built to run 24/7.
   With nobody connected the table stops and the process just waits. On a
@@ -49,7 +63,7 @@ optional web page and Discord.
   client, on an optional web page and in Discord (a live-updating message,
   `/leaderboard`, `/stats`, `/table`, plus refill, big-win, unlock and new-crown
   announcements).
-- **Unlockables**: 26 hats, 11 avatar frames and 26 titles, earned by total
+- **Unlockables**: 34 hats, 11 avatar frames and 32 titles, earned by total
   money bet, chips held at once, lifetime up or down, streaks, blackjacks and
   more. Harder goals have flashier rewards. **Whoever has the most chips right
   now automatically wears The Crown**, the #1 lifetime earner gets the golden
@@ -116,7 +130,59 @@ opens and the screen slides up so you can see what you're typing. The
 replaceable art lives in
 `Android/data/com.cmacle.thehousealwayswins/files/assets` on the phone.
 
-## How a hand works
+## The lobby
+
+After you log in you see every open table: what it plays, its stakes, who's
+there. **JOIN** a blackjack table, **SIT** at a Hold'em table (you choose how
+much to bring) or **WATCH** it, or go begging. The **LOBBY** button at the top
+of any table brings you back; chips you had at a poker table go back into
+your bank.
+
+A fresh server has a blackjack table, a Hold'em table and the Beggars Table.
+Admins see a **NEW TABLE** bar at the bottom of the lobby (type a name and pick
+a game), an **S** button on each table for its settings, and an **X** to close
+it. Closing a table sends everyone at it back to the lobby with their chips.
+The list is saved in `tables.json` next to the accounts.
+
+Older clients still work: they skip the lobby and go straight to the first
+blackjack table, as before.
+
+## Texas Hold'em
+
+No-limit Hold'em with blinds (5/10 by default). When you sit down you buy in
+for 200 to 1,000 chips (the table's settings); those chips sit on the table
+until you leave, and **ADD CHIPS** tops you up between hands. If the server
+stops mid-hand, chips on the table go back to their owners when it starts.
+
+**Dale plays.** He sits in seat 0, dealing from his usual spot, and plays every
+hand, so one person can play heads-up against him. He's a decent player: he
+weighs his odds against the pot, bluffs now and then and sizes his bets. His
+chips come from the house and his results count in the house's totals. The
+table setting **dealer solo only** (off by default) makes him sit out whenever
+two or more people are playing.
+
+On your turn: **FOLD (F)**, **CHECK/CALL (C)** and **BET/RAISE (R)**. Pick the
+amount with MIN, 1/2 POT, POT and ALL IN, the **+**/**-** buttons or the
+mouse wheel. Win without a showdown and you can **SHOW CARDS** to rub it in.
+
+Table settings (S in the lobby, or `table set <id> <setting> <value>`):
+`seats`, `small_blind`, `big_blind`, `min_buy_in`, `max_buy_in`,
+`action_seconds`, `between_seconds`, `dealer_solo_only`, `dale_think_ms`.
+
+## The Beggars Table
+
+For anyone with fewer than 50 chips (counting chips at another table). Press
+**ROLL THE DICE** (or Space) and five dice tumble across the tray, bouncing off
+the walls and each other, for 3 to 5 seconds. Five sixes wins 50 chips. The
+odds are 1 in 1,000, so it's a grind, but it never runs out, and it's a way
+back to the tables when you're broke and nobody buys you back in.
+
+The prize is a handout: it isn't counted in your lifetime gain/loss or your
+winnings. Dale has plenty to say about it. Table settings: `odds` (1 in this
+many), `prize`, `max_balance` (you can roll with fewer chips than this),
+`roll_min_ms` and `roll_max_ms`.
+
+## How a hand of blackjack works
 
 1. **Betting**: seated players click chips and press **Deal** (or Enter). In
    `simultaneous` mode everyone bets at once and the hand starts as soon as all
@@ -178,6 +244,14 @@ Taking the crown is announced to everyone.
 | Laurel Wreath | Unique | Be #1 on the Lifetime leaderboard |
 | The Nightcap | Unique | Play more hands than anyone (all games) |
 | The Chip Tower | Unique | Make the biggest single bet (all games); kept until beaten |
+| Green Visor | Common | Play 25 hands of Hold'em |
+| Sailor Cap | Uncommon | Make a flush |
+| Fedora | Rare | Make a full house |
+| Jester Hat | Rare | Win 10 pots holding nothing (no showdown) |
+| Bowler Hat | Epic | Make four of a kind |
+| Shark Fin | Epic | Beat Dale at the showdown 25 times |
+| Pharaoh's Headdress | Legendary | Make a straight flush |
+| Sultan's Turban | Legendary | Make a royal flush |
 
 **Frames**
 
@@ -225,6 +299,12 @@ Taking the crown is announced to everyone.
 | The G.O.A.T. | Unique | Be #1 on the Lifetime leaderboard |
 | Part Of The Furniture | Unique | Play more hands than anyone (all games) |
 | Bet The Farm | Unique | Make the biggest single bet (all games); kept until beaten |
+| Grinder | Uncommon | Play 250 hands of Hold'em |
+| Pot Committed | Rare | Win a Hold'em pot of $5,000 |
+| Stone Cold Bluffer | Rare | Win 25 pots holding nothing (no showdown) |
+| Quad God | Epic | Make four of a kind 3 times |
+| Dale Slayer | Epic | Beat Dale at the showdown 100 times |
+| Royalty | Legendary | Make a royal flush |
 
 ## The dealer
 
@@ -521,7 +601,14 @@ backup | backups | restore <backup>
 admin <user> [on|off] | admins
 get [filter] | set <setting> <value>
 update [force] | version
+tables                      list the open tables
+table add <blackjack|holdem|beggar> <name>
+table remove <id> | table rename <id> <name>
+table get <id> | table set <id> <setting> <value>
 ```
+
+Admins can type any of these in chat as `/command`, at a table or in the
+lobby.
 
 ### Chip gifts
 

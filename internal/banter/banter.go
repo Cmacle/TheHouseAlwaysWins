@@ -109,6 +109,13 @@ const (
 	EvPkDaleLose  = "pk_dale_lose"  // {name} beat him with {item} for {amount}
 	EvPkDaleBluff = "pk_dale_bluff" // he stole the pot and shows the bluff
 
+	// the Beggars Table
+	EvBgHello   = "bg_hello"    // {name} came begging
+	EvBgRoll    = "bg_roll"     // {name} rolls again (now and then)
+	EvBgMany    = "bg_many"     // {name} has rolled {amount} times
+	EvBgWin     = "bg_win"      // {name} rolled five sixes and gets {amount}
+	EvBgTooRich = "bg_too_rich" // {name} has {amount} chips: too many to beg
+
 	// between hands, other ways to run his mouth
 	EvAlone    = "alone"    // only {name} at the table
 	EvHeadline = "headline" // fake breaking news (often about {name})

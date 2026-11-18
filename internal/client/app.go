@@ -61,6 +61,7 @@ const (
 	scrPanel // the server window
 	scrLobby // pick a table
 	scrPoker // a Hold'em table
+	scrBeggar
 )
 
 const (
@@ -217,6 +218,8 @@ type App struct {
 	game               string // the game at the table you're at ("" = lobby)
 	tableName          string
 	ps                 *proto.PokerState
+	bs                 *proto.BeggarState
+	roll               *diceRoll
 	pkRaise            int64 // the bet/raise amount being chosen
 	pkRaiseFor         int   // hand number the draft belongs to
 	buyTable           proto.TableInfo
@@ -312,6 +315,8 @@ func (a *App) Frame(in Input) *image.RGBA {
 		a.drawLobby()
 	case scrPoker:
 		a.drawPoker()
+	case scrBeggar:
+		a.drawBeggar()
 	}
 	a.blocked = false
 	a.handleTab()
@@ -481,7 +486,7 @@ func shortErr(err error) string {
 
 func (a *App) onDisconnect() {
 	a.net = nil
-	wasPlaying := a.screen == scrTable || a.screen == scrLobby || a.screen == scrPoker
+	wasPlaying := a.screen == scrTable || a.screen == scrLobby || a.screen == scrPoker || a.screen == scrBeggar
 	a.screen = scrLogin
 	a.overlay = ovNone
 	if !a.kicked {
@@ -528,7 +533,7 @@ func (a *App) handleMsg(m proto.Msg) {
 		}
 		a.Cfg.Save()
 		a.screen = scrLobby
-		a.st, a.ps, a.game, a.lobbyKnown = nil, nil, "", false
+		a.st, a.ps, a.bs, a.roll, a.game, a.lobbyKnown = nil, nil, nil, nil, "", false
 		a.tokenTry = false
 		a.fPass, a.fPass2, a.fServerPass = "", "", ""
 		a.focusID = ""
@@ -572,6 +577,16 @@ func (a *App) handleMsg(m proto.Msg) {
 		}
 	case proto.SLeft:
 		a.backToLobby()
+	case proto.SBeggar:
+		var bs proto.BeggarState
+		if decode(m, &bs) && a.game == proto.GameBeggar {
+			a.onBeggar(&bs)
+		}
+	case proto.SDice:
+		var r proto.DiceRoll
+		if decode(m, &r) && a.game == proto.GameBeggar {
+			a.onDice(r)
+		}
 	case proto.SPoker:
 		var ps proto.PokerState
 		if decode(m, &ps) && a.game == proto.GameHoldem {

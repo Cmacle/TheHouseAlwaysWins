@@ -82,6 +82,7 @@ func defaultTables(cfg *Config) []TableDef {
 	return []TableDef{
 		{ID: "blackjack", Name: name, Game: proto.GameBlackjack},
 		{ID: "holdem", Name: "Texas Hold'em", Game: proto.GameHoldem},
+		{ID: "beggars", Name: "Beggars Table", Game: proto.GameBeggar},
 	}
 }
 
@@ -150,9 +151,10 @@ func (l *Lobby) wait() { l.wg.Wait() }
 // launch runs a table's goroutine; caller holds l.mu.
 func (l *Lobby) launch(r *tableRec) {
 	l.wg.Add(1)
+	name, t, stop := "table "+r.def.ID, r.t, r.stop
 	go func() {
 		defer l.wg.Done()
-		guard(l.s.Log.Printf, "table "+r.def.ID, nil, func() { r.t.run(r.stop) })
+		guard(l.s.Log.Printf, name, nil, func() { t.run(stop) })
 	}()
 }
 
@@ -166,6 +168,8 @@ func (l *Lobby) setNotifier(n Notifier) {
 			t.g.notify = n
 		case *Holdem:
 			t.notify = n
+		case beggarTable:
+			t.Do(func() { t.notify = n })
 		}
 	}
 }
@@ -207,8 +211,16 @@ func (l *Lobby) open(d TableDef) (*tableRec, error) {
 		h := newHoldem(d.ID, d.Name, s.cfg(), hc, s.Store, s.notifier(), s.Log)
 		h.exec = s.Exec
 		t = h
+	case proto.GameBeggar:
+		bc, err := beggarConfig(d)
+		if err != nil {
+			return nil, err
+		}
+		b := newBeggar(d.ID, d.Name, s.cfg(), bc, s.Store, s.notifier(), s.Log)
+		b.exec = s.Exec
+		t = beggarTable{b}
 	default:
-		return nil, fmt.Errorf("unknown game %q (blackjack or holdem)", d.Game)
+		return nil, fmt.Errorf("unknown game %q (blackjack, holdem or beggar)", d.Game)
 	}
 	return &tableRec{def: d, t: t, stop: make(chan struct{})}, nil
 }
@@ -679,6 +691,8 @@ func (l *Lobby) AddTable(game, name string) (string, error) {
 		game = proto.GameBlackjack
 	case "poker", "texas", "holdem", "hold'em", "texas-holdem":
 		game = proto.GameHoldem
+	case "beggar", "beggars", "dice":
+		game = proto.GameBeggar
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -777,6 +791,11 @@ func (l *Lobby) TableSettings(id string) ([]proto.SettingInfo, error) {
 		for _, st := range settingsOfValue(reflect.ValueOf(&hc).Elem(), "", "") {
 			out = append(out, proto.SettingInfo{Key: st.Key, Label: LabelOf(st.Key), Kind: st.Kind, Value: st.Value})
 		}
+	case proto.GameBeggar:
+		bc, _ := beggarConfig(r.def)
+		for _, st := range settingsOfValue(reflect.ValueOf(&bc).Elem(), "", "") {
+			out = append(out, proto.SettingInfo{Key: st.Key, Label: LabelOf(st.Key), Kind: st.Kind, Value: st.Value})
+		}
 	}
 	return out, nil
 }
@@ -826,6 +845,13 @@ func (l *Lobby) SetTableSetting(id, key, value string) error {
 					kind = st.Kind
 				}
 			}
+		case proto.GameBeggar:
+			bc := defaultBeggar()
+			for _, st := range settingsOfValue(reflect.ValueOf(&bc).Elem(), "", "") {
+				if st.Key == key {
+					kind = st.Kind
+				}
+			}
 		}
 		if kind == "" {
 			return fmt.Errorf("there's no setting %q for this table", key)
@@ -844,6 +870,10 @@ func (l *Lobby) SetTableSetting(id, key, value string) error {
 		}
 	case proto.GameHoldem:
 		if _, err := holdemConfig(def); err != nil {
+			return err
+		}
+	case proto.GameBeggar:
+		if _, err := beggarConfig(def); err != nil {
 			return err
 		}
 	}

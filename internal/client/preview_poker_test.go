@@ -112,3 +112,36 @@ func TestPreviewPoker(t *testing.T) {
 	frame()
 	save(t, dir, "44_poker_watch.png", a.fb)
 }
+
+func TestPreviewBeggar(t *testing.T) {
+	a, frame, dir := pokerPreviewApp(t)
+	a.lobby.Tables = append(a.lobby.Tables, proto.TableInfo{ID: "beggars", Name: "Beggars Table", Game: proto.GameBeggar, Stakes: "Under 50 chips only", Seats: 99, Players: 1, Names: []string{"Deb"}})
+	a.screen = scrLobby
+	frame()
+	save(t, dir, "50_lobby_beggar.png", a.fb)
+	a.onJoined(proto.Joined{ID: "beggars", Game: proto.GameBeggar, Name: "Beggars Table"})
+	bs := &proto.BeggarState{Table: "beggars", Name: "Beggars Table", Odds: 1000, Prize: 50, MaxBalance: 50, Balance: 12, CanRoll: true,
+		Rolls: 241, TableRolls: 1302, Players: []string{"You_There", "Deb"}, Feed: []string{"Deb rolled FIVE SIXES and won 50!"},
+		Settings: proto.Settings{TableChat: true, DealerTrashTalk: true}, HouseNet: 1520, HouseTier: 1, ServerTime: time.Now().UnixMilli(),
+		DealerSay: "Again, You_There? Persistence. Or a problem.", DealerSayID: 4, DealerSayUntil: time.Now().Add(5 * time.Second).UnixMilli()}
+	a.onBeggar(bs)
+	frame()
+	save(t, dir, "51_beggar_idle.png", a.fb)
+	roll := proto.DiceRoll{ID: 1, Faces: []int{6, 3, 6, 1, 5}, MS: 4000, Seed: 42}
+	for i, at := range []float64{0.25, 0.9, 2.0, 4.2} {
+		a.onDice(roll)
+		a.roll.start = time.Now().Add(-time.Duration(at * float64(time.Second)))
+		frame()
+		save(t, dir, fmt.Sprintf("52_beggar_roll_%d.png", i), a.fb)
+	}
+	win := proto.DiceRoll{ID: 2, Faces: []int{6, 6, 6, 6, 6}, Win: true, MS: 3500, Seed: 7}
+	a.onDice(win)
+	a.roll.start = time.Now().Add(-5 * time.Second)
+	frame()
+	save(t, dir, "53_beggar_win.png", a.fb)
+	bs.CanRoll, bs.Balance, bs.Reason = false, 80, "This table is for players with fewer than 50 chips. You have 80."
+	a.roll = nil
+	a.onBeggar(bs)
+	frame()
+	save(t, dir, "54_beggar_rich.png", a.fb)
+}

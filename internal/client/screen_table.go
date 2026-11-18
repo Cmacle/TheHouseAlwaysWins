@@ -167,6 +167,8 @@ func (a *App) onEvent(e proto.Event) {
 		a.sound("bust")
 	case "reveal":
 		a.onRevealEvent(e)
+	case "beggar_win":
+		a.toast(e.Text, a.A.C("gold"), 5, 2)
 	case "gift":
 		a.sound("refill")
 		a.toast(e.Text, a.A.C("win"), 4, 1)
@@ -676,6 +678,9 @@ func (a *App) drawTopBar(st *proto.TableState) {
 	}
 	a.text(6, ty, fitText(a.A.Font, name, 200), a.A.C("gold"), alignLeft)
 	info := fmt.Sprintf("Seats %d/%d", seated, len(st.Seats))
+	if len(st.Seats) == 0 {
+		info = st.TableName
+	}
 	if st.HandNumber > 0 {
 		info += fmt.Sprintf("  -  Hand #%d", st.HandNumber)
 	}

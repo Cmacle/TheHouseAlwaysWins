@@ -94,6 +94,11 @@ type Account struct {
 	PokerBeatDale   int   `json:"poker_beat_dale,omitempty"`
 	PokerBiggestPot int64 `json:"poker_biggest_pot,omitempty"`
 	BiggestBet      int64 `json:"biggest_bet,omitempty"` // most riding on one hand, any game
+	// The Beggars Table. What it pays out is a handout, like a refill: it
+	// isn't counted as winnings.
+	BeggarRolls int64 `json:"beggar_rolls,omitempty"`
+	BeggarWins  int64 `json:"beggar_wins,omitempty"`
+	BeggarTotal int64 `json:"beggar_total,omitempty"`
 
 	Unlocked []string `json:"unlocked,omitempty"`
 	Hat      string   `json:"hat,omitempty"`
@@ -170,6 +175,7 @@ func (s *Store) profileOf(a *Account) proto.Profile {
 		DoublesWon: a.DoublesWon, Splits: a.Splits, RefillCount: a.RefillCount,
 		Unlocked: append([]string(nil), a.Unlocked...), Hat: hat, Frame: frame, Title: title,
 		EquippedHat: a.Hat, RankRich: st.RankRich, RankNet: st.RankNet, RankHands: st.RankHands, RankBet: st.RankBet, BiggestBet: a.BiggestBet,
+		BeggarRolls: a.BeggarRolls, BeggarWins: a.BeggarWins,
 		PokerHands: a.PokerHands, PokerFlushes: a.PokerFlushes, PokerFullHouses: a.PokerFullHouses,
 		PokerQuads: a.PokerQuads, PokerStrFlushes: a.PokerStrFlushes, PokerRoyals: a.PokerRoyals,
 		PokerBluffs: a.PokerBluffs, PokerBeatDale: a.PokerBeatDale, PokerBiggestPot: a.PokerBiggestPot,
@@ -1288,4 +1294,44 @@ func (s *Store) SetTableStack(username string, stack int64) {
 		a.TableStack = stack
 		s.dirty = true
 	}
+}
+
+// BeggarRoll counts a roll at the Beggars Table and returns the account's
+// total.
+func (s *Store) BeggarRoll(username string) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.accounts[strings.ToLower(username)]
+	if !ok {
+		return 0
+	}
+	a.BeggarRolls++
+	s.dirty = true
+	return a.BeggarRolls
+}
+
+// Handout pays a Beggars Table win. It adds chips without counting as
+// winnings: lifetime net, won and biggest win don't change.
+func (s *Store) Handout(username string, amount int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.accounts[strings.ToLower(username)]
+	if !ok || amount <= 0 {
+		return false
+	}
+	a.Balance += amount
+	a.BeggarWins++
+	a.BeggarTotal += amount
+	s.touched(a)
+	return true
+}
+
+// Chips is everything an account has: the bank plus chips at a table.
+func (s *Store) Chips(username string) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.accounts[strings.ToLower(username)]; ok {
+		return a.Balance + a.TableStack
+	}
+	return 0
 }

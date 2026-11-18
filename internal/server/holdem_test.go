@@ -3,11 +3,13 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
 )
@@ -290,12 +292,12 @@ func TestLobbyTableCommands(t *testing.T) {
 	stop := make(chan struct{})
 	defer close(stop)
 	s.Lobby.start(stop)
-	if n := len(s.Lobby.Tables()); n != 2 {
+	if n := len(s.Lobby.Tables()); n != 3 {
 		t.Fatalf("%d default tables", n)
 	}
 	var out lineBuffer
 	s.Exec("table add holdem High Rollers", &out)
-	if len(s.Lobby.Tables()) != 3 {
+	if len(s.Lobby.Tables()) != 4 {
 		t.Fatalf("not added: %v", out.lines())
 	}
 	out = lineBuffer{}
@@ -323,14 +325,72 @@ func TestLobbyTableCommands(t *testing.T) {
 	}
 	out = lineBuffer{}
 	s.Exec("table remove high-rollers", &out)
-	if len(s.Lobby.Tables()) != 2 {
+	if len(s.Lobby.Tables()) != 3 {
 		t.Fatalf("not removed: %v", out.lines())
 	}
 	// the list survives a restart
 	s.Exec("table add blackjack Penny Slots", &out)
 	l2 := newLobby(s)
 	l2.build()
-	if len(l2.recs) != 3 {
+	if len(l2.recs) != 4 {
 		t.Fatalf("tables.json has %d tables", len(l2.recs))
+	}
+}
+
+func TestBeggarTable(t *testing.T) {
+	dir := t.TempDir()
+	cfg := DefaultConfig()
+	cfg.DataDir = dir
+	s, err := New(cfg, dir, log.New(io.Discard, "", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	defer close(stop)
+	s.Lobby.start(stop)
+	tb := s.Lobby.find("beggars")
+	if tb == nil {
+		t.Fatal("no Beggars Table by default")
+	}
+	b := tb.t.(beggarTable)
+	b.DoWait(func() { b.instant = true; b.bc.Odds = 1 })
+	if _, _, err := s.Store.Register("poorguy", "pass1234", nil, 10, ""); err != nil {
+		t.Fatal(err)
+	}
+	c := testConn()
+	c.user = "poorguy"
+	s.Lobby.join(c, "beggars", 0)
+	before, _ := s.Store.Profile("poorguy")
+	s.Lobby.route(c, mkMsg(proto.CDice, nil))
+	var after proto.Profile
+	b.DoWait(func() { after, _ = s.Store.Profile("poorguy") })
+	if after.Balance != before.Balance+50 || after.Net != before.Net || after.BeggarWins != 1 || after.BeggarRolls != 1 {
+		t.Fatalf("before %+v\nafter %+v", before, after)
+	}
+	// 60 chips now: too many to roll
+	s.Lobby.route(c, mkMsg(proto.CDice, nil))
+	b.DoWait(func() {})
+	if p, _ := s.Store.Profile("poorguy"); p.BeggarRolls != 1 {
+		t.Fatalf("rolled with %d chips", p.Balance)
+	}
+	gotDice, gotErr := false, false
+	for len(c.out) > 0 {
+		var m proto.Msg
+		if json.Unmarshal(<-c.out, &m) == nil {
+			gotDice = gotDice || m.Type == proto.SDice
+			gotErr = gotErr || m.Type == proto.SError
+		}
+	}
+	if !gotDice || !gotErr {
+		t.Fatalf("roll sent %v, refusal sent %v", gotDice, gotErr)
+	}
+	// losing rolls at real odds land later and pay nothing
+	b.DoWait(func() { b.instant = false; b.bc.Odds = 1000000; b.bc.RollMinMS, b.bc.RollMaxMS = 500, 500 })
+	s.Store.AdminAdjust("poorguy", -30)
+	s.Lobby.route(c, mkMsg(proto.CDice, nil))
+	time.Sleep(700 * time.Millisecond)
+	b.DoWait(func() {})
+	if p, _ := s.Store.Profile("poorguy"); p.Balance != 30 || p.BeggarRolls != 2 {
+		t.Fatalf("after a losing roll: %d chips, %d rolls", p.Balance, p.BeggarRolls)
 	}
 }

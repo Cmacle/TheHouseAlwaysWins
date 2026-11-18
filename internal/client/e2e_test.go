@@ -177,7 +177,7 @@ func TestPokerEndToEnd(t *testing.T) {
 	}
 	a := newTestApp(t, s.Addr().String(), "alice")
 	apps := []*App{a}
-	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 2 }, "lobby")
+	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 3 }, "lobby")
 	var holdem proto.TableInfo
 	for _, ti := range a.lobby.Tables {
 		if ti.Game == proto.GameHoldem {
@@ -215,4 +215,29 @@ func TestPokerEndToEnd(t *testing.T) {
 	if a.profile.PokerHands < 3 {
 		t.Fatalf("poker hands %d", a.profile.PokerHands)
 	}
+}
+
+func TestBeggarEndToEnd(t *testing.T) {
+	s := startServerS(t, 39520, func(c *server.Config) { c.RefillAmount = 20 })
+	var out strings.Builder
+	for _, kv := range []string{"odds 1", "roll_min_ms 600", "roll_max_ms 600"} {
+		s.Exec("table set beggars "+kv, &out)
+	}
+	a := newTestApp(t, s.Addr().String(), "pauper")
+	apps := []*App{a}
+	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 3 }, "lobby")
+	a.joinTable(a.lobby.Tables[2])
+	pump(t, apps, nil, func() bool { return a.screen == scrBeggar && a.bs != nil && a.bs.CanRoll }, "at the Beggars Table")
+	pump(t, apps, map[*App]Input{a: {Keys: []Key{KeySpace}}}, func() bool { return true }, "")
+	pump(t, apps, nil, func() bool { return a.roll != nil }, "dice thrown")
+	pump(t, apps, nil, func() bool { return a.roll.done && a.profile.Balance == 70 }, "five sixes paid")
+	if a.profile.Net != 0 || a.profile.BeggarWins != 1 {
+		t.Fatalf("net %d, wins %d", a.profile.Net, a.profile.BeggarWins)
+	}
+	for i, d := range a.roll.dice {
+		if d.face != 6 {
+			t.Fatalf("die %d shows %d", i, d.face)
+		}
+	}
+	pump(t, apps, nil, func() bool { return a.bs != nil && !a.bs.CanRoll }, "too rich to beg")
 }
