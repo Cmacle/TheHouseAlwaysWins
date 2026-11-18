@@ -39,9 +39,9 @@ func releaseServer(t *testing.T, files map[string]string) *httptest.Server {
 		w.Write([]byte(b))
 	}))
 	t.Cleanup(srv.Close)
-	old := ReleaseBase
-	ReleaseBase = srv.URL + "/v%s/"
-	t.Cleanup(func() { ReleaseBase = old })
+	old, oldAPI := ReleaseBase, ReleaseAPI
+	ReleaseBase, ReleaseAPI = srv.URL+"/v%s/", srv.URL+"/api/%s"
+	t.Cleanup(func() { ReleaseBase, ReleaseAPI = old, oldAPI })
 	return srv
 }
 

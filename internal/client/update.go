@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -24,6 +25,10 @@ import (
 
 // ReleaseBase is where release files are downloaded from; %s is the version.
 var ReleaseBase = "https://github.com/Cmacle/TheHouseAlwaysWins/releases/download/v%s/"
+
+// ReleaseAPI is the fallback when the direct links don't work: the GitHub
+// API's description of the release, which links every file.
+var ReleaseAPI = "https://api.github.com/repos/Cmacle/TheHouseAlwaysWins/releases/tags/v%s"
 
 // Updater is a platform that can install a new version of the client.
 type Updater interface {
@@ -156,12 +161,15 @@ func downloadRelease(version, asset, dir string, cancel <-chan struct{}, progres
 		base = strings.TrimRight(t, "/") + "/"
 	}
 	hc := &http.Client{Timeout: 15 * time.Minute}
-	get := func(url string) (*http.Response, error) {
+	fetch := func(url, accept string) (*http.Response, error) {
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			return nil, err
 		}
 		req.Header.Set("User-Agent", "TheHouseAlwaysWins/"+Version)
+		if accept != "" {
+			req.Header.Set("Accept", accept)
+		}
 		resp, err := hc.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("couldn't reach GitHub: %v", err)
@@ -171,6 +179,37 @@ func downloadRelease(version, asset, dir string, cancel <-chan struct{}, progres
 			return nil, fmt.Errorf("the v%s download isn't available yet (HTTP %d)", version, resp.StatusCode)
 		}
 		return resp, nil
+	}
+	var apiAssets map[string]string // file name -> API download link
+	get := func(url string) (*http.Response, error) {
+		resp, err := fetch(url, "")
+		if err == nil || os.Getenv("HOUSE_TEST_RELEASES") != "" {
+			return resp, err
+		}
+		// the direct link didn't work: ask the API where the file is
+		if apiAssets == nil {
+			apiAssets = map[string]string{}
+			if r, aerr := fetch(fmt.Sprintf(ReleaseAPI, version), "application/vnd.github+json"); aerr == nil {
+				var rel struct {
+					Assets []struct {
+						Name string `json:"name"`
+						URL  string `json:"url"`
+					} `json:"assets"`
+				}
+				json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&rel)
+				r.Body.Close()
+				for _, a := range rel.Assets {
+					apiAssets[a.Name] = a.URL
+				}
+			}
+		}
+		name := url[strings.LastIndex(url, "/")+1:]
+		if link, ok := apiAssets[name]; ok && strings.HasPrefix(link, "https://api.github.com/") {
+			if resp, aerr := fetch(link, "application/octet-stream"); aerr == nil {
+				return resp, nil
+			}
+		}
+		return nil, err
 	}
 	// the checksum list first
 	resp, err := get(base + "SHA256SUMS.txt")
