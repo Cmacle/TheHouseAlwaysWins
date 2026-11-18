@@ -3,6 +3,7 @@
 package client
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"strings"
@@ -16,6 +17,10 @@ import (
 func startServer(t *testing.T) string { return startServerWith(t, 39517, nil) }
 
 func startServerWith(t *testing.T, port int, mut func(*server.Config)) string {
+	return startServerS(t, port, mut).Addr().String()
+}
+
+func startServerS(t *testing.T, port int, mut func(*server.Config)) *server.Server {
 	cfg := server.DefaultConfig()
 	cfg.ListenAddress = "127.0.0.1"
 	cfg.Port = port
@@ -33,10 +38,10 @@ func startServerWith(t *testing.T, port int, mut func(*server.Config)) string {
 		t.Fatal(err)
 	}
 	stop := make(chan struct{})
-	go s.Game.Run(stop)
+	s.RunTables(stop)
 	go s.Serve()
 	t.Cleanup(func() { s.Close(); close(stop) })
-	return s.Addr().String()
+	return s
 }
 
 func pump(t *testing.T, apps []*App, inputs map[*App]Input, until func() bool, what string) {
@@ -69,11 +74,27 @@ func newTestApp(t *testing.T, addr, user string) *App {
 	return a
 }
 
+// joinFirst waits for the lobby and joins its first table (blackjack).
+func joinFirst(t *testing.T, apps ...*App) {
+	pump(t, apps, nil, func() bool {
+		for _, a := range apps {
+			if a.screen != scrLobby || !a.lobbyKnown {
+				return false
+			}
+		}
+		return true
+	}, "lobby")
+	for _, a := range apps {
+		a.joinTable(a.lobby.Tables[0])
+	}
+}
+
 func TestEndToEnd(t *testing.T) {
 	addr := startServer(t)
 	a := newTestApp(t, addr, "alice")
 	b := newTestApp(t, addr, "bob_99")
 	apps := []*App{a, b}
+	joinFirst(t, a, b)
 	pump(t, apps, nil, func() bool { return a.screen == scrTable && b.screen == scrTable && a.st != nil && b.st != nil }, "both at table")
 	pump(t, apps, nil, func() bool { return a.st.CanBet && b.st.CanBet }, "betting")
 
@@ -118,6 +139,7 @@ func TestEndToEnd(t *testing.T) {
 	a.logout()
 	a.fPass = "pass1234"
 	a.doLogin()
+	joinFirst(t, a)
 	pump(t, apps, nil, func() bool { return a.screen == scrTable && a.st != nil }, "re-login")
 	// next round starts for both
 	pump(t, apps, nil, func() bool { return a.st.CanBet }, "second betting round")
@@ -144,5 +166,53 @@ func TestServerPassword(t *testing.T) {
 		t.Fatalf("status %q", wrong.status)
 	}
 	right := try("rightpass", "hunter2")
-	pump(t, []*App{right}, nil, func() bool { return right.screen == scrTable }, "account created")
+	pump(t, []*App{right}, nil, func() bool { return right.screen == scrLobby && right.lobbyKnown }, "account created")
+}
+
+func TestPokerEndToEnd(t *testing.T) {
+	s := startServerS(t, 39519, nil)
+	var out strings.Builder
+	for _, kv := range []string{"between_seconds 1", "dale_think_ms 50", "action_seconds 5"} {
+		s.Exec("table set holdem "+kv, &out)
+	}
+	a := newTestApp(t, s.Addr().String(), "alice")
+	apps := []*App{a}
+	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 2 }, "lobby")
+	var holdem proto.TableInfo
+	for _, ti := range a.lobby.Tables {
+		if ti.Game == proto.GameHoldem {
+			holdem = ti
+		}
+	}
+	a.openBuyIn(holdem, false)
+	if a.buyAmt != "1000" {
+		t.Fatalf("buy-in starts at %q", a.buyAmt)
+	}
+	a.buyAmt = "500"
+	pump(t, apps, map[*App]Input{a: {Keys: []Key{KeyEnter}}}, func() bool { return true }, "")
+	pump(t, apps, nil, func() bool { return a.screen == scrPoker && a.pokerMe() != nil }, "seated at poker")
+	if me := a.pokerMe(); me.Stack != 500 || a.ps.Balance != 500 {
+		t.Fatalf("stack %d balance %d", me.Stack, a.ps.Balance)
+	}
+	// check or call every time it's our turn, for a few hands
+	play := func(until func() bool, what string) {
+		pump(t, apps, nil, func() bool {
+			if len(a.ps.Actions) > 0 {
+				a.Frame(Input{MX: -1, MY: -1, Chars: []rune{'c'}})
+			}
+			return until()
+		}, what)
+	}
+	for h := 2; h <= 3; h++ {
+		play(func() bool { return a.ps.HandNumber >= h }, fmt.Sprintf("hand %d", h))
+	}
+	play(func() bool { return a.ps.Phase == "showdown" }, "third showdown")
+	t.Logf("after %d hands: stack %d, dale %d, house %d", a.ps.HandNumber, a.pokerMe().Stack, a.ps.Seats[0].Stack, a.ps.HouseNet)
+	stack, bank := a.pokerMe().Stack, a.ps.Balance
+	a.leaveToLobby()
+	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.ps == nil }, "back in the lobby")
+	pump(t, apps, nil, func() bool { return a.profile.Balance == stack+bank }, "chips back in the bank")
+	if a.profile.PokerHands < 3 {
+		t.Fatalf("poker hands %d", a.profile.PokerHands)
+	}
 }

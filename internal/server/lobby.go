@@ -384,6 +384,13 @@ func (l *Lobby) route(c *conn, m proto.Msg) {
 	l.mu.Unlock()
 	if r == nil {
 		if m.Type == proto.CChat {
+			var ch proto.Chat
+			_ = json.Unmarshal(m.Data, &ch)
+			text := strings.TrimSpace(ch.Text)
+			if strings.HasPrefix(text, "/") && l.s.Store.IsAdmin(c.user) {
+				runAdminCommand(l.s.Log, l.s.Exec, c, c.user, text)
+				return
+			}
 			c.send(proto.SError, proto.ErrorMsg{Message: "Join a table to chat."})
 		}
 		return

@@ -264,3 +264,7 @@ func (s *Server) notifier() Notifier {
 	}
 	return s.notify
 }
+
+// RunTables starts every table's loop (for tests and embedders that call
+// Serve themselves); they stop when stop closes.
+func (s *Server) RunTables(stop <-chan struct{}) { s.Lobby.start(stop) }

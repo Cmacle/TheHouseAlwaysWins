@@ -59,6 +59,8 @@ const (
 	scrLogin = iota
 	scrTable
 	scrPanel // the server window
+	scrLobby // pick a table
+	scrPoker // a Hold'em table
 )
 
 const (
@@ -76,6 +78,7 @@ const (
 	ovDealerLog
 	ovAdmin
 	ovGift
+	ovBuyIn
 )
 
 type dialRes struct {
@@ -209,6 +212,19 @@ type App struct {
 	records            []proto.Record      // who holds the record cosmetics
 	recordsAt          time.Time
 	pnl                PanelBackend // the server window's server
+	lobby              proto.Lobby
+	lobbyKnown         bool   // the server has a lobby (old ones send you straight to a table)
+	game               string // the game at the table you're at ("" = lobby)
+	tableName          string
+	ps                 *proto.PokerState
+	pkRaise            int64 // the bet/raise amount being chosen
+	pkRaiseFor         int   // hand number the draft belongs to
+	buyTable           proto.TableInfo
+	buyAmt             string
+	buyRebuy           bool // the buy-in dialog adds chips to your stack instead
+	lobbyScroll        int
+	settingsTable      string // the admin editor is showing this table's settings
+	newTable           string // admin: name for a new table
 	panelLogNext       int
 }
 
@@ -292,6 +308,10 @@ func (a *App) Frame(in Input) *image.RGBA {
 		a.drawTable()
 	case scrPanel:
 		a.drawPanel()
+	case scrLobby:
+		a.drawLobby()
+	case scrPoker:
+		a.drawPoker()
 	}
 	a.blocked = false
 	a.handleTab()
@@ -461,7 +481,7 @@ func shortErr(err error) string {
 
 func (a *App) onDisconnect() {
 	a.net = nil
-	wasPlaying := a.screen == scrTable
+	wasPlaying := a.screen == scrTable || a.screen == scrLobby || a.screen == scrPoker
 	a.screen = scrLogin
 	a.overlay = ovNone
 	if !a.kicked {
@@ -507,8 +527,8 @@ func (a *App) handleMsg(m proto.Msg) {
 			a.Cfg.Token = ""
 		}
 		a.Cfg.Save()
-		a.screen = scrTable
-		a.st = nil
+		a.screen = scrLobby
+		a.st, a.ps, a.game, a.lobbyKnown = nil, nil, "", false
 		a.tokenTry = false
 		a.fPass, a.fPass2, a.fServerPass = "", "", ""
 		a.focusID = ""
@@ -531,8 +551,31 @@ func (a *App) handleMsg(m proto.Msg) {
 		a.sound("error")
 	case proto.SState:
 		var st proto.TableState
-		if decode(m, &st) {
+		if decode(m, &st) && (!a.lobbyKnown || a.game == proto.GameBlackjack) {
+			if !a.lobbyKnown {
+				a.game = proto.GameBlackjack // an older server: straight to its table
+			}
 			a.onState(&st)
+			if a.screen == scrLobby {
+				a.screen = scrTable
+			}
+		}
+	case proto.SLobby:
+		var l proto.Lobby
+		if decode(m, &l) {
+			a.lobby, a.lobbyKnown = l, true
+		}
+	case proto.SJoined:
+		var j proto.Joined
+		if decode(m, &j) {
+			a.onJoined(j)
+		}
+	case proto.SLeft:
+		a.backToLobby()
+	case proto.SPoker:
+		var ps proto.PokerState
+		if decode(m, &ps) && a.game == proto.GameHoldem {
+			a.onPoker(&ps)
 		}
 	case proto.SEvent:
 		var e proto.Event

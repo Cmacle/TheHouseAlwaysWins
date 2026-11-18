@@ -86,6 +86,18 @@ func (a *App) onState(st *proto.TableState) {
 	})
 	a.cardSeen, a.cardHidden, a.cardVal = seen, hidden, vals
 	a.onRevealState(st)
+	a.onDealerLines(st)
+	if st.Phase == proto.PhaseBetting && (prev == nil || prev.Phase != proto.PhaseBetting) {
+		a.betDraft = a.lastBet
+		if me := a.mySeat(st); me != nil && a.betDraft > me.Balance {
+			a.betDraft = 0
+		}
+	}
+	a.st = st
+}
+
+// onDealerLines picks up what the dealer is saying from a table update.
+func (a *App) onDealerLines(st *proto.TableState) {
 	if len(st.DealerLog) > 0 {
 		a.sayLog = nil
 		for _, l := range st.DealerLog {
@@ -111,13 +123,6 @@ func (a *App) onState(st *proto.TableState) {
 		a.sayEnd = t
 		a.sayBlipped = 0
 	}
-	if st.Phase == proto.PhaseBetting && (prev == nil || prev.Phase != proto.PhaseBetting) {
-		a.betDraft = a.lastBet
-		if me := a.mySeat(st); me != nil && a.betDraft > me.Balance {
-			a.betDraft = 0
-		}
-	}
-	a.st = st
 }
 
 func (a *App) mySeat(st *proto.TableState) *proto.SeatView {
@@ -132,6 +137,8 @@ func (a *App) onEvent(e proto.Event) {
 	switch e.Kind {
 	case "card":
 		a.sound("card")
+	case "deal":
+		a.sound("shuffle")
 	case "chip":
 		a.sound("chip")
 	case "shuffle":
@@ -581,6 +588,14 @@ func (a *App) drawTable() {
 	a.drawChatBar(st)
 	a.blocked = updating
 
+	a.drawOverlays()
+	if a.overlay == ovNone && a.profileHatOnTop() {
+		a.drawHat(a.profile.Hat, 10, L.hudTop+12)
+	}
+}
+
+// drawOverlays draws the open window, if any.
+func (a *App) drawOverlays() {
 	switch a.overlay {
 	case ovLeaderboard:
 		a.drawLeaderboard()
@@ -598,9 +613,8 @@ func (a *App) drawTable() {
 		a.drawAdmin()
 	case ovGift:
 		a.drawGift()
-	}
-	if a.overlay == ovNone && a.profileHatOnTop() {
-		a.drawHat(a.profile.Hat, 10, L.hudTop+12)
+	case ovBuyIn:
+		a.drawBuyIn()
 	}
 }
 
@@ -683,6 +697,9 @@ func (a *App) drawTopBar(st *proto.TableState) {
 		{"help", "?", '?', func() { a.overlay = ovHelp }},
 		{"profile", "PROFILE", 0, func() { a.overlay = ovProfile }},
 		{"lb", "LEADERBOARD", 'l', a.openLeaderboard},
+	}
+	if a.lobbyKnown {
+		btns = append(btns, tb{"lobby", "LOBBY", 0, a.leaveToLobby})
 	}
 
 	for _, b := range btns {

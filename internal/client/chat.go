@@ -74,6 +74,7 @@ func (a *App) drawAdminButton() {
 		return
 	}
 	if a.button("admin_btn", a.adminButtonRect(), "ADMIN", btn{enabled: a.overlay == ovNone}) {
+		a.settingsTable = ""
 		a.openAdmin()
 	}
 }
@@ -214,17 +215,6 @@ func (a *App) drawChatBubbles(st *proto.TableState) {
 			continue
 		}
 		x, cy := a.seatPos(seat, n)
-		lines := a.wrap(b.text, 110)
-		if len(lines) > 3 {
-			lines = lines[:3]
-			lines[2] = fitText(a.A.Font, lines[2]+"...", 110)
-		}
-		w := 0
-		for _, l := range lines {
-			w = max(w, a.A.Font.Width(l))
-		}
-		w += 8
-		h := len(lines)*9 + 5
 		// above the cards (which sit over the hat), or the hat if no cards
 		ar := image.Rect(x-16, cy-16, x+16, cy+16)
 		cardTop := ar.Min.Y - 4 - a.A.Theme.HatHeight + a.A.Theme.HatOverlap - a.A.Theme.CardHeight + 6
@@ -232,30 +222,46 @@ func (a *App) drawChatBubbles(st *proto.TableState) {
 		if len(st.Seats[seat].Hands) == 0 {
 			bottom = ar.Min.Y - a.A.Theme.HatHeight + a.A.Theme.HatOverlap - 2
 		}
-		r := image.Rect(x-w/2, bottom-h, x-w/2+w, bottom)
-		if r.Min.X < 2 {
-			r = r.Add(image.Pt(2-r.Min.X, 0))
-		}
-		if r.Max.X > ScreenW-2 {
-			r = r.Sub(image.Pt(r.Max.X-ScreenW+2, 0))
-		}
-		if r.Min.Y < 2 {
-			r = r.Add(image.Pt(0, 2-r.Min.Y))
-		}
-		bg, fg := color.RGBA{250, 248, 236, 255}, color.RGBA{30, 30, 30, 255}
-		if b.admin {
-			bg = color.RGBA{255, 232, 160, 255} // admins get a gold bubble
-		}
-		fillRect(a.fb, r.Add(image.Pt(1, 1)), color.RGBA{0, 0, 0, 80})
-		fillRect(a.fb, r, bg)
-		strokeRect(a.fb, r, color.RGBA{0, 0, 0, 255})
-		// tail down toward the portrait
-		tx := min(max(x, r.Min.X+4), r.Max.X-5)
-		for i := 0; i < 3; i++ {
-			fillRect(a.fb, image.Rect(tx-2+i, r.Max.Y+i, tx+3-i, r.Max.Y+i+1), bg)
-		}
-		for i, l := range lines {
-			a.A.Font.Draw(a.fb, r.Min.X+4, r.Min.Y+3+i*9, l, fg)
-		}
+		a.chatBubbleAt(b, x, bottom)
+	}
+}
+
+// chatBubbleAt draws a chat bubble with its tail at (x, bottom).
+func (a *App) chatBubbleAt(b chatBubble, x, bottom int) {
+	lines := a.wrap(b.text, 110)
+	if len(lines) > 3 {
+		lines = lines[:3]
+		lines[2] = fitText(a.A.Font, lines[2]+"...", 110)
+	}
+	w := 0
+	for _, l := range lines {
+		w = max(w, a.A.Font.Width(l))
+	}
+	w += 8
+	h := len(lines)*9 + 5
+	r := image.Rect(x-w/2, bottom-h, x-w/2+w, bottom)
+	if r.Min.X < 2 {
+		r = r.Add(image.Pt(2-r.Min.X, 0))
+	}
+	if r.Max.X > ScreenW-2 {
+		r = r.Sub(image.Pt(r.Max.X-ScreenW+2, 0))
+	}
+	if r.Min.Y < 2 {
+		r = r.Add(image.Pt(0, 2-r.Min.Y))
+	}
+	bg, fg := color.RGBA{250, 248, 236, 255}, color.RGBA{30, 30, 30, 255}
+	if b.admin {
+		bg = color.RGBA{255, 232, 160, 255} // admins get a gold bubble
+	}
+	fillRect(a.fb, r.Add(image.Pt(1, 1)), color.RGBA{0, 0, 0, 80})
+	fillRect(a.fb, r, bg)
+	strokeRect(a.fb, r, color.RGBA{0, 0, 0, 255})
+	// tail down toward the portrait
+	tx := min(max(x, r.Min.X+4), r.Max.X-5)
+	for i := 0; i < 3; i++ {
+		fillRect(a.fb, image.Rect(tx-2+i, r.Max.Y+i, tx+3-i, r.Max.Y+i+1), bg)
+	}
+	for i, l := range lines {
+		a.A.Font.Draw(a.fb, r.Min.X+4, r.Min.Y+3+i*9, l, fg)
 	}
 }
