@@ -9,8 +9,8 @@ import (
 	"math"
 )
 
-// Each player's chips sit in a little pile beside their portrait: taller
-// the more they have, coloured by what it's made of, with the amount on top.
+// Each player's chips sit in a little heap beside their portrait: bigger the
+// more they have, coloured by what it's made of, with the amount on top.
 
 const pileChip = 12 // chip size in the pile
 
@@ -44,7 +44,7 @@ func (a *App) pileChips(balance int64) []int {
 	}
 	vals := a.A.Theme.ChipValues
 	n := 1 + int(math.Round(2.2*math.Log10(float64(balance)/float64(max(1, vals[0]))+1)))
-	n = min(max(n, 1), 10)
+	n = min(max(n, 1), 6)
 	var all []int
 	left := balance
 	for i := len(vals) - 1; i >= 0 && len(all) < 400; i-- {
@@ -56,6 +56,7 @@ func (a *App) pileChips(balance int64) []int {
 	if len(all) == 0 {
 		return []int{0} // less than the smallest chip: one lonely chip
 	}
+	n = min(n, len(all)) // never more chips than it really is
 	out := make([]int, n)
 	for k := range out {
 		out[k] = all[k*len(all)/n]
@@ -75,28 +76,34 @@ func (a *App) smallChip(i int) *image.RGBA {
 	return img
 }
 
-// drawChipPile draws a seat's pile with its bottom at (x, bottom), x being
-// the pile's left edge. The amount on top leans away from the portrait:
-// rightwards, or leftwards when the pile is left of it.
+// drawChipPile draws a seat's pile: top-down chips heaped in a little
+// pyramid that fills out as the stack grows, with the amount on top. Its
+// bottom is at bottom; x is the side next to the portrait, and the heap and
+// its amount lean away from the portrait (leftwards when the pile is left of
+// it, at the right edge of the screen).
 func (a *App) drawChipPile(x, bottom int, balance int64, leftOfPortrait bool) {
 	chips := a.pileChips(balance)
 	if len(chips) == 0 {
 		return
 	}
-	// shadow on the felt
-	fillRect(a.fb, image.Rect(x+1, bottom-2, x+pileChip, bottom+1), color.RGBA{0, 0, 0, 70})
-	step := 3
-	for k, c := range chips {
-		y := bottom - pileChip - k*step
-		blit(a.fb, a.smallChip(c), x, y)
+	// bottom row of three, then two, then one on top
+	spots := [][2]int{{0, 0}, {6, 0}, {3, -4}, {12, 0}, {9, -4}, {6, -8}}
+	cs := a.smallChip(0).Rect.Dx()
+	top := bottom
+	for j := 0; j < min(len(chips), len(spots)); j++ {
+		dx, dy := spots[j][0]-2, spots[j][1]
+		cx := x + dx
+		if leftOfPortrait {
+			cx = x + pileChip - dx - cs
+		}
+		blit(a.fb, a.smallChip(chips[j]), cx, bottom-cs+dy)
+		top = min(top, bottom-cs+dy)
 	}
-	top := bottom - pileChip - (len(chips)-1)*step
-	label := shortChips(balance)
 	al, lx := alignLeft, x
 	if leftOfPortrait {
 		al, lx = alignRight, x+pileChip
 	}
-	a.textOutlined(lx, top-9, label, a.A.C("gold"), al)
+	a.textOutlined(lx, top-9, shortChips(balance), a.A.C("gold"), al)
 }
 
 // textOutlined draws small text with a dark outline so it reads on
