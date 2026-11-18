@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 //go:build linux
 
 // Package x11 is the game's Linux window: a small X11 client written against

@@ -37,12 +37,12 @@ jobs:
       - name: Package
         run: |
           mkdir -p pkg/TheHouseAlwaysWins-Client pkg/TheHouseAlwaysWins-Client-Linux pkg/TheHouseAlwaysWins-Server-Windows pkg/TheHouseAlwaysWins-Server-Linux out
-          cp dist/TheHouseAlwaysWins.exe README.md pkg/TheHouseAlwaysWins-Client/
-          cp dist/TheHouseAlwaysWins-linux-amd64 dist/TheHouseAlwaysWins-linux-arm64 README.md pkg/TheHouseAlwaysWins-Client-Linux/
-          cp dist/HouseServer.exe dist/server.json dist/run-server.bat README.md pkg/TheHouseAlwaysWins-Server-Windows/
-          cp dist/house-server-linux-amd64 dist/house-server-linux-arm64 dist/server.json dist/thehousealwayswins.service README.md pkg/TheHouseAlwaysWins-Server-Linux/
+          cp dist/TheHouseAlwaysWins.exe README.md LICENSE THIRD_PARTY_NOTICES.md pkg/TheHouseAlwaysWins-Client/
+          cp dist/TheHouseAlwaysWins-linux-amd64 dist/TheHouseAlwaysWins-linux-arm64 README.md LICENSE THIRD_PARTY_NOTICES.md pkg/TheHouseAlwaysWins-Client-Linux/
+          cp dist/HouseServer.exe dist/server.json dist/run-server.bat README.md LICENSE THIRD_PARTY_NOTICES.md pkg/TheHouseAlwaysWins-Server-Windows/
+          cp dist/house-server-linux-amd64 dist/house-server-linux-arm64 dist/server.json dist/thehousealwayswins.service README.md LICENSE THIRD_PARTY_NOTICES.md pkg/TheHouseAlwaysWins-Server-Linux/
           (cd pkg && for d in *; do zip -qr "../out/$d.zip" "$d"; done)
-          cp dist/TheHouseAlwaysWins.exe dist/TheHouseAlwaysWins-linux-amd64 dist/TheHouseAlwaysWins-linux-arm64 dist/HouseServer.exe dist/house-server-linux-amd64 dist/house-server-linux-arm64 out/
+          cp dist/TheHouseAlwaysWins.exe dist/TheHouseAlwaysWins-linux-amd64 dist/TheHouseAlwaysWins-linux-arm64 dist/HouseServer.exe dist/house-server-linux-amd64 dist/house-server-linux-arm64 dist/LICENSE dist/THIRD_PARTY_NOTICES.md out/
       - uses: actions/upload-artifact@v4
         with:
           name: desktop
@@ -120,6 +120,8 @@ jobs:
           - **HouseServer.exe**: the headless server (Windows). Creates \`server.json\` and \`data/\` next to itself on first run.
           - **TheHouseAlwaysWins-Server-Windows.zip**: server + default \`server.json\` + \`run-server.bat\` (auto-restart).
           - **TheHouseAlwaysWins-Server-Linux.zip** / **house-server-linux-***: Linux server + systemd unit.
+
+          Copyright (c) 2026 Cmacle. All rights reserved. Free to download and play for personal, non-commercial use; copying, modifying or redistributing the game or its code is not allowed. See **LICENSE** and **THIRD_PARTY_NOTICES.md**.
 
           Built automatically from ${GITHUB_SHA::7}.
           NOTES

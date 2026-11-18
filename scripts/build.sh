@@ -18,5 +18,5 @@ GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$VX" -o dist/HouseServer.
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$LD" -o dist/house-server-linux-amd64 ./cmd/server
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$LD" -o dist/house-server-linux-arm64 ./cmd/server
 go run ./cmd/server -print-config > dist/server.json
-cp scripts/run-server.bat README.md deploy/thehousealwayswins.service dist/
+cp scripts/run-server.bat README.md LICENSE THIRD_PARTY_NOTICES.md deploy/thehousealwayswins.service dist/
 echo "built into dist/"

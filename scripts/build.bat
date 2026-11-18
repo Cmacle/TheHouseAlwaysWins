@@ -10,6 +10,8 @@ go run .\tools\winres -version %VERSION% -name "The House Always Wins Server" -e
 go build -trimpath -ldflags "-H windowsgui %VX%" -o dist\TheHouseAlwaysWins.exe .\cmd\client || goto :err
 go build -trimpath -ldflags "%VX%" -o dist\HouseServer.exe .\cmd\server || goto :err
 copy /y scripts\run-server.bat dist\ >nul
+copy /y LICENSE dist\ >nul
+copy /y THIRD_PARTY_NOTICES.md dist\ >nul
 echo Built dist\TheHouseAlwaysWins.exe and dist\HouseServer.exe
 goto :eof
 :err

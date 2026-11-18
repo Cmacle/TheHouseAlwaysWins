@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Package cosmetics is the catalogue of unlockable hats, avatar frames and
 // titles. It is shared by the server (which decides unlocks) and the client
 // (which shows requirements and progress).

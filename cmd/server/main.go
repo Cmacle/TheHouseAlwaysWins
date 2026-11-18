@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Command server is the headless "The House Always Wins" blackjack server.
 //
 // It is meant to run constantly. With nobody connected the table stops and the

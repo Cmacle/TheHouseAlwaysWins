@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 //go:build windows
 
 // Package win32 is the Windows platform layer for the client: a plain Win32

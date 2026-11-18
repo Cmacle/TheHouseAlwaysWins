@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 package banter
 
 // Line pools. Placeholders: {name} player, {amount} money, {total} hand total,

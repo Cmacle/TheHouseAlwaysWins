@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Package imgutil holds small image helpers shared by client and server.
 package imgutil
 

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 package main
 
 // 5x7 pixel font for ASCII 32..126. '#' = pixel.

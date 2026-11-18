@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 package client
 
 import (
@@ -50,8 +52,30 @@ func (a *App) onConsole(c proto.Console) {
 }
 
 func chatButtonRect() image.Rectangle {
+	// left of the dealer-log bubble, clear of the dealer
 	r := logButtonRect()
-	return image.Rect(r.Max.X+4, r.Min.Y, r.Max.X+4+30, r.Max.Y-4)
+	return image.Rect(r.Min.X-34, r.Min.Y, r.Min.X-4, r.Max.Y-4)
+}
+
+// adminButtonRect is left of the SAY button (the top-right row is full),
+// or under it when that would run into the discard holder (narrow screens).
+func (a *App) adminButtonRect() image.Rectangle {
+	r := chatButtonRect()
+	ar := image.Rect(r.Min.X-48, r.Min.Y, r.Min.X-4, r.Max.Y)
+	if ar.Min.X < a.L.discard.X+30 {
+		ar = image.Rect(r.Max.X-44, r.Max.Y+4, r.Max.X, r.Max.Y+4+r.Dy())
+	}
+	return ar
+}
+
+// drawAdminButton opens the ADMIN window, for admins.
+func (a *App) drawAdminButton() {
+	if !a.profile.Admin {
+		return
+	}
+	if a.button("admin_btn", a.adminButtonRect(), "ADMIN", btn{enabled: a.overlay == ovNone}) {
+		a.openAdmin()
+	}
 }
 
 // chatPreInput runs before the table is drawn: Enter and Escape belong to
@@ -105,6 +129,7 @@ func (a *App) chatAllowed(st *proto.TableState) bool {
 
 // drawChatBar draws the chat button, or the box while typing.
 func (a *App) drawChatBar(st *proto.TableState) {
+	a.drawAdminButton()
 	if !a.chatAllowed(st) {
 		a.chatOpen = false
 		return

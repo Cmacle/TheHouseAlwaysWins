@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 //go:build linux && !(amd64 || arm64)
 
 package x11

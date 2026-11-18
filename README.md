@@ -17,6 +17,8 @@ optional web page and Discord.
 - **Chip gifts:** buy a broke friend back in. Gifts only top someone up to the
   refill amount and don't count as winnings, so nobody can pump an account.
 - **Table chat:** short messages pop up in a bubble by your portrait.
+- **Chip piles:** everyone's chips sit in a pile beside their portrait, taller
+  the more they have, with the amount on top.
 - **Admins:** make trusted players admins. They get an ADMIN window in the game
   for every server setting and a console, and can type `/commands` in chat as
   if they were at the server, including `/update`.
@@ -652,3 +654,16 @@ tools/genassets     generates the default pixel art and sounds
 - Insurance and even money aren't offered. The dealer peeks with an ace or a
   ten showing, so you never lose a double or split to a dealer blackjack.
 - Chips are play money with no cash value.
+
+## License
+
+Copyright (c) 2026 Cmacle. All rights reserved.
+
+This is **not** open source. The code is public so it can be read, not
+reused. You may download the [official releases](https://github.com/Cmacle/TheHouseAlwaysWins/releases)
+and play them, and host a server for yourself and your friends, for personal,
+non-commercial use. You may not copy, modify, redistribute or reuse the code,
+art, sounds, characters or text, use it commercially, or use it to train AI
+models, without written permission. See [LICENSE](LICENSE) for the full terms
+and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the Go components the
+programs include.

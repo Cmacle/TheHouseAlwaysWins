@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Package release downloads official releases of the game from GitHub,
 // checked against the release's SHA256SUMS.txt. The clients and the server
 // update themselves with it.

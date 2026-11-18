@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Package selfupdate swaps the running desktop client for a new version.
 package selfupdate
 

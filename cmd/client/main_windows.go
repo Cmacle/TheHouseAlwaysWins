@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Command client is the "The House Always Wins" game client for Windows.
 package main
 

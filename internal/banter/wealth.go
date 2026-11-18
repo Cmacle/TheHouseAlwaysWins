@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 package banter
 
 // The dealer's wealth tiers follow the house's lifetime net, in big steps so
