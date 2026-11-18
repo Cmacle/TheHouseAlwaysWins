@@ -704,7 +704,11 @@ func (a *App) drawTopBar(st *proto.TableState) {
 		{"lb", "LEADERBOARD", 'l', a.openLeaderboard},
 	}
 	if a.lobbyKnown {
-		btns = append(btns, tb{"lobby", "LOBBY", 0, a.leaveToLobby})
+		// back to the lobby: top left, under the server's name
+		lw := a.A.Font.Width("< LOBBY") + 14
+		if a.button("lobby", image.Rect(6, ty+22, 6+lw, ty+38), "< LOBBY", btn{enabled: true}) {
+			a.leaveToLobby()
+		}
 	}
 
 	for _, b := range btns {
