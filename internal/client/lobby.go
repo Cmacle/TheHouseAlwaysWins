@@ -22,13 +22,15 @@ func gameLabel(g string) string {
 		return "TEXAS HOLD'EM"
 	case proto.GameBlackjack:
 		return "BLACKJACK"
+	case proto.GameBeggar:
+		return "DICE"
 	}
 	return strings.ToUpper(g)
 }
 
 func (a *App) onJoined(j proto.Joined) {
 	a.game, a.tableName = j.Game, j.Name
-	a.st, a.ps = nil, nil
+	a.st, a.ps, a.bs, a.roll = nil, nil, nil, nil
 	a.cardSeen, a.cardHidden, a.cardVal, a.flipAt = map[string]time.Time{}, map[string]bool{}, nil, map[string]time.Time{}
 	a.rev, a.chats, a.chatLog, a.chatOpen = nil, nil, nil, false
 	a.sayLog, a.sayID, a.logID = nil, 0, 0
@@ -38,15 +40,17 @@ func (a *App) onJoined(j proto.Joined) {
 	switch j.Game {
 	case proto.GameHoldem:
 		a.screen = scrPoker
+	case proto.GameBeggar:
+		a.screen = scrBeggar
 	default:
 		a.screen = scrTable
 	}
 }
 
 func (a *App) backToLobby() {
-	a.game, a.st, a.ps = "", nil, nil
+	a.game, a.st, a.ps, a.bs, a.roll = "", nil, nil, nil, nil
 	a.chats, a.chatOpen = nil, false
-	if a.screen == scrTable || a.screen == scrPoker {
+	if a.screen == scrTable || a.screen == scrPoker || a.screen == scrBeggar {
 		a.screen = scrLobby
 	}
 	if a.overlay == ovGift || a.overlay == ovDealerLog {
@@ -61,7 +65,7 @@ func (a *App) leaveToLobby() {
 
 func (a *App) joinTable(t proto.TableInfo) {
 	if t.ID == a.lobby.Current {
-		a.screen = map[string]int{proto.GameHoldem: scrPoker}[t.Game]
+		a.screen = map[string]int{proto.GameHoldem: scrPoker, proto.GameBeggar: scrBeggar}[t.Game]
 		if a.screen == 0 {
 			a.screen = scrTable
 		}
@@ -294,12 +298,18 @@ func (a *App) drawLobbyRow(t proto.TableInfo, r image.Rectangle) {
 	}
 	strokeRect(a.fb, r, edge)
 	gc := a.A.C("highlight")
-	if t.Game == proto.GameHoldem {
+	switch t.Game {
+	case proto.GameHoldem:
 		gc = a.A.C("win")
+	case proto.GameBeggar:
+		gc = a.A.C("text_dim")
 	}
 	a.text(r.Min.X+6, r.Min.Y+4, gameLabel(t.Game), gc, alignLeft)
 	a.text(r.Min.X+6+a.A.Font.Width(gameLabel(t.Game))+8, r.Min.Y+4, fitText(a.A.Font, t.Name, 160), a.A.C("gold"), alignLeft)
 	info := fmt.Sprintf("%s  -  %d/%d seated", t.Stakes, t.Players, t.Seats)
+	if t.Game == proto.GameBeggar {
+		info = fmt.Sprintf("%s  -  %d here", t.Stakes, t.Players)
+	}
 	if t.Watching > 0 {
 		info += fmt.Sprintf("  -  %d watching", t.Watching)
 	}

@@ -61,6 +61,7 @@ const (
 	CJoinTable   = "join_table"
 	CLeaveTable  = "leave_table" // back to the lobby
 	CPoker       = "poker"       // a poker action
+	CDice        = "dice"        // roll at the Beggars Table
 	CRecords     = "records"     // who holds the record-based cosmetics
 )
 
@@ -85,6 +86,8 @@ const (
 	SJoined      = "joined" // you're at a table now
 	SLeft        = "left"   // you're back in the lobby
 	SPoker       = "poker"  // poker table state
+	SBeggar      = "beggar" // Beggars Table state
+	SDice        = "dice"   // your dice are rolling
 	SRecords     = "records"
 )
 
@@ -167,6 +170,8 @@ type Profile struct {
 	RankHands       bool     `json:"rank_hands,omitempty"` // currently played the most hands
 	RankBet         bool     `json:"rank_bet,omitempty"`   // holds the biggest-bet record
 	BiggestBet      int64    `json:"biggest_bet,omitempty"`
+	BeggarRolls     int64    `json:"beggar_rolls,omitempty"`
+	BeggarWins      int64    `json:"beggar_wins,omitempty"`
 	PokerHands      int      `json:"poker_hands,omitempty"`
 	PokerFlushes    int      `json:"poker_flushes,omitempty"`
 	PokerFullHouses int      `json:"poker_full_houses,omitempty"`
@@ -303,6 +308,7 @@ type Records struct {
 const (
 	GameBlackjack = "blackjack"
 	GameHoldem    = "holdem"
+	GameBeggar    = "beggar"
 )
 
 // TableInfo describes a table in the lobby.
@@ -407,6 +413,46 @@ type PokerState struct {
 	HouseTier      int          `json:"house_tier"`
 	Settings       Settings     `json:"settings"`
 	Spectators     int          `json:"spectators,omitempty"`
+}
+
+// BeggarState is the Beggars Table: anyone nearly broke can roll five dice,
+// and five sixes pays out.
+type BeggarState struct {
+	Table      string   `json:"table"`
+	Name       string   `json:"name"`
+	Odds       int      `json:"odds"`        // 1 in this many rolls wins
+	Prize      int64    `json:"prize"`       // what a win pays
+	MaxBalance int64    `json:"max_balance"` // you can roll with fewer chips than this
+	Balance    int64    `json:"balance"`     // yours
+	CanRoll    bool     `json:"can_roll"`
+	Reason     string   `json:"reason,omitempty"` // why you can't
+	Rolling    bool     `json:"rolling,omitempty"`
+	Rolls      int64    `json:"rolls"` // yours, all time
+	Wins       int64    `json:"wins"`
+	TableRolls int64    `json:"table_rolls"` // everyone's, since the server started
+	Players    []string `json:"players,omitempty"`
+	Feed       []string `json:"feed,omitempty"` // recent happenings, newest last
+	ServerTime int64    `json:"server_time"`
+	Settings   Settings `json:"settings"`
+
+	DealerSay      string       `json:"dealer_say,omitempty"`
+	DealerSayID    int          `json:"dealer_say_id,omitempty"`
+	DealerSayUntil int64        `json:"dealer_say_until,omitempty"`
+	DealerSayCont  bool         `json:"dealer_say_cont,omitempty"`
+	DealerSayPara  bool         `json:"dealer_say_para,omitempty"`
+	DealerLog      []DealerLine `json:"dealer_log,omitempty"`
+	HouseNet       int64        `json:"house_net"`
+	HouseTier      int          `json:"house_tier"`
+}
+
+// DiceRoll is a roll in progress: the client throws the dice and they land
+// on Faces after about MS milliseconds.
+type DiceRoll struct {
+	ID    int   `json:"id"`
+	Faces []int `json:"faces"`
+	Win   bool  `json:"win"`
+	MS    int64 `json:"ms"`
+	Seed  int64 `json:"seed"`
 }
 
 // Console is the output of a server command run from the client.
