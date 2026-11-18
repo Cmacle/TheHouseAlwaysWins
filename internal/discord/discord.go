@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Package discord posts the leaderboard and announcements to Discord and
 // answers slash commands. It uses only the standard library: REST calls go
 // through net/http and the gateway uses a small built-in websocket client.

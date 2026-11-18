@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 package client
 
 import (
@@ -33,6 +35,9 @@ func (a *App) serverAddr() (string, bool) {
 	a.fServer, a.fPort = splitServer(addr)
 	return addr, true
 }
+
+// Copyright is shown on the login screen and the server window.
+const Copyright = "(c) 2026 Cmacle. All rights reserved."
 
 // Version is shown on the login screen.
 var Version = "dev"
@@ -122,9 +127,9 @@ func (a *App) drawLogin() {
 		}
 		a.drawStatus(x0, x1, pr.Min.Y+196)
 	}
-	foot := "v" + Version + "  -  F11 fullscreen"
+	foot := "v" + Version + "  -  " + Copyright + "  -  F11 fullscreen"
 	if a.isTouch() {
-		foot = "v" + Version
+		foot = "v" + Version + "  -  " + Copyright
 	}
 	a.text(4, ScreenH-10, foot, a.A.C("text_dim"), alignLeft)
 	if a.serverInfo.Name != "" && a.net != nil {

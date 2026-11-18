@@ -1,8 +1,10 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 package server
 
 import (
-	"io"
 	"fmt"
+	"io"
 	"log"
 	"strings"
 	"time"

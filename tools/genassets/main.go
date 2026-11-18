@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Command genassets generates the default pixel-art assets and sounds that are
 // embedded in the client. Every generated file can be replaced by dropping a
 // file with the same name into the client's assets folder.

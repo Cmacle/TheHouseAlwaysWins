@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 package banter
 
 // The dealer has a name and a past. He lies about most of it.

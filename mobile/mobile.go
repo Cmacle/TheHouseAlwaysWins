@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Package mobile is the bridge between the Android app and the game client.
 // It is compiled with `gomobile bind` into an .aar; the Java side forwards
 // touch and keyboard input, asks for frames (RGBA pixels, 640x360) and

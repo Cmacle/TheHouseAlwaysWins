@@ -1,6 +1,9 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 package client
 
 import (
+	"fmt"
 	"image/color"
 	"os"
 	"testing"
@@ -22,6 +25,12 @@ func TestPreviewNew(t *testing.T) {
 	}
 	cfg := &Config{Username: "You_There", Sound: true}
 	a := New(fakePlatform{}, cfg, assets)
+	if sz := os.Getenv("PREVIEW_SIZE"); sz != "" {
+		var w, h int
+		fmt.Sscanf(sz, "%dx%d", &w, &h)
+		a.SetSize(w, h)
+		defer a.SetSize(640, 360)
+	}
 	a.screen = scrTable
 	a.username = "You_There"
 	a.profile = proto.Profile{Username: "You_There", Balance: 1048, Admin: true}

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Package proto defines the client/server wire protocol.
 //
 // The transport is TCP. Every message is one line of JSON:

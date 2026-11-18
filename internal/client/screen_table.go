@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 package client
 
 import (
@@ -450,6 +452,12 @@ func (a *App) drawTable() {
 			fillRect(a.fb, ar, color.RGBA{0, 0, 0, 140})
 		}
 		hats = append(hats, seatHat{sv.Hat, ar.Min.X, ar.Min.Y})
+		// their chips, piled beside the portrait (left of it at the right edge)
+		px, left := ar.Max.X+3, false
+		if px+pileChip+20 > ScreenW-2 {
+			px, left = ar.Min.X-3-pileChip, true
+		}
+		a.drawChipPile(px, ar.Max.Y, sv.Balance, left)
 		// name + status
 		nameCol := a.A.C("text")
 		if me {
@@ -676,9 +684,7 @@ func (a *App) drawTopBar(st *proto.TableState) {
 		{"profile", "PROFILE", 0, func() { a.overlay = ovProfile }},
 		{"lb", "LEADERBOARD", 'l', a.openLeaderboard},
 	}
-	if a.profile.Admin {
-		btns = append(btns, tb{"admin", "ADMIN", 0, a.openAdmin})
-	}
+
 	for _, b := range btns {
 		w := a.A.Font.Width(b.label) + 14
 		r := image.Rect(x-w, y, x, y+16)

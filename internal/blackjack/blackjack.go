@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Package blackjack implements cards, the shoe and casino blackjack rules.
 package blackjack
 

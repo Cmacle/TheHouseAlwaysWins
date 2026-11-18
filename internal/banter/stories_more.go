@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 package banter
 
 // Ten more of Dale's long stories (1.5). Same rules as stories.go.

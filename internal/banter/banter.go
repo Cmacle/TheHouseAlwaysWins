@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Package banter is the dealer's trash talk: event-keyed line pools and a
 // picker that avoids repeating itself.
 package banter

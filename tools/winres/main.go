@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Command winres writes a Windows resource object (.syso) with the app's
 // icon, version information and manifest, which `go build` links into the
 // exe. Windows (and antivirus scanners) treat a program with a proper
@@ -74,7 +76,7 @@ func main() {
 		{"FileDescription", *name},
 		{"FileVersion", vs},
 		{"InternalName", strings.TrimSuffix(*exe, ".exe")},
-		{"LegalCopyright", "Copyright (c) Cmacle"},
+		{"LegalCopyright", "Copyright (c) 2026 Cmacle. All rights reserved."},
 		{"OriginalFilename", *exe},
 		{"ProductName", "The House Always Wins"},
 		{"ProductVersion", vs},

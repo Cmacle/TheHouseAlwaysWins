@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 package client
 
 import (
@@ -83,7 +85,7 @@ func (a *App) drawPanel() {
 	a.panel(r)
 	// header
 	a.textBig(r.Min.X+10, r.Min.Y+8, "THE HOUSE ALWAYS WINS", a.A.C("gold"), 2, alignLeft)
-	sub := "SERVER v" + st.Version
+	sub := "SERVER v" + st.Version + "  -  " + Copyright
 	if st.Name != "" {
 		sub = st.Name + "  -  " + sub
 	}

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 package banter
 
 // More lines for the original situations (1.5). Same man, same life story.

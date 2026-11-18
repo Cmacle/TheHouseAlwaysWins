@@ -1,0 +1,99 @@
+The House Always Wins
+Copyright (c) 2026 Cmacle. All rights reserved.
+
+PROPRIETARY LICENSE - THIS IS NOT OPEN SOURCE SOFTWARE
+
+"The Software" means everything in this repository and in its official
+releases: the source code, compiled programs, artwork, sounds, music,
+fonts, dialogue and story text (including the dealer character "Dale" and
+his lines and stories), game designs, documentation and the name "The House
+Always Wins" as used for this game.
+
+The Software is published so it can be seen, not so it can be taken. Making
+the source code publicly visible does not place it in the public domain and
+does not make it open source. All rights not expressly granted below are
+reserved by the copyright holder.
+
+1. WHAT YOU MAY DO
+
+   a. View the source code on GitHub, and fork it on GitHub to the extent
+      GitHub's Terms of Service require. A fork on GitHub gives you no
+      rights beyond viewing it there.
+
+   b. Download the official releases published at
+      https://github.com/Cmacle/TheHouseAlwaysWins/releases and run them,
+      unmodified, to play the game and to host a game server for yourself
+      and your friends, for personal, non-commercial purposes.
+
+   c. Replace the art, sounds and colours of your own installation through
+      its assets folder, as the game is designed to allow, for your own
+      personal use. You may not distribute the Software's own assets, or
+      altered versions of them.
+
+2. WHAT YOU MAY NOT DO
+
+   Unless the copyright holder has given you permission in writing, you may
+   not, in whole or in part:
+
+   a. copy, reproduce, modify, translate, adapt or create derivative works
+      of the Software, including by porting or rewriting it closely enough
+      to copy its expression;
+   b. publish, distribute, redistribute, sublicense, rent, lease, lend,
+      sell or otherwise make the Software or any part of it available to
+      anyone, including by re-uploading the source code or builds of it
+      (official or your own) anywhere other than as allowed in section 1;
+   c. reuse any of its code, art, sounds, characters, dialogue, stories or
+      other content in any other project, product or service;
+   d. use the Software, or any game server running it, for any commercial
+      purpose, including charging for access, selling in-game chips or
+      items, running advertising, or offering it as a paid or hosted
+      service;
+   e. use the Software or any of its content to train, fine-tune or
+      evaluate machine learning or artificial intelligence models, or
+      include it in datasets for that purpose;
+   f. remove, alter or hide any copyright, license or other notice in the
+      Software;
+   g. use the name "The House Always Wins", its logo or the copyright
+      holder's name in a way that suggests endorsement of, or connection
+      to, anything not made by the copyright holder;
+   h. get around any of these limits, or help or allow anyone else to.
+
+3. CONTRIBUTIONS
+
+   If you send a contribution (a pull request, patch, issue text, artwork or
+   anything else) to this project, you grant the copyright holder a
+   perpetual, worldwide, irrevocable, royalty-free right to use, modify,
+   relicense and distribute it as part of the Software, and you confirm you
+   have the right to grant this. Sending a contribution gives you no rights
+   to the Software.
+
+4. THIRD-PARTY COMPONENTS
+
+   The compiled programs include parts of the Go standard library and Go
+   mobile tools, which are made available under their own licenses. Those
+   parts are not covered by this license. See THIRD_PARTY_NOTICES.md.
+
+5. TERMINATION
+
+   The permissions in section 1 end automatically, without notice, if you
+   break any term of this license. When they end you must stop using the
+   Software and delete every copy you have.
+
+6. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
+
+7. LIMITATION OF LIABILITY
+
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES
+   OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+   ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OF OR
+   OTHER DEALINGS IN THE SOFTWARE. The game uses play chips only; they have
+   no monetary value and cannot be exchanged for money or anything of value.
+
+8. PERMISSION
+
+   To ask for permission to do anything this license does not allow, contact
+   the copyright holder through https://github.com/Cmacle.

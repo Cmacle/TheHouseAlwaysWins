@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Cmacle. All rights reserved. See LICENSE.
+
 // Package client is the platform-independent game client: it renders every
 // frame into a 640x360 RGBA buffer and handles input. A platform layer (see
 // internal/win32) owns the window, scaling, sound output and file dialogs.
@@ -203,7 +205,8 @@ type App struct {
 	adminB             AdminBackend // nil = over the connection
 	consoleAt          time.Time
 	adminConsoleScroll int
-	pnl                PanelBackend // the server window's server
+	pileImgs           map[int]*image.RGBA // small chips for the seat piles
+	pnl                PanelBackend        // the server window's server
 	panelLogNext       int
 }
 
