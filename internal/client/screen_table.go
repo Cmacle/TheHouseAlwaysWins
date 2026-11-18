@@ -349,7 +349,8 @@ func (a *App) drawTable() {
 		return
 	}
 	overlayOpen := a.overlay != ovNone
-	a.blocked = overlayOpen
+	updating := a.blocked // the update window is up
+	a.blocked = overlayOpen || updating
 	var fly []flying
 
 	// dealer
@@ -546,7 +547,7 @@ func (a *App) drawTable() {
 	a.drawLogButton(st)
 	a.drawTopBar(st)
 	a.drawHUD(st)
-	a.blocked = false
+	a.blocked = updating
 
 	switch a.overlay {
 	case ovLeaderboard:

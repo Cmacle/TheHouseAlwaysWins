@@ -22,8 +22,9 @@ type Server struct {
 	Game  *Game
 	Log   *log.Logger
 
-	ln    net.Listener
-	nconn atomic.Int32
+	ln         net.Listener
+	configPath string
+	nconn      atomic.Int32
 }
 
 type conn struct {
@@ -110,10 +111,10 @@ func (s *Server) Serve() {
 		}
 		s.nconn.Add(1)
 		c := &conn{nc: nc, srv: s, out: make(chan []byte, 512), closed: make(chan struct{})}
-		go c.writer()
+		go guard(s.Log.Printf, "a connection writer", nil, c.writer)
 		go func() {
-			c.reader()
-			s.nconn.Add(-1)
+			defer s.nconn.Add(-1)
+			guard(s.Log.Printf, "a connection", func() { c.nc.Close() }, c.reader)
 		}()
 	}
 }
@@ -164,6 +165,7 @@ func (c *conn) reader() {
 		Name: s.cfg().ServerName, Version: proto.Version,
 		AllowRegistration: s.cfg().AllowRegistration, MOTD: s.cfg().MOTD,
 		NeedsPassword: s.cfg().ServerPassword != "",
+		ServerVersion: Version, Updates: s.cfg().OfferClientUpdates,
 	})
 	sc := bufio.NewScanner(c.nc)
 	sc.Buffer(make([]byte, 64*1024), proto.MaxLine)

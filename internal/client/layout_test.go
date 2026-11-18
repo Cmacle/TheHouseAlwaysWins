@@ -9,14 +9,14 @@ import (
 
 func TestChooseSize(t *testing.T) {
 	cases := []struct{ pw, ph, w, h int }{
-		{1920, 1080, 640, 360},  // 16:9
-		{2400, 1080, 800, 360},  // phone, sideways
-		{1080, 2400, 360, 800},  // phone, upright
-		{1920, 1200, 640, 400},  // 16:10
-		{1536, 2048, 420, 560},  // tablet, upright
-		{3440, 1440, 860, 360},  // ultrawide
-		{5120, 1440, 900, 360},  // super-ultrawide: capped
-		{1000, 1000, 640, 480},  // square: capped
+		{1920, 1080, 640, 360}, // 16:9
+		{2400, 1080, 800, 360}, // phone, sideways
+		{1080, 2400, 360, 800}, // phone, upright
+		{1920, 1200, 640, 400}, // 16:10
+		{1536, 2048, 420, 560}, // tablet, upright
+		{3440, 1440, 860, 360}, // ultrawide
+		{5120, 1440, 900, 360}, // super-ultrawide: capped
+		{1000, 1000, 640, 480}, // square: capped
 	}
 	for _, c := range cases {
 		if w, h := ChooseSize(c.pw, c.ph); w != c.w || h != c.h {

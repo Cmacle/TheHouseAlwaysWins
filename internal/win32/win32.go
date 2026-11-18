@@ -15,6 +15,7 @@ import (
 	"unsafe"
 
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/client"
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/selfupdate"
 )
 
 func init() { runtime.LockOSThread() }
@@ -541,7 +542,11 @@ func (p platform) ClipboardText() string {
 }
 
 func (p platform) ToggleFullscreen() { p.w.toggleFullscreen() }
-func (p platform) Quit()             { pDestroyWindow.Call(p.w.hwnd) }
+
+func (platform) UpdateAsset() string             { return "TheHouseAlwaysWins.exe" }
+func (platform) UpdateDir() string               { return selfupdate.Dir() }
+func (platform) InstallUpdate(path string) error { return selfupdate.Replace(path) }
+func (p platform) Quit()                         { pDestroyWindow.Call(p.w.hwnd) }
 
 // ---------------------------------------------------------------- run
 

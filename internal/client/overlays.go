@@ -18,7 +18,7 @@ func (a *App) overlayFrame(r image.Rectangle, title string) bool {
 		return true
 	}
 	// clicking outside closes too
-	if a.in.Pressed && !image.Pt(a.in.MX, a.in.MY).In(r) {
+	if a.in.Pressed && !a.blocked && !image.Pt(a.in.MX, a.in.MY).In(r) {
 		a.overlay = ovNone
 		return true
 	}

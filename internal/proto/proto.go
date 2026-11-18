@@ -79,6 +79,10 @@ type ServerInfo struct {
 	MOTD              string `json:"motd"`
 	// NeedsPassword: creating an account needs the server password.
 	NeedsPassword bool `json:"needs_password,omitempty"`
+	// ServerVersion is the server's release version ("1.6.0", or "dev");
+	// Updates says whether to offer older clients the update.
+	ServerVersion string `json:"server_version,omitempty"`
+	Updates       bool   `json:"updates,omitempty"`
 }
 
 type Register struct {

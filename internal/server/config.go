@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -52,8 +53,17 @@ type Config struct {
 	ListenAddress string `json:"listen_address"`
 	Port          int    `json:"port"`
 	DataDir       string `json:"data_dir"`
-	MaxPlayers    int    `json:"max_players"`
-	MaxSpectators int    `json:"max_spectators"`
+	// Backups of the accounts, house stats, avatars and this config go in
+	// <data_dir>/backups: at startup, every backup_interval_minutes (when
+	// something changed) and at shutdown. The newest backup_keep are kept,
+	// plus one per day for backup_days days. 0 minutes turns off the timed ones.
+	BackupIntervalMinutes int `json:"backup_interval_minutes"`
+	BackupKeep            int `json:"backup_keep"`
+	BackupDays            int `json:"backup_days"`
+	// Offer players with an older client the update when they connect.
+	OfferClientUpdates bool `json:"offer_client_updates"`
+	MaxPlayers         int  `json:"max_players"`
+	MaxSpectators      int  `json:"max_spectators"`
 
 	AllowRegistration bool `json:"allow_registration"`
 	// Server password: if set, new players must enter it to create an
@@ -119,41 +129,45 @@ type Config struct {
 // DefaultConfig returns the default configuration.
 func DefaultConfig() *Config {
 	return &Config{
-		ServerName:         "The House Always Wins",
-		MOTD:               "Welcome to the table. Remember: the house always wins.",
-		ListenAddress:      "0.0.0.0",
-		Port:               7777,
-		DataDir:            "data",
-		MaxPlayers:         10,
-		MaxSpectators:      20,
-		AllowRegistration:  true,
-		RefillAmount:       1000,
-		RefillTime:         "00:00",
-		Timezone:           "Local",
-		MinBet:             10,
-		MaxBet:             1000,
-		BettingMode:        "simultaneous",
-		PlayMode:           "turns",
-		HideOtherHands:     false,
-		Decks:              6,
-		Penetration:        0.75,
-		DealerHitsSoft17:   false,
-		BlackjackPays:      "3:2",
-		DoubleAfterSplit:   true,
-		DoubleOn:           "any",
-		MaxSplitHands:      4,
-		ResplitAces:        false,
-		HitSplitAces:       false,
-		AllowSurrender:     false,
-		BettingTimeSeconds: 20,
-		TurnTimeSeconds:    25,
-		PlayTimeSeconds:    40,
-		ResultsTimeSeconds: 8,
-		DealDelayMS:        700,
-		DealerDelayMS:      1100,
-		DealerTrashTalk:    true,
-		DealerVulgar:       false,
-		HTTPLeaderboard:    HTTPConfig{Enabled: false, Address: "0.0.0.0", Port: 8090},
+		ServerName:            "The House Always Wins",
+		MOTD:                  "Welcome to the table. Remember: the house always wins.",
+		ListenAddress:         "0.0.0.0",
+		Port:                  7777,
+		DataDir:               "data",
+		BackupIntervalMinutes: 60,
+		BackupKeep:            48,
+		BackupDays:            30,
+		OfferClientUpdates:    true,
+		MaxPlayers:            10,
+		MaxSpectators:         20,
+		AllowRegistration:     true,
+		RefillAmount:          1000,
+		RefillTime:            "00:00",
+		Timezone:              "Local",
+		MinBet:                10,
+		MaxBet:                1000,
+		BettingMode:           "simultaneous",
+		PlayMode:              "turns",
+		HideOtherHands:        false,
+		Decks:                 6,
+		Penetration:           0.75,
+		DealerHitsSoft17:      false,
+		BlackjackPays:         "3:2",
+		DoubleAfterSplit:      true,
+		DoubleOn:              "any",
+		MaxSplitHands:         4,
+		ResplitAces:           false,
+		HitSplitAces:          false,
+		AllowSurrender:        false,
+		BettingTimeSeconds:    20,
+		TurnTimeSeconds:       25,
+		PlayTimeSeconds:       40,
+		ResultsTimeSeconds:    8,
+		DealDelayMS:           700,
+		DealerDelayMS:         1100,
+		DealerTrashTalk:       true,
+		DealerVulgar:          false,
+		HTTPLeaderboard:       HTTPConfig{Enabled: false, Address: "0.0.0.0", Port: 8090},
 		Discord: DiscordConfig{
 			SlashCommands:         true,
 			LeaderboardSize:       10,
@@ -172,7 +186,7 @@ func LoadConfig(path string) (*Config, bool, error) {
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		out, _ := json.MarshalIndent(cfg, "", "  ")
-		if werr := os.WriteFile(path, out, 0o644); werr != nil {
+		if werr := writeFileSafe(path, out, false); werr != nil {
 			return nil, false, fmt.Errorf("write default config: %w", werr)
 		}
 		created = true
@@ -193,12 +207,31 @@ func LoadConfig(path string) (*Config, bool, error) {
 		def, _ := json.Marshal(DefaultConfig())
 		if missing := missingKeys(b, def, ""); len(missing) > 0 {
 			out, _ := json.MarshalIndent(cfg, "", "  ")
-			if err := writeAtomic(path, append(out, '\n')); err == nil {
+			if err := writeFileSafe(path, append(out, '\n'), true); err == nil {
 				addedKeys = missing
 			}
 		}
 	}
+	// remember the last config that worked, in case this one gets mangled
+	if lb, err := json.MarshalIndent(cfg, "", "  "); err == nil && !strings.HasSuffix(path, ".lastgood") {
+		writeFileSafe(path+".lastgood", lb, false)
+	}
 	return cfg, created, nil
+}
+
+// LoadConfigOrLastGood is LoadConfig, but if the file won't load it falls
+// back to the last config that did (server.json.lastgood), so a typo or a
+// damaged file doesn't keep the server down. warn says what happened.
+func LoadConfigOrLastGood(path string) (cfg *Config, created bool, warn string, err error) {
+	cfg, created, err = LoadConfig(path)
+	if err == nil {
+		return cfg, created, "", nil
+	}
+	lg, _, lerr := LoadConfig(path + ".lastgood")
+	if lerr != nil {
+		return nil, false, "", err
+	}
+	return lg, false, fmt.Sprintf("WARNING: %v - running with the last config that worked (%s.lastgood) until you fix it", err, filepath.Base(path)), nil
 }
 
 // Timing is the effective pace of the game.
