@@ -58,6 +58,9 @@ const (
 	CChat        = "chat"
 	CSettings    = "settings"    // admins: list the server settings
 	CSetSetting  = "set_setting" // admins: change one
+	CJoinTable   = "join_table"
+	CLeaveTable  = "leave_table" // back to the lobby
+	CPoker       = "poker"       // a poker action
 )
 
 // Server -> client message types.
@@ -77,6 +80,10 @@ const (
 	SChat        = "chat"
 	SConsole     = "console" // command output, for admins
 	SSettings    = "settings"
+	SLobby       = "lobby"  // the list of tables
+	SJoined      = "joined" // you're at a table now
+	SLeft        = "left"   // you're back in the lobby
+	SPoker       = "poker"  // poker table state
 )
 
 type Hello struct {
@@ -245,15 +252,132 @@ type SettingInfo struct {
 
 // SettingsList lists the server settings (answering CSettings / CSetSetting).
 type SettingsList struct {
+	Table    string        `json:"table,omitempty"`
 	Settings []SettingInfo `json:"settings"`
 	Changed  string        `json:"changed,omitempty"` // key that was just set
 	Error    string        `json:"error,omitempty"`
 }
 
-// SetSetting changes one server setting.
+// SettingsReq asks for the settings: the server's, or one table's.
+type SettingsReq struct {
+	Table string `json:"table,omitempty"`
+}
+
+// SetSetting changes one server setting (or, with Table, one table's).
 type SetSetting struct {
+	Table string `json:"table,omitempty"`
 	Key   string `json:"key"`
 	Value string `json:"value"`
+}
+
+// Games a table can run.
+const (
+	GameBlackjack = "blackjack"
+	GameHoldem    = "holdem"
+)
+
+// TableInfo describes a table in the lobby.
+type TableInfo struct {
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Game     string   `json:"game"`
+	Stakes   string   `json:"stakes"` // "Bets 10-1,000" or "Blinds 5/10"
+	Seats    int      `json:"seats"`
+	Players  int      `json:"players"`
+	Watching int      `json:"watching,omitempty"`
+	Names    []string `json:"names,omitempty"`
+	MinBuyIn int64    `json:"min_buy_in,omitempty"` // poker
+	MaxBuyIn int64    `json:"max_buy_in,omitempty"`
+	BigBlind int64    `json:"big_blind,omitempty"`
+}
+
+// Lobby lists the tables.
+type Lobby struct {
+	Tables  []TableInfo `json:"tables"`
+	Current string      `json:"current,omitempty"` // the table you're at
+}
+
+// JoinTable asks to sit at a table. BuyIn is for poker (0 = just watch).
+type JoinTable struct {
+	ID    string `json:"id"`
+	BuyIn int64  `json:"buy_in,omitempty"`
+}
+
+// Joined says which table you're at.
+type Joined struct {
+	ID   string `json:"id"`
+	Game string `json:"game"`
+	Name string `json:"name"`
+}
+
+// PokerAct is a poker action: fold, check, call, bet, raise (Amount = the
+// total you're raising to), allin, rebuy (Amount = chips to add), sitout,
+// sitin, show (show your cards after winning).
+type PokerAct struct {
+	Action string `json:"action"`
+	Amount int64  `json:"amount,omitempty"`
+}
+
+// PokerSeat is one seat at a poker table.
+type PokerSeat struct {
+	Seat          int              `json:"seat"`
+	Username      string           `json:"username,omitempty"`
+	Dale          bool             `json:"dale,omitempty"` // the dealer, playing
+	AvatarVersion string           `json:"avatar_version,omitempty"`
+	Hat           string           `json:"hat,omitempty"`
+	Frame         string           `json:"frame,omitempty"`
+	Title         string           `json:"title,omitempty"`
+	Stack         int64            `json:"stack"`
+	Bet           int64            `json:"bet"` // this betting round
+	InHand        bool             `json:"in_hand,omitempty"`
+	Folded        bool             `json:"folded,omitempty"`
+	AllIn         bool             `json:"all_in,omitempty"`
+	SittingOut    bool             `json:"sitting_out,omitempty"`
+	Connected     bool             `json:"connected"`
+	Cards         []blackjack.Card `json:"cards,omitempty"`     // hidden ones have rank 0
+	Action        string           `json:"action,omitempty"`    // last thing they did
+	HandName      string           `json:"hand_name,omitempty"` // at the showdown
+	Won           int64            `json:"won,omitempty"`
+	Best          []blackjack.Card `json:"best,omitempty"` // their best five, at the showdown
+}
+
+// PokerState is a poker table as seen by one client.
+type PokerState struct {
+	Table      string           `json:"table"`
+	Name       string           `json:"name"`
+	Phase      string           `json:"phase"` // waiting, preflop, flop, turn, river, showdown
+	HandNumber int              `json:"hand_number"`
+	Seats      []PokerSeat      `json:"seats"`     // seat 0 is Dale's
+	YourSeat   int              `json:"your_seat"` // -1 = watching
+	Button     int              `json:"button"`
+	Active     int              `json:"active"` // whose turn, -1 = nobody
+	Board      []blackjack.Card `json:"board"`
+	Pot        int64            `json:"pot"`            // everything in, bets included
+	Pots       []int64          `json:"pots,omitempty"` // main + side pots at the showdown
+	Message    string           `json:"message,omitempty"`
+	SmallBlind int64            `json:"small_blind"`
+	BigBlind   int64            `json:"big_blind"`
+	MinBuyIn   int64            `json:"min_buy_in"`
+	MaxBuyIn   int64            `json:"max_buy_in"`
+	Balance    int64            `json:"balance"` // your chips away from the table
+	// what you can do now (empty when it isn't your turn)
+	Actions        []string     `json:"actions,omitempty"`
+	ToCall         int64        `json:"to_call,omitempty"`
+	MinRaise       int64        `json:"min_raise,omitempty"` // smallest total to raise to
+	MaxRaise       int64        `json:"max_raise,omitempty"` // all-in total
+	Deadline       int64        `json:"deadline,omitempty"`
+	TimerTotal     int64        `json:"timer_total,omitempty"`
+	ServerTime     int64        `json:"server_time"`
+	DealerSay      string       `json:"dealer_say,omitempty"`
+	DealerSayID    int          `json:"dealer_say_id,omitempty"`
+	DealerSayUntil int64        `json:"dealer_say_until,omitempty"`
+	DealerSayCont  bool         `json:"dealer_say_cont,omitempty"`
+	DealerSayPara  bool         `json:"dealer_say_para,omitempty"`
+	DealerLog      []DealerLine `json:"dealer_log,omitempty"`
+	HouseNet       int64        `json:"house_net"`
+	HouseTier      int          `json:"house_tier"`
+	Settings       Settings     `json:"settings"`
+	Spectators     int          `json:"spectators,omitempty"`
 }
 
 // Console is the output of a server command run from the client.
@@ -360,6 +484,8 @@ type RevealView struct {
 }
 
 type TableState struct {
+	TableID    string     `json:"table_id,omitempty"`
+	TableName  string     `json:"table_name,omitempty"`
 	Phase      string     `json:"phase"`
 	HandNumber int        `json:"hand_number"`
 	Deadline   int64      `json:"deadline"`    // unix ms when the current timer expires, 0 = none

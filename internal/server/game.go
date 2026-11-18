@@ -1396,13 +1396,15 @@ func (g *Game) view(viewer *player) proto.TableState {
 		st.Reveal = &proto.RevealView{Seat: rv.seat, Hand: rv.hand, Card: rv.card, Until: rv.until.UnixMilli()}
 	}
 	// what can the viewer do?
-	if viewer.seat >= 0 && g.reveal == nil {
-		if g.phase == proto.PhaseBetting && viewer.eligible {
+	if viewer.seat >= 0 {
+		if g.reveal != nil {
+			// nothing to press while a card is being revealed
+		} else if g.phase == proto.PhaseBetting && viewer.eligible {
 			if g.cfg.BettingMode == "simultaneous" || (viewer.seat == g.betTurn && !viewer.betPlaced) {
 				st.CanBet = true
 			}
 		}
-		if g.phase == proto.PhasePlaying && viewer.inHand && (g.cfg.PlayMode == "simultaneous" || viewer.seat == g.activeSeat) {
+		if g.reveal == nil && g.phase == proto.PhasePlaying && viewer.inHand && (g.cfg.PlayMode == "simultaneous" || viewer.seat == g.activeSeat) {
 			if idx := curHand(viewer); idx >= 0 {
 				h := viewer.hands[idx]
 				bal := g.store.Balance(viewer.user)
