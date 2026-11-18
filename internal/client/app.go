@@ -206,7 +206,9 @@ type App struct {
 	consoleAt          time.Time
 	adminConsoleScroll int
 	pileImgs           map[int]*image.RGBA // small chips for the seat piles
-	pnl                PanelBackend        // the server window's server
+	records            []proto.Record      // who holds the record cosmetics
+	recordsAt          time.Time
+	pnl                PanelBackend // the server window's server
 	panelLogNext       int
 }
 
@@ -575,6 +577,11 @@ func (a *App) handleMsg(m proto.Msg) {
 		var c proto.Console
 		if decode(m, &c) {
 			a.onConsole(c)
+		}
+	case proto.SRecords:
+		var r proto.Records
+		if decode(m, &r) {
+			a.records = r.Records
 		}
 	case proto.SGiftInfo:
 		var g proto.GiftInfo

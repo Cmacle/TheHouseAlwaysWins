@@ -323,6 +323,8 @@ func (c *conn) handle(m proto.Msg) bool {
 	case proto.CLogout:
 		s.Store.RevokeToken(c.user, c.token)
 		return false
+	case proto.CRecords:
+		c.send(proto.SRecords, s.Store.Records())
 	case proto.CProfile:
 		if p, ok := s.Store.Profile(c.user); ok {
 			c.send(proto.SProfile, p)

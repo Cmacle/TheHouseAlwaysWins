@@ -58,7 +58,17 @@ const (
 	MRankNet    = "rank_net"   // currently #1 lifetime (unique)
 	MRankHands  = "rank_hands" // currently played the most hands, all games (unique)
 	MRankBet    = "rank_bet"   // holds the record for the biggest single bet (unique)
-	MFree       = "free"       // everyone has it
+	// Texas Hold'em
+	MPkHands     = "pk_hands"      // Hold'em hands played
+	MPkFlush     = "pk_flush"      // flushes made (seen to the river or a showdown)
+	MPkFullHouse = "pk_full_house" // full houses made
+	MPkQuads     = "pk_quads"      // four of a kinds made
+	MPkStrFlush  = "pk_str_flush"  // straight flushes made (royals count)
+	MPkRoyal     = "pk_royal"      // royal flushes made
+	MPkBluffs    = "pk_bluffs"     // pots won without a showdown holding nothing
+	MPkBeatDale  = "pk_beat_dale"  // showdowns won against Dale
+	MPkBigPot    = "pk_big_pot"    // biggest pot won
+	MFree        = "free"          // everyone has it
 )
 
 // Item is one unlockable.
@@ -78,6 +88,8 @@ type Stats struct {
 	Wagered, Peak, Net, LowestNet, BiggestWin                                             int64
 	Hands, Blackjacks, BestWinStreak, WorstLoseStreak, Busts, DoublesWon, Splits, Refills int
 	RankRich, RankNet, RankHands, RankBet                                                 bool
+	PkHands, PkFlush, PkFullHouse, PkQuads, PkStrFlush, PkRoyal, PkBluffs, PkBeatDale     int
+	PkBigPot                                                                              int64
 }
 
 // Catalog lists every cosmetic, in display order.
@@ -109,6 +121,16 @@ var Catalog = []Item{
 	{ID: "laurel", Kind: Hat, Name: "Laurel Wreath", Desc: "Worn by the #1 lifetime earner.", Tier: Unique, Metric: MRankNet, Sprite: 23},
 	{ID: "chip_tower", Kind: Hat, Name: "The Chip Tower", Desc: "Worn by whoever has made the biggest single bet. Don't sneeze.", Tier: Unique, Metric: MRankBet, Sprite: 25},
 	{ID: "nightcap", Kind: Hat, Name: "The Nightcap", Desc: "Worn by whoever has played the most hands. Do you ever sleep?", Tier: Unique, Metric: MRankHands, Sprite: 24},
+
+	// Texas Hold'em
+	{ID: "visor", Kind: Hat, Name: "Green Visor", Desc: "Twenty-five hands of Hold'em. Card room regular.", Tier: Common, Metric: MPkHands, Goal: 25, Sprite: 26},
+	{ID: "sailor", Kind: Hat, Name: "Sailor Cap", Desc: "Made a flush. Smooth sailing.", Tier: Uncommon, Metric: MPkFlush, Goal: 1, Sprite: 27},
+	{ID: "fedora", Kind: Hat, Name: "Fedora", Desc: "Made a full house. Tip of the hat.", Tier: Rare, Metric: MPkFullHouse, Goal: 1, Sprite: 28},
+	{ID: "jester", Kind: Hat, Name: "Jester Hat", Desc: "Won ten pots holding absolutely nothing.", Tier: Rare, Metric: MPkBluffs, Goal: 10, Sprite: 29},
+	{ID: "bowler", Kind: Hat, Name: "Bowler Hat", Desc: "Made four of a kind. Frightfully dapper.", Tier: Epic, Metric: MPkQuads, Goal: 1, Sprite: 30},
+	{ID: "shark_fin", Kind: Hat, Name: "Shark Fin", Desc: "Beat Dale at the showdown 25 times. Something smells like chum.", Tier: Epic, Metric: MPkBeatDale, Goal: 25, Sprite: 31},
+	{ID: "pharaoh", Kind: Hat, Name: "Pharaoh's Headdress", Desc: "Made a straight flush. Ancient, terrible magic.", Tier: Legendary, Metric: MPkStrFlush, Goal: 1, Sprite: 32},
+	{ID: "turban", Kind: Hat, Name: "Sultan's Turban", Desc: "Made a royal flush. All bow.", Tier: Legendary, Metric: MPkRoyal, Goal: 1, Sprite: 33},
 
 	// ------------------------------------------------ frames
 	{ID: "frame_wood", Kind: Frame, Name: "Plain Frame", Desc: "Simple. Honest. Wooden.", Tier: Common, Metric: MFree, Sprite: 0},
@@ -146,6 +168,12 @@ var Catalog = []Item{
 	{ID: "t_whale", Kind: Title, Name: "Whale", Desc: "Wager $1,000,000 total.", Tier: Legendary, Metric: MWagered, Goal: 1_000_000},
 	{ID: "t_tycoon", Kind: Title, Name: "Tycoon", Desc: "Hold $50,000 at once.", Tier: Legendary, Metric: MPeak, Goal: 50_000},
 	{ID: "t_legend", Kind: Title, Name: "Living Legend", Desc: "Be up $50,000 lifetime.", Tier: Legendary, Metric: MNetUp, Goal: 50_000},
+	{ID: "t_grinder", Kind: Title, Name: "Grinder", Desc: "Play 250 hands of Hold'em.", Tier: Uncommon, Metric: MPkHands, Goal: 250},
+	{ID: "t_pot_committed", Kind: Title, Name: "Pot Committed", Desc: "Win a pot of $5,000 or more.", Tier: Rare, Metric: MPkBigPot, Goal: 5_000},
+	{ID: "t_bluffer", Kind: Title, Name: "Stone Cold Bluffer", Desc: "Win 25 pots holding nothing.", Tier: Rare, Metric: MPkBluffs, Goal: 25},
+	{ID: "t_quad_god", Kind: Title, Name: "Quad God", Desc: "Make four of a kind three times.", Tier: Epic, Metric: MPkQuads, Goal: 3},
+	{ID: "t_dale_slayer", Kind: Title, Name: "Dale Slayer", Desc: "Beat Dale at the showdown 100 times.", Tier: Epic, Metric: MPkBeatDale, Goal: 100},
+	{ID: "t_royalty", Kind: Title, Name: "Royalty", Desc: "Make a royal flush.", Tier: Legendary, Metric: MPkRoyal, Goal: 1},
 	{ID: "t_owns_house", Kind: Title, Name: "Owns The House", Desc: "Have the most chips right now.", Tier: Unique, Metric: MRankRich},
 	{ID: "t_goat", Kind: Title, Name: "The G.O.A.T.", Desc: "Be #1 on the lifetime leaderboard.", Tier: Unique, Metric: MRankNet},
 	{ID: "t_bet_the_farm", Kind: Title, Name: "Bet The Farm", Desc: "Make the biggest bet anyone has made.", Tier: Unique, Metric: MRankBet},
@@ -237,6 +265,24 @@ func (it *Item) Progress(s Stats) (cur, goal int64) {
 			return 1, 1
 		}
 		return 0, 1
+	case MPkHands:
+		return int64(s.PkHands), it.Goal
+	case MPkFlush:
+		return int64(s.PkFlush), it.Goal
+	case MPkFullHouse:
+		return int64(s.PkFullHouse), it.Goal
+	case MPkQuads:
+		return int64(s.PkQuads), it.Goal
+	case MPkStrFlush:
+		return int64(s.PkStrFlush), it.Goal
+	case MPkRoyal:
+		return int64(s.PkRoyal), it.Goal
+	case MPkBluffs:
+		return int64(s.PkBluffs), it.Goal
+	case MPkBeatDale:
+		return int64(s.PkBeatDale), it.Goal
+	case MPkBigPot:
+		return s.PkBigPot, it.Goal
 	case MFree:
 		return 1, 1
 	}
@@ -289,6 +335,24 @@ func (it *Item) Requirement() string {
 		return "Play more hands than anyone (all games)"
 	case MRankBet:
 		return "Make the biggest single bet (all games)"
+	case MPkHands:
+		return fmt.Sprintf("Play %s hands of Hold'em", num(it.Goal))
+	case MPkFlush:
+		return times("Make a flush", it.Goal)
+	case MPkFullHouse:
+		return times("Make a full house", it.Goal)
+	case MPkQuads:
+		return times("Make four of a kind", it.Goal)
+	case MPkStrFlush:
+		return times("Make a straight flush", it.Goal)
+	case MPkRoyal:
+		return times("Make a royal flush", it.Goal)
+	case MPkBluffs:
+		return fmt.Sprintf("Win %s pots holding nothing (no showdown)", num(it.Goal))
+	case MPkBeatDale:
+		return fmt.Sprintf("Beat Dale at the showdown %s times", num(it.Goal))
+	case MPkBigPot:
+		return "Win a Hold'em pot of " + m(it.Goal)
 	case MFree:
 		return "Free for everyone"
 	}
@@ -337,4 +401,12 @@ func Has(id string, s Stats, owned map[string]bool) bool {
 		return it.Met(s)
 	}
 	return owned[id]
+}
+
+// times is "Make a flush" or "Make a flush 3 times".
+func times(what string, n int64) string {
+	if n <= 1 {
+		return what
+	}
+	return fmt.Sprintf("%s %s times", what, num(n))
 }

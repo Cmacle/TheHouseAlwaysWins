@@ -27,6 +27,7 @@ import (
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/banter"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/cosmetics"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/imgutil"
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/poker"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
 )
 
@@ -78,6 +79,20 @@ type Account struct {
 	Splits          int   `json:"splits"`
 	RefillCount     int   `json:"refill_count"`
 	PokerHands      int   `json:"poker_hands,omitempty"`
+	// Chips sitting at a poker table (bought in, not yet cashed out). They're
+	// saved so a crash can't lose them: at startup they go back to Balance.
+	TableStack int64  `json:"table_stack,omitempty"`
+	TableID    string `json:"table_id,omitempty"`
+	// Poker stats, for unlocks.
+	PokerWins       int   `json:"poker_wins,omitempty"`
+	PokerFlushes    int   `json:"poker_flushes,omitempty"`
+	PokerFullHouses int   `json:"poker_full_houses,omitempty"`
+	PokerQuads      int   `json:"poker_quads,omitempty"`
+	PokerStrFlushes int   `json:"poker_straight_flushes,omitempty"`
+	PokerRoyals     int   `json:"poker_royals,omitempty"`
+	PokerBluffs     int   `json:"poker_bluffs,omitempty"`
+	PokerBeatDale   int   `json:"poker_beat_dale,omitempty"`
+	PokerBiggestPot int64 `json:"poker_biggest_pot,omitempty"`
 	BiggestBet      int64 `json:"biggest_bet,omitempty"` // most riding on one hand, any game
 
 	Unlocked []string `json:"unlocked,omitempty"`
@@ -108,6 +123,9 @@ func (s *Store) stats(a *Account) cosmetics.Stats {
 		Busts: a.Busts, DoublesWon: a.DoublesWon, Splits: a.Splits, Refills: a.RefillCount,
 		RankRich: key != "" && key == s.topRich, RankNet: key != "" && key == s.topNet,
 		RankHands: key != "" && key == s.topHands, RankBet: key != "" && key == s.topBet,
+		PkHands: a.PokerHands, PkFlush: a.PokerFlushes, PkFullHouse: a.PokerFullHouses, PkQuads: a.PokerQuads,
+		PkStrFlush: a.PokerStrFlushes, PkRoyal: a.PokerRoyals, PkBluffs: a.PokerBluffs, PkBeatDale: a.PokerBeatDale,
+		PkBigPot: a.PokerBiggestPot,
 	}
 }
 
@@ -143,7 +161,7 @@ func (s *Store) profileOf(a *Account) proto.Profile {
 	hat, frame, title := s.look(a)
 	st := s.stats(a)
 	return proto.Profile{
-		Username: a.Username, Balance: a.Balance, Net: a.Net, Won: a.Won, Lost: a.Lost,
+		Username: a.Username, Balance: a.Balance + a.TableStack, AtTable: a.TableStack, Net: a.Net, Won: a.Won, Lost: a.Lost,
 		HandsPlayed: a.HandsPlayed, HandsWon: a.HandsWon, HandsLost: a.HandsLost,
 		HandsPushed: a.HandsPushed, Blackjacks: a.Blackjacks, BiggestWin: a.BiggestWin,
 		RefillTotal: a.RefillTotal, AvatarVersion: a.AvatarVersion,
@@ -152,6 +170,9 @@ func (s *Store) profileOf(a *Account) proto.Profile {
 		DoublesWon: a.DoublesWon, Splits: a.Splits, RefillCount: a.RefillCount,
 		Unlocked: append([]string(nil), a.Unlocked...), Hat: hat, Frame: frame, Title: title,
 		EquippedHat: a.Hat, RankRich: st.RankRich, RankNet: st.RankNet, RankHands: st.RankHands, RankBet: st.RankBet, BiggestBet: a.BiggestBet,
+		PokerHands: a.PokerHands, PokerFlushes: a.PokerFlushes, PokerFullHouses: a.PokerFullHouses,
+		PokerQuads: a.PokerQuads, PokerStrFlushes: a.PokerStrFlushes, PokerRoyals: a.PokerRoyals,
+		PokerBluffs: a.PokerBluffs, PokerBeatDale: a.PokerBeatDale, PokerBiggestPot: a.PokerBiggestPot,
 		Admin: a.Admin, GiftsIn: a.GiftsIn, GiftsOut: a.GiftsOut,
 		Online: s.online[strings.ToLower(a.Username)],
 	}
@@ -166,8 +187,8 @@ type Unlock struct {
 // touched updates derived stats, the #1 spots and unlocks after a change to
 // an account; caller holds s.mu.
 func (s *Store) touched(a *Account) {
-	if a.Balance > a.PeakBalance {
-		a.PeakBalance = a.Balance
+	if a.Balance+a.TableStack > a.PeakBalance {
+		a.PeakBalance = a.Balance + a.TableStack
 	}
 	if a.Net < a.LowestNet {
 		a.LowestNet = a.Net
@@ -195,9 +216,9 @@ func (s *Store) recomputeRanks() {
 			handsTie = true
 		}
 		switch {
-		case rich == "" || a.Balance > bestBal:
-			rich, bestBal, richTie = k, a.Balance, false
-		case a.Balance == bestBal:
+		case rich == "" || a.Balance+a.TableStack > bestBal:
+			rich, bestBal, richTie = k, a.Balance+a.TableStack, false
+		case a.Balance+a.TableStack == bestBal:
 			richTie = true
 		}
 		switch {
@@ -257,6 +278,23 @@ func (s *Store) TopBet() (string, int64) {
 		return a.Username, a.BiggestBet
 	}
 	return "", 0
+}
+
+// Records lists who holds the record-based cosmetics and their numbers.
+func (s *Store) Records() proto.Records {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out proto.Records
+	h := proto.Record{Metric: cosmetics.MRankHands}
+	if a, ok := s.accounts[s.topHands]; ok {
+		h.User, h.Value = a.Username, int64(a.HandsPlayed+a.PokerHands)
+	}
+	b := proto.Record{Metric: cosmetics.MRankBet}
+	if a, ok := s.accounts[s.topBet]; ok {
+		b.User, b.Value = a.Username, a.BiggestBet
+	}
+	out.Records = append(out.Records, h, b)
+	return out
 }
 
 // TopHands is who has played the most hands ("" if nobody or a tie).
@@ -834,11 +872,11 @@ func (s *Store) ApplyRefill(username string, amount int64, period string) int64 
 	}
 	a.LastRefill = period
 	s.dirty = true
-	if a.Balance >= amount {
+	if a.Balance+a.TableStack >= amount {
 		return 0
 	}
-	diff := amount - a.Balance
-	a.Balance = amount
+	diff := amount - a.Balance - a.TableStack
+	a.Balance += diff
 	a.Net -= diff
 	a.RefillTotal += diff
 	a.RefillCount++
@@ -851,11 +889,11 @@ func (s *Store) ForceRefill(username string, amount int64) int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	a, ok := s.accounts[strings.ToLower(username)]
-	if !ok || a.Balance >= amount {
+	if !ok || a.Balance+a.TableStack >= amount {
 		return 0
 	}
-	diff := amount - a.Balance
-	a.Balance = amount
+	diff := amount - a.Balance - a.TableStack
+	a.Balance += diff
 	a.Net -= diff
 	a.RefillTotal += diff
 	a.RefillCount++
@@ -1085,4 +1123,158 @@ func (s *Store) Refund(username string, amount int64) {
 		a.Balance += amount
 		s.dirty = true
 	}
+}
+
+// ---------------------------------------------------------------- poker
+
+// ErrNotEnough is returned when a buy-in is more than the balance.
+var ErrNotEnough = errors.New("you don't have that many chips")
+
+// BuyIn moves chips from a player's balance to their stack at a poker table.
+func (s *Store) BuyIn(username, table string, amount int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.accounts[strings.ToLower(username)]
+	switch {
+	case !ok:
+		return errors.New("no such player")
+	case amount <= 0:
+		return errors.New("buy in for at least 1 chip")
+	case a.Balance < amount:
+		return ErrNotEnough
+	case a.TableStack > 0 && a.TableID != table:
+		return errors.New("you still have chips at another table")
+	}
+	a.Balance -= amount
+	a.TableStack += amount
+	a.TableID = table
+	s.dirty = true
+	return nil
+}
+
+// CashOut moves a player's poker stack back to their balance. It returns the
+// chips moved.
+func (s *Store) CashOut(username string) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.accounts[strings.ToLower(username)]
+	if !ok {
+		return 0
+	}
+	n := a.TableStack
+	a.Balance += n
+	a.TableStack, a.TableID = 0, ""
+	s.dirty = true
+	s.touched(a)
+	return n
+}
+
+// TableStack is what a player has at a poker table, and which.
+func (s *Store) TableStack(username string) (int64, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.accounts[strings.ToLower(username)]; ok {
+		return a.TableStack, a.TableID
+	}
+	return 0, ""
+}
+
+// ReturnTableStacks cashes everyone out (at startup: nobody is at a table, so
+// any chips still marked as on one were left there by a crash). It returns
+// how many accounts it fixed.
+func (s *Store) ReturnTableStacks() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, a := range s.accounts {
+		if a.TableStack != 0 || a.TableID != "" {
+			a.Balance += a.TableStack
+			a.TableStack, a.TableID = 0, ""
+			n++
+		}
+	}
+	if n > 0 {
+		s.dirty = true
+	}
+	return n
+}
+
+// PokerHand is one settled Hold'em hand for one player.
+type PokerHand struct {
+	Delta    int64 // won minus put in
+	Stack    int64 // their stack afterwards
+	Put      int64 // what they put in (for the biggest-bet record)
+	Pot      int64 // the pot they won (0 if they didn't)
+	Category int   // their best hand if they saw the river or the showdown, else -1
+	Bluff    bool  // won without a showdown holding nothing
+	BeatDale bool  // won a showdown Dale was in
+}
+
+// RecordPokerHand applies a settled hand to an account.
+func (s *Store) RecordPokerHand(username string, h PokerHand) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.accounts[strings.ToLower(username)]
+	if !ok {
+		return
+	}
+	a.TableStack = h.Stack
+	a.Net += h.Delta
+	if h.Delta > 0 {
+		a.Won += h.Delta
+		a.PokerWins++
+	} else {
+		a.Lost += -h.Delta
+	}
+	a.PokerHands++
+	a.Wagered += h.Put
+	if h.Put > a.BiggestBet {
+		a.BiggestBet = h.Put
+	}
+	if h.Delta > a.BiggestWin {
+		a.BiggestWin = h.Delta
+	}
+	if h.Pot > a.PokerBiggestPot {
+		a.PokerBiggestPot = h.Pot
+	}
+	switch h.Category {
+	case poker.Flush:
+		a.PokerFlushes++
+	case poker.FullHouse:
+		a.PokerFullHouses++
+	case poker.Quads:
+		a.PokerQuads++
+	case poker.StraightFlush:
+		a.PokerStrFlushes++
+	case poker.RoyalFlush:
+		a.PokerRoyals++
+		a.PokerStrFlushes++ // a royal is a straight flush too
+	}
+	if h.Bluff {
+		a.PokerBluffs++
+	}
+	if h.BeatDale {
+		a.PokerBeatDale++
+	}
+	s.touched(a)
+}
+
+// RecordPokerHouse adds Dale's result in one Hold'em hand to the house.
+func (s *Store) RecordPokerHouse(delta int64) (proto.HouseStats, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	h := &s.house
+	prev := h.Tier
+	h.PokerHands++
+	h.PokerNet += delta
+	h.Net += delta
+	switch {
+	case delta > 0:
+		h.Won += delta
+	case delta < 0:
+		h.Lost += -delta
+	}
+	h.Tier = banter.Tier(h.Net, h.Tier)
+	s.dirty = true
+	return *h, prev
 }

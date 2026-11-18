@@ -166,8 +166,8 @@ func TestPreviewUniqueHats(t *testing.T) {
 	a.SetSize(640, 360)
 	a.computeLayout()
 	a.drawTableBG()
-	for i, h := range []string{"crown", "laurel", "nightcap", "chip_tower"} {
-		x, y := 120+i*110, 150
+	for i, h := range []string{"crown", "laurel", "nightcap", "chip_tower", "visor", "sailor", "fedora", "jester", "bowler", "shark_fin", "pharaoh", "turban"} {
+		x, y := 30+(i%6)*100, 70+(i/6)*120
 		frame := "frame_gold"
 		if h == "nightcap" {
 			frame = "frame_marathon"
@@ -178,4 +178,31 @@ func TestPreviewUniqueHats(t *testing.T) {
 		a.text(x+16, y+40, h, a.A.C("text"), alignCenter)
 	}
 	save(t, dir, "31_unique_hats.png", a.fb)
+}
+
+// TestPreviewWardrobeRecords shows the holder of a record cosmetic on hover.
+func TestPreviewWardrobeRecords(t *testing.T) {
+	dir := os.Getenv("PREVIEW_DIR")
+	if dir == "" {
+		t.Skip("set PREVIEW_DIR to render previews")
+	}
+	assets, err := LoadAssets("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := New(fakePlatform{}, &Config{}, assets)
+	a.screen = scrTable
+	a.username = "You_There"
+	a.profile = proto.Profile{Username: "You_There", HandsPlayed: 812, BiggestBet: 400}
+	a.records = []proto.Record{{Metric: "rank_hands", User: "LuckyLou", Value: 1204}, {Metric: "rank_bet", User: "Big_Tony", Value: 5000}}
+	a.recordsAt = time.Now()
+	a.st = baseState(7)
+	a.overlay = ovWardrobe
+	a.wardTab = "hat"
+	a.wardSel = "nightcap"
+	a.Frame(Input{MX: -1, MY: -1})
+	save(t, dir, "32_wardrobe_record.png", a.fb)
+	a.wardSel = "chip_tower"
+	a.Frame(Input{MX: -1, MY: -1})
+	save(t, dir, "33_wardrobe_record2.png", a.fb)
 }
