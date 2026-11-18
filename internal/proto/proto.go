@@ -158,8 +158,9 @@ type Profile struct {
 	Frame           string   `json:"frame,omitempty"` // shown frame
 	Title           string   `json:"title,omitempty"` // shown title
 	EquippedHat     string   `json:"equipped_hat,omitempty"`
-	RankRich        bool     `json:"rank_rich,omitempty"` // currently #1 richest
-	RankNet         bool     `json:"rank_net,omitempty"`  // currently #1 lifetime
+	RankRich        bool     `json:"rank_rich,omitempty"`  // currently #1 richest
+	RankNet         bool     `json:"rank_net,omitempty"`   // currently #1 lifetime
+	RankHands       bool     `json:"rank_hands,omitempty"` // currently played the most hands
 	Admin           bool     `json:"admin,omitempty"`
 	GiftsIn         int64    `json:"gifts_in,omitempty"`
 	GiftsOut        int64    `json:"gifts_out,omitempty"`

@@ -77,6 +77,7 @@ type Account struct {
 	DoublesWon      int   `json:"doubles_won"`
 	Splits          int   `json:"splits"`
 	RefillCount     int   `json:"refill_count"`
+	PokerHands      int   `json:"poker_hands,omitempty"`
 
 	Unlocked []string `json:"unlocked,omitempty"`
 	Hat      string   `json:"hat,omitempty"`
@@ -105,6 +106,7 @@ func (s *Store) stats(a *Account) cosmetics.Stats {
 		Hands: a.HandsPlayed, Blackjacks: a.Blackjacks, BestWinStreak: a.BestWinStreak, WorstLoseStreak: a.WorstLoseStreak,
 		Busts: a.Busts, DoublesWon: a.DoublesWon, Splits: a.Splits, Refills: a.RefillCount,
 		RankRich: key != "" && key == s.topRich, RankNet: key != "" && key == s.topNet,
+		RankHands: key != "" && key == s.topHands,
 	}
 }
 
@@ -117,6 +119,8 @@ func (s *Store) look(a *Account) (hat, frame, title string) {
 		hat = "crown"
 	case st.RankNet:
 		hat = "laurel"
+	case st.RankHands:
+		hat = "nightcap"
 	case a.Hat != "" && cosmetics.Has(a.Hat, st, own):
 		hat = a.Hat
 	}
@@ -144,7 +148,7 @@ func (s *Store) profileOf(a *Account) proto.Profile {
 		BestWinStreak: a.BestWinStreak, WorstLoseStreak: a.WorstLoseStreak, Busts: a.Busts,
 		DoublesWon: a.DoublesWon, Splits: a.Splits, RefillCount: a.RefillCount,
 		Unlocked: append([]string(nil), a.Unlocked...), Hat: hat, Frame: frame, Title: title,
-		EquippedHat: a.Hat, RankRich: st.RankRich, RankNet: st.RankNet,
+		EquippedHat: a.Hat, RankRich: st.RankRich, RankNet: st.RankNet, RankHands: st.RankHands,
 		Admin: a.Admin, GiftsIn: a.GiftsIn, GiftsOut: a.GiftsOut,
 		Online: s.online[strings.ToLower(a.Username)],
 	}
@@ -176,10 +180,17 @@ func (s *Store) touched(a *Account) {
 // recomputeRanks finds the unique #1 richest (above the starting amount) and
 // #1 lifetime (above zero); caller holds s.mu.
 func (s *Store) recomputeRanks() {
-	var rich, net string
+	var rich, net, hands string
 	var bestBal, bestNet int64
-	richTie, netTie := false, false
+	bestHands := 0
+	richTie, netTie, handsTie := false, false, false
 	for k, a := range s.accounts {
+		switch n := a.HandsPlayed + a.PokerHands; {
+		case hands == "" || n > bestHands:
+			hands, bestHands, handsTie = k, n, false
+		case n == bestHands:
+			handsTie = true
+		}
 		switch {
 		case rich == "" || a.Balance > bestBal:
 			rich, bestBal, richTie = k, a.Balance, false
@@ -199,7 +210,10 @@ func (s *Store) recomputeRanks() {
 	if netTie || bestNet <= 0 {
 		net = ""
 	}
-	s.topRich, s.topNet = rich, net
+	if handsTie || bestHands == 0 {
+		hands = ""
+	}
+	s.topRich, s.topNet, s.topHands = rich, net, hands
 }
 
 // TakeUnlocks returns and clears unlocks earned since the last call.
@@ -212,6 +226,16 @@ func (s *Store) TakeUnlocks() []Unlock {
 }
 
 // Tops returns the current #1 richest and #1 lifetime usernames ("" if none).
+// TopHands is who has played the most hands ("" if nobody or a tie).
+func (s *Store) TopHands() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.accounts[s.topHands]; ok {
+		return a.Username
+	}
+	return ""
+}
+
 func (s *Store) Tops() (rich, net string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -267,6 +291,7 @@ type Store struct {
 	CrownMin int64
 	house    proto.HouseStats
 	topRich  string
+	topHands string
 	topNet   string
 	unlocks  []Unlock
 	changes  int  // successful saves, to know when a backup is due

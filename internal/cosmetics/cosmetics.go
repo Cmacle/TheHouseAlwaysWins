@@ -52,11 +52,12 @@ const (
 	MBusts      = "busts"
 	MDoublesWon = "doubles_won"
 	MSplits     = "splits"
-	MRefills    = "refills"   // daily refills received
-	MComeback   = "comeback"  // was down Goal or more, then got back to even
-	MRankRich   = "rank_rich" // currently #1 richest (unique)
-	MRankNet    = "rank_net"  // currently #1 lifetime (unique)
-	MFree       = "free"      // everyone has it
+	MRefills    = "refills"    // daily refills received
+	MComeback   = "comeback"   // was down Goal or more, then got back to even
+	MRankRich   = "rank_rich"  // currently #1 richest (unique)
+	MRankNet    = "rank_net"   // currently #1 lifetime (unique)
+	MRankHands  = "rank_hands" // currently played the most hands, all games (unique)
+	MFree       = "free"       // everyone has it
 )
 
 // Item is one unlockable.
@@ -75,7 +76,7 @@ type Item struct {
 type Stats struct {
 	Wagered, Peak, Net, LowestNet, BiggestWin                                             int64
 	Hands, Blackjacks, BestWinStreak, WorstLoseStreak, Busts, DoublesWon, Splits, Refills int
-	RankRich, RankNet                                                                     bool
+	RankRich, RankNet, RankHands                                                          bool
 }
 
 // Catalog lists every cosmetic, in display order.
@@ -105,6 +106,7 @@ var Catalog = []Item{
 	{ID: "space", Kind: Hat, Name: "Space Helmet", Desc: "$2.5 million wagered. To the moon.", Tier: Legendary, Metric: MWagered, Goal: 2_500_000, Sprite: 21},
 	{ID: "crown", Kind: Hat, Name: "The Crown", Desc: "Worn by whoever has the most chips right now.", Tier: Unique, Metric: MRankRich, Sprite: 22},
 	{ID: "laurel", Kind: Hat, Name: "Laurel Wreath", Desc: "Worn by the #1 lifetime earner.", Tier: Unique, Metric: MRankNet, Sprite: 23},
+	{ID: "nightcap", Kind: Hat, Name: "The Nightcap", Desc: "Worn by whoever has played the most hands. Do you ever sleep?", Tier: Unique, Metric: MRankHands, Sprite: 24},
 
 	// ------------------------------------------------ frames
 	{ID: "frame_wood", Kind: Frame, Name: "Plain Frame", Desc: "Simple. Honest. Wooden.", Tier: Common, Metric: MFree, Sprite: 0},
@@ -117,6 +119,7 @@ var Catalog = []Item{
 	{ID: "frame_fire", Kind: Frame, Name: "Inferno Frame", Desc: "Eight wins in a row.", Tier: Epic, Metric: MWinStreak, Goal: 8, Sprite: 7},
 	{ID: "frame_diamond", Kind: Frame, Name: "Diamond Frame", Desc: "Held $10,000 at once.", Tier: Legendary, Metric: MPeak, Goal: 10_000, Sprite: 8},
 	{ID: "frame_rainbow", Kind: Frame, Name: "Rainbow Frame", Desc: "A million wagered. Taste the rainbow.", Tier: Legendary, Metric: MWagered, Goal: 1_000_000, Sprite: 9},
+	{ID: "frame_marathon", Kind: Frame, Name: "Marathon Frame", Desc: "Played more hands than anyone. The finish line is a myth.", Tier: Unique, Metric: MRankHands, Sprite: 10},
 
 	// ------------------------------------------------ titles
 	{ID: "t_rookie", Kind: Title, Name: "Rookie", Desc: "Fresh meat.", Tier: Common, Metric: MFree},
@@ -143,6 +146,7 @@ var Catalog = []Item{
 	{ID: "t_legend", Kind: Title, Name: "Living Legend", Desc: "Be up $50,000 lifetime.", Tier: Legendary, Metric: MNetUp, Goal: 50_000},
 	{ID: "t_owns_house", Kind: Title, Name: "Owns The House", Desc: "Have the most chips right now.", Tier: Unique, Metric: MRankRich},
 	{ID: "t_goat", Kind: Title, Name: "The G.O.A.T.", Desc: "Be #1 on the lifetime leaderboard.", Tier: Unique, Metric: MRankNet},
+	{ID: "t_furniture", Kind: Title, Name: "Part Of The Furniture", Desc: "Play more hands than anyone.", Tier: Unique, Metric: MRankHands},
 }
 
 var byID = func() map[string]*Item {
@@ -169,7 +173,9 @@ func OfKind(kind string) []*Item {
 
 // Dynamic reports whether an item is held only while a condition stays true
 // (the #1 spots). Everything else is unlocked permanently.
-func (it *Item) Dynamic() bool { return it.Metric == MRankRich || it.Metric == MRankNet }
+func (it *Item) Dynamic() bool {
+	return it.Metric == MRankRich || it.Metric == MRankNet || it.Metric == MRankHands
+}
 
 // Progress returns how far a player is toward an item.
 func (it *Item) Progress(s Stats) (cur, goal int64) {
@@ -215,6 +221,11 @@ func (it *Item) Progress(s Stats) (cur, goal int64) {
 		return 0, 1
 	case MRankNet:
 		if s.RankNet {
+			return 1, 1
+		}
+		return 0, 1
+	case MRankHands:
+		if s.RankHands {
 			return 1, 1
 		}
 		return 0, 1
@@ -266,6 +277,8 @@ func (it *Item) Requirement() string {
 		return "Be #1 on the Richest leaderboard"
 	case MRankNet:
 		return "Be #1 on the Lifetime leaderboard"
+	case MRankHands:
+		return "Play more hands than anyone (all games)"
 	case MFree:
 		return "Free for everyone"
 	}

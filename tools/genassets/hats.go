@@ -331,6 +331,24 @@ var hatSprites = []sprite{
 		".....ggggg......ggggg.....",
 		".......gggg....gggg.......",
 	}, map[rune]string{'g': "f2c14e", 'G': "a8741a"}},
+	// 24 the nightcap (most hands played): a striped sleeping cap that
+	// flops over to one side, with a pom-pom and a little gold star
+	{[]string{
+		"........................ww...",
+		".......................wwww..",
+		"........kkkkkkkkk......wwww..",
+		"......kkbbBBbbBBbkk.....ww...",
+		".....kbbBBbbBBbbBBbk...kk....",
+		"....kbBBbbBBbbBBbbBBkkkbk....",
+		"....kbbBBbbyBBbbBBbbBBbk.....",
+		"...kbBBbbByyybbBBbbBBbk......",
+		"...kbbBBbbBybBBbbBBbkk.......",
+		"..kbBBbbBBbbBBbbBBbk.........",
+		"..kbbBBbbBBbbBBbbBBk.........",
+		".kwwwwwwwwwwwwwwwwwwk........",
+		".kWwWwWwWwWwWwWwWwWwk........",
+		"..kkkkkkkkkkkkkkkkkk.........",
+	}, map[rune]string{'b': "3a4fb8", 'B': "6f86ea", 'y': "ffd23f", 'w': "f4f2ea", 'W': "c9c6ba"}},
 }
 
 func genHats() {
@@ -525,6 +543,19 @@ func genFrames() {
 				c = shadeC(c, 0.7)
 			}
 			return c, true
+		},
+		// 10 marathon: a chequered finish-line flag with gold corners
+		func(x, y, d int, t float64) (color.NRGBA, bool) {
+			if corner(x, y) {
+				if d == 0 {
+					return hex("8a5a12"), true
+				}
+				return hex("f2c14e"), true
+			}
+			if (x/2+y/2)%2 == 0 {
+				return hex("f4f4f0"), true
+			}
+			return hex("1a1a22"), true
 		},
 	}
 	img := newImg(frameS*len(styles), frameS)
