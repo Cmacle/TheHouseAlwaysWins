@@ -161,13 +161,26 @@ chips come from the house and his results count in the house's totals. The
 table setting **dealer solo only** (off by default) makes him sit out whenever
 two or more people are playing.
 
+Before every hand there's a short window (10 seconds, `deal_in_seconds`) to
+press **DEAL ME IN (D or Enter)**. Only players who press it get cards; the
+hand starts as soon as everyone has. Miss three hands in a row and you're
+sat out until you press SIT IN.
+
+With **Card reveal** on (the server setting blackjack uses), the flop, turn
+and river come out face down, big in the middle of the table, and flip after
+a moment with the suspense sound. If they improve your hand you'll hear it
+("YOU HAVE TWO PAIR!"). Your current hand (your cards plus the board, like
+"Pair of Aces") is shown over your cards and in your panel, and every
+player's bet this round sits by their chips.
+
 On your turn: **FOLD (F)**, **CHECK/CALL (C)** and **BET/RAISE (R)**. Pick the
 amount with MIN, 1/2 POT, POT and ALL IN, the **+**/**-** buttons or the
 mouse wheel. Win without a showdown and you can **SHOW CARDS** to rub it in.
 
 Table settings (S in the lobby, or `table set <id> <setting> <value>`):
 `seats`, `small_blind`, `big_blind`, `min_buy_in`, `max_buy_in`,
-`action_seconds`, `between_seconds`, `dealer_solo_only`, `dale_think_ms`.
+`action_seconds`, `between_seconds`, `deal_in_seconds`, `dealer_solo_only`,
+`dale_think_ms`.
 
 ## The Beggars Table
 

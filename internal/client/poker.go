@@ -11,6 +11,7 @@ import (
 	"time"
 
 	bj "github.com/Cmacle/TheHouseAlwaysWins/internal/blackjack"
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/poker"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
 )
 
@@ -113,12 +114,16 @@ func (a *App) onPoker(ps *proto.PokerState) {
 		a.pkRaise = ps.MinRaise
 		a.pkRaiseFor = ps.HandNumber
 	}
-	if len(ps.Actions) > 0 && (prev == nil || len(prev.Actions) == 0) {
+	if (len(ps.Actions) > 0 && (prev == nil || len(prev.Actions) == 0)) || (ps.CanDealIn && (prev == nil || !prev.CanDealIn)) {
 		a.sound("turn")
+	}
+	if newHand {
+		a.pkRev = nil
 	}
 	shell := pokerShell(ps)
 	a.onDealerLines(shell)
 	a.ps, a.st = ps, shell
+	a.onPokerReveal(ps)
 }
 
 func pokerSeat(ps *proto.PokerState, i int) *proto.PokerSeat {
@@ -171,8 +176,13 @@ func (a *App) drawPoker() {
 			a.text(lx, L.cardsY+2, "DALE", a.A.C("gold"), alignRight)
 		}
 		a.text(lx, L.cardsY+12, commas(d.Stack), a.A.C("text"), alignRight)
-		if line, c := a.pokerSeatLine(ps, d); line != "" {
-			a.text(lx, L.cardsY+22, line, c, alignRight)
+		ly := L.cardsY + 22
+		if d.Bet > 0 {
+			a.textOutlined(lx, ly, "BET "+commas(d.Bet), a.A.C("highlight"), alignRight)
+			ly += 10
+		}
+		if line, c := a.pokerSeatLine(ps, d); line != "" && !strings.HasPrefix(strings.ToUpper(line), "BET ") {
+			a.text(lx, ly, line, c, alignRight)
 		}
 		if ps.Button == 0 {
 			a.drawButtonPuck(lx-a.A.Font.Width("DALE")-12, L.cardsY+1)
@@ -210,6 +220,9 @@ func (a *App) drawPoker() {
 		strokeRect(a.fb, image.Rect(x, boardY, x+cw, boardY+ch), a.A.C("felt_text"))
 	}
 	for i, c := range ps.Board {
+		if a.pkRevealHides(i, bx+i*step, boardY) {
+			continue
+		}
 		a.drawCardAt(c, fmt.Sprintf("pb%d", i), bx+i*step, boardY, &fly)
 	}
 	msgY := boardY + ch + 5
@@ -293,13 +306,15 @@ func (a *App) drawPoker() {
 				c = a.A.C("highlight")
 			}
 			a.textOutlined(x, cardTop-10, strings.ToUpper(sv.HandName), c, alignCenter)
+		} else if me && !sv.Folded {
+			if h := poker.Describe(sv.Cards, ps.Board); h != "" {
+				hw := a.A.Font.Width(strings.ToUpper(h))/2 + 2
+				a.textOutlined(min(max(x, hw), ScreenW-hw), cardTop-10, strings.ToUpper(h), a.A.C("gold"), alignCenter)
+			}
 		}
+		// this round's bet, just above their chips
 		if sv.Bet > 0 {
-			chip := a.A.ChipImage(a.A.ChipFor(sv.Bet))
-			cs := chip.Rect.Dx()
-			by := cardTop - cs - 2
-			blit(a.fb, chip, x-cs/2-14, by)
-			a.textOutlined(x-14+cs/2+2, by+cs/2-4, shortChips(sv.Bet), a.A.C("gold"), alignLeft)
+			a.drawSeatBet(px, ar.Min.Y-4, sv.Bet, left)
 		}
 		if a.hovered(ar) {
 			tip := fmt.Sprintf("%s: %s on the table", sv.Username, commas(sv.Stack))
@@ -328,6 +343,7 @@ func (a *App) drawPoker() {
 	a.drawLogButton(st)
 	a.drawTopBar(st)
 	a.drawPokerHUD(ps)
+	a.drawPokerReveal()
 	a.drawPokerChat(ps)
 	a.drawChatBar(st)
 	a.blocked = updating
@@ -347,6 +363,14 @@ func (a *App) drawButtonPuck(x, y int) {
 }
 
 func (a *App) pokerSeatLine(ps *proto.PokerState, s proto.PokerSeat) (string, color.RGBA) {
+	if ps.Phase == "ready" && !s.Dale {
+		switch {
+		case s.DealtIn:
+			return "IN", a.A.C("win")
+		case s.Stack > 0 && !s.SittingOut:
+			return "deciding...", a.A.C("text_dim")
+		}
+	}
 	switch {
 	case ps.Phase == "showdown" && s.Won > 0:
 		return "WON " + commas(s.Won), a.A.C("win")
@@ -360,7 +384,7 @@ func (a *App) pokerSeatLine(ps *proto.PokerState, s proto.PokerSeat) (string, co
 		return strings.ToUpper(s.Action), a.A.C("highlight")
 	case s.Stack == 0 && !s.InHand:
 		return "out of chips", a.A.C("lose")
-	case !s.InHand && ps.Phase != "waiting" && ps.Phase != "showdown":
+	case !s.InHand && ps.Phase != "waiting" && ps.Phase != "showdown" && ps.Phase != "ready":
 		return "next hand", a.A.C("text_dim")
 	}
 	return "", a.A.C("text_dim")
@@ -406,7 +430,13 @@ func (a *App) drawPokerHUD(ps *proto.PokerState) {
 	a.text(80, hudTop+18, commas(stack), a.A.C("text"), alignLeft)
 	a.text(48, hudTop+29, "BANK", a.A.C("text_dim"), alignLeft)
 	a.text(80, hudTop+29, commas(ps.Balance), a.A.C("text"), alignLeft)
+	hand := ""
+	if me != nil && me.InHand && !me.Folded {
+		hand = poker.Describe(me.Cards, ps.Board)
+	}
 	switch {
+	case hand != "":
+		a.text(48, hudTop+44, fitText(a.A.Font, strings.ToUpper(hand), 116), a.A.C("highlight"), alignLeft)
 	case me == nil:
 		a.text(48, hudTop+44, "watching from the rail", a.A.C("text_dim"), alignLeft)
 	case me.SittingOut:
@@ -480,16 +510,14 @@ func (a *App) tableInfo() proto.TableInfo {
 
 func (a *App) drawPokerIdle(ps *proto.PokerState, me *proto.PokerSeat, x0, x1, top int) {
 	msg := ps.Message
-	var btns []struct {
+	type ib struct {
 		id, label string
 		fn        func()
+		hot       rune
+		key       Key
 	}
-	add := func(id, label string, fn func()) {
-		btns = append(btns, struct {
-			id, label string
-			fn        func()
-		}{id, label, fn})
-	}
+	var btns []ib
+	add := func(id, label string, fn func()) { btns = append(btns, ib{id: id, label: label, fn: fn}) }
 	between := ps.Phase == "waiting" || ps.Phase == "showdown"
 	switch {
 	case me == nil:
@@ -517,6 +545,12 @@ func (a *App) drawPokerIdle(ps *proto.PokerState, me *proto.PokerSeat, x0, x1, t
 			msg = "Dale is thinking..."
 		case !me.InHand && !between:
 			msg = "You'll be dealt in next hand."
+		}
+		if ps.CanDealIn {
+			msg = "New hand starting. Deal yourself in?"
+			btns = append(btns, ib{"pk_dealin", "DEAL ME IN", func() { a.send(proto.CPoker, proto.PokerAct{Action: "in"}) }, 'd', KeyEnter})
+		} else if ps.Phase == "ready" && me.DealtIn {
+			msg = "You're in. Waiting for the others..."
 		}
 		if ps.Phase == "showdown" && me.InHand && !me.Folded && me.HandName == "" {
 			add("pk_show", "SHOW CARDS", func() { a.send(proto.CPoker, proto.PokerAct{Action: "show"}) })
@@ -549,7 +583,7 @@ func (a *App) drawPokerIdle(ps *proto.PokerState, me *proto.PokerSeat, x0, x1, t
 			if i == 0 {
 				style = styleGold
 			}
-			if a.button(b.id, image.Rect(bx, by, bx+w, by+18), b.label, btn{enabled: true, style: style}) {
+			if a.button(b.id, image.Rect(bx, by, bx+w, by+18), b.label, btn{enabled: true, style: style, hotkey: b.hot, key: b.key}) {
 				b.fn()
 			}
 			bx += w + gap
@@ -656,4 +690,19 @@ func (a *App) drawPokerActions(ps *proto.PokerState, me *proto.PokerSeat, x0, x1
 	if !a.isTouch() {
 		a.text((x0+x1)/2, top+46, "keys: F fold  C check/call  R raise  wheel or +/- amount", a.A.C("text_dim"), alignCenter)
 	}
+}
+
+// drawSeatBet shows a player's bet this round as a small chip and the
+// amount, sitting just above their chip pile.
+func (a *App) drawSeatBet(pileX, bottom int, bet int64, leftOfPortrait bool) {
+	chip := a.smallChip(min(len(a.A.Theme.ChipValues)-1, max(0, a.A.ChipFor(bet))))
+	cs := chip.Rect.Dx()
+	label := "BET " + shortChips(bet)
+	if !leftOfPortrait {
+		blit(a.fb, chip, pileX, bottom-cs)
+		a.textOutlined(pileX+cs+2, bottom-cs+2, label, a.A.C("highlight"), alignLeft)
+		return
+	}
+	blit(a.fb, chip, pileX+pileChip-cs, bottom-cs)
+	a.textOutlined(pileX+pileChip-cs-2, bottom-cs+2, label, a.A.C("highlight"), alignRight)
 }

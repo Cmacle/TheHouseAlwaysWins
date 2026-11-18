@@ -170,7 +170,7 @@ func TestServerPassword(t *testing.T) {
 }
 
 func TestPokerEndToEnd(t *testing.T) {
-	s := startServerS(t, 39519, nil)
+	s := startServerS(t, 39519, func(c *server.Config) { c.CardRevealMinSeconds, c.CardRevealMaxSeconds = 0.2, 0.3 })
 	var out strings.Builder
 	for _, kv := range []string{"between_seconds 1", "dale_think_ms 50", "action_seconds 5"} {
 		s.Exec("table set holdem "+kv, &out)
@@ -195,8 +195,13 @@ func TestPokerEndToEnd(t *testing.T) {
 		t.Fatalf("stack %d balance %d", me.Stack, a.ps.Balance)
 	}
 	// check or call every time it's our turn, for a few hands
+	sawReveal := false
 	play := func(until func() bool, what string) {
 		pump(t, apps, nil, func() bool {
+			sawReveal = sawReveal || a.pkRev != nil
+			if a.ps.CanDealIn {
+				a.Frame(Input{MX: -1, MY: -1, Chars: []rune{'d'}})
+			}
 			if len(a.ps.Actions) > 0 {
 				a.Frame(Input{MX: -1, MY: -1, Chars: []rune{'c'}})
 			}
@@ -207,6 +212,9 @@ func TestPokerEndToEnd(t *testing.T) {
 		play(func() bool { return a.ps.HandNumber >= h }, fmt.Sprintf("hand %d", h))
 	}
 	play(func() bool { return a.ps.Phase == "showdown" }, "third showdown")
+	if !sawReveal {
+		t.Fatal("no card reveal at the poker table")
+	}
 	t.Logf("after %d hands: stack %d, dale %d, house %d", a.ps.HandNumber, a.pokerMe().Stack, a.ps.Seats[0].Stack, a.ps.HouseNet)
 	stack, bank := a.pokerMe().Stack, a.ps.Balance
 	a.leaveToLobby()

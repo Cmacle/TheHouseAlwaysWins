@@ -30,7 +30,7 @@ func gameLabel(g string) string {
 
 func (a *App) onJoined(j proto.Joined) {
 	a.game, a.tableName = j.Game, j.Name
-	a.st, a.ps, a.bs, a.roll = nil, nil, nil, nil
+	a.st, a.ps, a.bs, a.roll, a.pkRev = nil, nil, nil, nil, nil
 	a.cardSeen, a.cardHidden, a.cardVal, a.flipAt = map[string]time.Time{}, map[string]bool{}, nil, map[string]time.Time{}
 	a.rev, a.chats, a.chatLog, a.chatOpen = nil, nil, nil, false
 	a.sayLog, a.sayID, a.logID = nil, 0, 0
@@ -48,7 +48,7 @@ func (a *App) onJoined(j proto.Joined) {
 }
 
 func (a *App) backToLobby() {
-	a.game, a.st, a.ps, a.bs, a.roll = "", nil, nil, nil, nil
+	a.game, a.st, a.ps, a.bs, a.roll, a.pkRev = "", nil, nil, nil, nil, nil
 	a.chats, a.chatOpen = nil, false
 	if a.screen == scrTable || a.screen == scrPoker || a.screen == scrBeggar {
 		a.screen = scrLobby
