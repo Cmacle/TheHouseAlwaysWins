@@ -1,34 +1,16 @@
 package client
 
 import (
-	"bufio"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/release"
 	"image"
-	"io"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
-	"time"
 )
 
 // Auto-update. When the server you connect to is a newer version than this
 // client, you're offered the update. It always comes from the game's
 // official GitHub releases (never from the server itself), and it's checked
 // against the release's SHA256SUMS.txt before it's installed.
-
-// ReleaseBase is where release files are downloaded from; %s is the version.
-var ReleaseBase = "https://github.com/Cmacle/TheHouseAlwaysWins/releases/download/v%s/"
-
-// ReleaseAPI is the fallback when the direct links don't work: the GitHub
-// API's description of the release, which links every file.
-var ReleaseAPI = "https://api.github.com/repos/Cmacle/TheHouseAlwaysWins/releases/tags/v%s"
 
 // Updater is a platform that can install a new version of the client.
 type Updater interface {
@@ -66,40 +48,7 @@ type updater struct {
 }
 
 // newerVersion reports whether version a is newer than b ("1.10.0" > "1.9.2").
-// Anything that isn't a version number (like "dev") is never newer or older.
-func newerVersion(a, b string) bool {
-	pa, oka := parseVersion(a)
-	pb, okb := parseVersion(b)
-	if !oka || !okb {
-		return false
-	}
-	for i := 0; i < 3; i++ {
-		if pa[i] != pb[i] {
-			return pa[i] > pb[i]
-		}
-	}
-	return false
-}
-
-func parseVersion(v string) ([3]int, bool) {
-	var out [3]int
-	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
-	if i := strings.IndexAny(v, "-+ "); i >= 0 {
-		v = v[:i]
-	}
-	parts := strings.Split(v, ".")
-	if len(parts) == 0 || len(parts) > 3 {
-		return out, false
-	}
-	for i, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 0 {
-			return out, false
-		}
-		out[i] = n
-	}
-	return out, true
-}
+func newerVersion(a, b string) bool { return release.Newer(a, b) }
 
 // checkForUpdate runs when the server says hello.
 func (a *App) checkForUpdate() {
@@ -153,139 +102,8 @@ func (a *App) startUpdate() {
 	}()
 }
 
-// downloadRelease fetches one release file and checks it against the
-// release's SHA256SUMS.txt. It returns the path of the verified file.
 func downloadRelease(version, asset, dir string, cancel <-chan struct{}, progress func(got, size int64)) (string, error) {
-	base := fmt.Sprintf(ReleaseBase, version)
-	if t := os.Getenv("HOUSE_TEST_RELEASES"); t != "" { // for testing updates locally
-		base = strings.TrimRight(t, "/") + "/"
-	}
-	hc := &http.Client{Timeout: 15 * time.Minute}
-	fetch := func(url, accept string) (*http.Response, error) {
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("User-Agent", "TheHouseAlwaysWins/"+Version)
-		if accept != "" {
-			req.Header.Set("Accept", accept)
-		}
-		resp, err := hc.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't reach GitHub: %v", err)
-		}
-		if resp.StatusCode != 200 {
-			resp.Body.Close()
-			return nil, fmt.Errorf("the v%s download isn't available yet (HTTP %d)", version, resp.StatusCode)
-		}
-		return resp, nil
-	}
-	var apiAssets map[string]string // file name -> API download link
-	get := func(url string) (*http.Response, error) {
-		resp, err := fetch(url, "")
-		if err == nil || os.Getenv("HOUSE_TEST_RELEASES") != "" {
-			return resp, err
-		}
-		// the direct link didn't work: ask the API where the file is
-		if apiAssets == nil {
-			apiAssets = map[string]string{}
-			if r, aerr := fetch(fmt.Sprintf(ReleaseAPI, version), "application/vnd.github+json"); aerr == nil {
-				var rel struct {
-					Assets []struct {
-						Name string `json:"name"`
-						URL  string `json:"url"`
-					} `json:"assets"`
-				}
-				json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&rel)
-				r.Body.Close()
-				for _, a := range rel.Assets {
-					apiAssets[a.Name] = a.URL
-				}
-			}
-		}
-		name := url[strings.LastIndex(url, "/")+1:]
-		if link, ok := apiAssets[name]; ok && strings.HasPrefix(link, "https://api.github.com/") {
-			if resp, aerr := fetch(link, "application/octet-stream"); aerr == nil {
-				return resp, nil
-			}
-		}
-		return nil, err
-	}
-	// the checksum list first
-	resp, err := get(base + "SHA256SUMS.txt")
-	if err != nil {
-		return "", err
-	}
-	want := ""
-	sc := bufio.NewScanner(io.LimitReader(resp.Body, 1<<20))
-	for sc.Scan() {
-		f := strings.Fields(sc.Text())
-		if len(f) == 2 && strings.TrimPrefix(f[1], "*") == asset {
-			want = strings.ToLower(f[0])
-		}
-	}
-	resp.Body.Close()
-	if len(want) != 64 {
-		return "", fmt.Errorf("v%s has no checksum for %s", version, asset)
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	path := filepath.Join(dir, asset+".download")
-	resp, err = get(base + asset)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
-	if err != nil {
-		return "", err
-	}
-	h := sha256.New()
-	var got int64
-	buf := make([]byte, 64*1024)
-	const limit = 400 << 20
-	for {
-		select {
-		case <-cancel:
-			f.Close()
-			os.Remove(path)
-			return "", errors.New("cancelled")
-		default:
-		}
-		n, rerr := resp.Body.Read(buf)
-		if n > 0 {
-			if _, err := f.Write(buf[:n]); err != nil {
-				f.Close()
-				os.Remove(path)
-				return "", err
-			}
-			h.Write(buf[:n])
-			got += int64(n)
-			progress(got, resp.ContentLength)
-			if got > limit {
-				f.Close()
-				os.Remove(path)
-				return "", errors.New("download is too big")
-			}
-		}
-		if rerr == io.EOF {
-			break
-		}
-		if rerr != nil {
-			f.Close()
-			os.Remove(path)
-			return "", fmt.Errorf("download failed: %v", rerr)
-		}
-	}
-	if err := f.Close(); err != nil {
-		return "", err
-	}
-	if hex.EncodeToString(h.Sum(nil)) != want {
-		os.Remove(path)
-		return "", errors.New("the download didn't match its checksum, so it was thrown away")
-	}
-	return path, nil
+	return release.Download(version, asset, dir, "TheHouseAlwaysWins/"+Version, cancel, progress)
 }
 
 // drawUpdate draws the update window when there's one to show, over

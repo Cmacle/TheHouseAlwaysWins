@@ -83,6 +83,7 @@ func (a *App) onState(st *proto.TableState) {
 		fresh++
 	})
 	a.cardSeen, a.cardHidden, a.cardVal = seen, hidden, vals
+	a.onRevealState(st)
 	if len(st.DealerLog) > 0 {
 		a.sayLog = nil
 		for _, l := range st.DealerLog {
@@ -155,6 +156,14 @@ func (a *App) onEvent(e proto.Event) {
 		a.toast(e.Text, a.A.C("win"), 5, 1)
 	case "bust":
 		a.sound("bust")
+	case "reveal":
+		a.onRevealEvent(e)
+	case "gift":
+		a.sound("refill")
+		a.toast(e.Text, a.A.C("win"), 4, 1)
+		if a.st != nil && e.Seat >= 0 && e.Seat == a.st.YourSeat {
+			a.toast("+"+commas(e.Delta)+" CHIPS", a.A.C("gold"), 3, 2)
+		}
 	case "blackjack_dealt":
 		if mine {
 			a.sound("blackjack")
@@ -263,6 +272,9 @@ type flying struct {
 func easeOut(t float64) float64 { return 1 - math.Pow(1-t, 3) }
 
 func (a *App) drawCardAt(c bj.Card, key string, x, y int, fly *[]flying) {
+	if a.revealHides(key, x, y) {
+		return
+	}
 	img := a.A.CardImage(c)
 	if start, ok := a.cardSeen[key]; ok {
 		t := a.now.Sub(start).Seconds() / animSecs
@@ -340,6 +352,7 @@ func (a *App) resultLabel(h proto.HandView) (string, color.RGBA) {
 }
 
 func (a *App) drawTable() {
+	a.chatPreInput()
 	a.computeLayout()
 	a.drawTableBG()
 	L := a.L
@@ -454,11 +467,19 @@ func (a *App) drawTable() {
 		if line, lc := a.seatLine(st, sv); line != "" {
 			label(ar.Max.Y+22, line, lc)
 		}
+		// click someone else to send them chips
+		canGift := !me && st.Settings.ChipGifts && sv.Balance < st.Settings.RefillAmount
+		if canGift && a.overlay == ovNone && !a.blocked && a.in.Pressed && a.hovered(ar) {
+			a.openGift(sv.Username)
+		}
 		// hover tooltip with balance
 		if a.hovered(ar) {
 			tip := fmt.Sprintf("%s: %s chips", sv.Username, commas(sv.Balance))
 			if name, _, ok := titleOf(sv.Title); ok {
 				tip = fmt.Sprintf("%s, %s: %s chips", sv.Username, name, commas(sv.Balance))
+			}
+			if canGift {
+				tip += " - click to send chips"
 			}
 			w := a.A.Font.Width(tip) + 8
 			tr := image.Rect(x-w/2, ar.Min.Y-48, x+w/2, ar.Min.Y-36)
@@ -547,6 +568,9 @@ func (a *App) drawTable() {
 	a.drawLogButton(st)
 	a.drawTopBar(st)
 	a.drawHUD(st)
+	a.drawReveal()
+	a.drawChatBubbles(st)
+	a.drawChatBar(st)
 	a.blocked = updating
 
 	switch a.overlay {
@@ -562,6 +586,10 @@ func (a *App) drawTable() {
 		a.drawSettings()
 	case ovDealerLog:
 		a.drawDealerLog()
+	case ovAdmin:
+		a.drawAdmin()
+	case ovGift:
+		a.drawGift()
 	}
 	if a.overlay == ovNone && a.profileHatOnTop() {
 		a.drawHat(a.profile.Hat, 10, L.hudTop+12)
@@ -647,6 +675,9 @@ func (a *App) drawTopBar(st *proto.TableState) {
 		{"help", "?", '?', func() { a.overlay = ovHelp }},
 		{"profile", "PROFILE", 0, func() { a.overlay = ovProfile }},
 		{"lb", "LEADERBOARD", 'l', a.openLeaderboard},
+	}
+	if a.profile.Admin {
+		btns = append(btns, tb{"admin", "ADMIN", 0, a.openAdmin})
 	}
 	for _, b := range btns {
 		w := a.A.Font.Width(b.label) + 14

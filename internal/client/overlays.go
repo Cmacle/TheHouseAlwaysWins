@@ -180,8 +180,17 @@ func (a *App) drawLeaderboard() {
 		if !narrow {
 			a.text(cols[4].x, ty, fmt.Sprint(p.HandsPlayed), a.A.C("text"), alignRight)
 		}
+		if st := a.st; st != nil && st.Settings.ChipGifts && p.Balance < st.Settings.RefillAmount && !strings.EqualFold(p.Username, a.username) {
+			gx := cols[2].x - 66
+			if a.button("lbgift_"+p.Username, image.Rect(gx, y+3, gx+30, y+17), "GIFT", btn{enabled: true}) {
+				a.openGift(p.Username)
+			}
+		}
 	}
 	foot := "The richest player wears the crown."
+	if a.st != nil && a.st.Settings.ChipGifts {
+		foot += " GIFT buys a broke friend back in."
+	}
 	if !rich {
 		foot = "Lifetime = won minus lost, minus daily refills."
 	}
@@ -243,7 +252,7 @@ func (a *App) drawProfile() {
 }
 
 func (a *App) drawHelp() {
-	r := ovRect(420, 304)
+	r := ovRect(420, 330)
 	if Portrait() {
 		r = ovRect(420, ScreenH-60)
 	}
@@ -290,8 +299,13 @@ func (a *App) drawHelp() {
 		"but the refill counts against your lifetime total.",
 		"Unlock hats, frames and titles by playing (PROFILE > WARDROBE).",
 		"Whoever has the most chips wears the crown!",
+	)
+	if s.ChipGifts {
+		lines = append(lines, fmt.Sprintf("Friend broke? Click them to send chips (up to %s).", commas(s.RefillAmount)))
+	}
+	lines = append(lines,
 		"",
-		"L leaderboard   T dealer log   O settings   M mute   F11 fullscreen",
+		"L leaderboard  T dealer log  Y chat  O settings  M mute  F11 fullscreen",
 	)
 	y := r.Min.Y + 36
 	for _, l := range lines {

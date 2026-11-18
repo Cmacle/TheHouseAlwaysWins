@@ -552,6 +552,12 @@ func (p platform) Quit()                         { pDestroyWindow.Call(p.w.hwnd)
 
 // Run opens the window and runs the client until it is closed.
 func Run(cfg *client.Config, assets *client.Assets, icon []byte) error {
+	return RunApp("The House Always Wins", cfg, icon, func(p client.Platform) *client.App { return client.New(p, cfg, assets) })
+}
+
+// RunApp opens a window titled title and runs the app made by mk in it
+// until the window closes.
+func RunApp(title string, cfg *client.Config, icon []byte, mk func(client.Platform) *client.App) error {
 	pSetProcessDPIAware.Call()
 	pTimeBeginPeriod.Call(1)
 
@@ -596,7 +602,7 @@ func Run(cfg *client.Config, assets *client.Assets, icon []byte) error {
 	y := (int32(sh) - wh) / 2
 	hwnd, _, err := pCreateWindowExW.Call(0,
 		uintptr(unsafe.Pointer(className)),
-		uintptr(unsafe.Pointer(utf16p("The House Always Wins"))),
+		uintptr(unsafe.Pointer(utf16p(title))),
 		wsOverlappedWindow|wsVisible,
 		uintptr(x), uintptr(y), uintptr(ww), uintptr(wh),
 		0, 0, inst, 0)
@@ -621,7 +627,7 @@ func Run(cfg *client.Config, assets *client.Assets, icon []byte) error {
 		w.toggleFullscreen()
 	}
 
-	app := client.New(platform{w}, cfg, assets)
+	app := mk(platform{w})
 	defer app.Close()
 
 	const frameTime = time.Second / 60

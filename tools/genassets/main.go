@@ -860,4 +860,112 @@ func genSounds() {
 		writeWav(fmt.Sprintf("talklow%d.wav", i+1), b)
 	}
 	writeWav("error.wav", mix(tone(220, 0.12, 0.3, "square", 8), tone(180, 0.15, 0.3, "square", 8), 0.1))
+	genRevealSounds(notes)
+}
+
+// genRevealSounds makes the card reveal sounds: suspense pieces in three
+// styles and six lengths (each ends right as the card flips), and a short
+// sting for how the card went.
+func genRevealSounds(notes func([]float64, float64, float64, string, float64) []float64) {
+	for _, tenths := range []int{5, 10, 15, 20, 25, 30} {
+		L := float64(tenths) / 10
+		// snare roll: hits come faster and louder
+		drum := silence(L)
+		for t := 0.0; t < L-0.02; {
+			p := t / L
+			drum = mix(drum, noise(0.045, 0.15+0.5*p*p, 70, int64(t*1000), 0.7), t)
+			drum = mix(drum, tone(190, 0.04, 0.05+0.12*p, "tri", 60), t)
+			t += 0.095 - 0.065*p
+		}
+		writeWav(fmt.Sprintf("suspense_drum_%d.wav", tenths), fadeEdges(drum[:int(L*sr)], 0.01))
+		// rising tone with a nervous tremolo
+		n := int(L * sr)
+		rise := make([]float64, n)
+		ph1, ph2 := 0.0, 0.0
+		for i := range rise {
+			t := float64(i) / sr
+			p := t / L
+			f := 180 * math.Pow(4.5, p)
+			ph1 += f / sr
+			ph2 += f * 1.007 / sr
+			trem := 0.6 + 0.4*math.Sin(2*math.Pi*t*(5+9*p))
+			v := 0.6*math.Sin(2*math.Pi*ph1) + 0.4*(2*math.Mod(ph2, 1)-1)*0.5
+			rise[i] = v * trem * (0.08 + 0.32*p*p)
+		}
+		writeWav(fmt.Sprintf("suspense_rise_%d.wav", tenths), fadeEdges(rise, 0.02))
+		// heartbeat speeding up, under a thin high string
+		heart := silence(L)
+		for t := 0.02; t < L-0.15; {
+			p := t / L
+			heart = mix(heart, tone(58, 0.12, 0.55+0.25*p, "sin", 22), t)
+			heart = mix(heart, tone(52, 0.1, 0.4+0.2*p, "sin", 25), t+0.14)
+			t += 0.75 - 0.42*p
+		}
+		str := tone(1760, L, 0.035, "tri", 0)
+		for i := range str {
+			str[i] *= float64(i) / float64(len(str))
+		}
+		heart = mix(heart, str, 0)
+		writeWav(fmt.Sprintf("suspense_heart_%d.wav", tenths), fadeEdges(heart[:int(L*sr)], 0.01))
+	}
+	slide := func(f0, f1, sec, vol float64, wave string) []float64 {
+		n := int(sec * sr)
+		out := make([]float64, n)
+		ph := 0.0
+		for i := range out {
+			t := float64(i) / sr
+			ph += (f0 + (f1-f0)*t/sec) / sr
+			v := math.Sin(2 * math.Pi * ph)
+			if wave == "square" {
+				v = 0.5
+				if math.Mod(ph, 1) > 0.5 {
+					v = -0.5
+				}
+			}
+			out[i] = v * vol * math.Min(1, float64(i)/(0.005*sr)) * math.Min(1, float64(n-i)/(0.03*sr))
+		}
+		return out
+	}
+	// a cymbal-ish splash to mark the flip
+	splash := func(vol float64) []float64 { return noise(0.25, vol, 14, 77, 0.9) }
+	// players' cards
+	bust := slide(330, 300, 0.22, 0.28, "square")
+	bust = mix(bust, slide(311, 280, 0.22, 0.28, "square"), 0.25)
+	bust = mix(bust, slide(294, 200, 0.55, 0.3, "square"), 0.5)
+	writeWav("rev_bust.wav", bust)
+	writeWav("rev_safe.wav", mix(tone(660, 0.2, 0.3, "sin", 12), splash(0.12), 0))
+	writeWav("rev_meh.wav", mix(notes([]float64{392, 370}, 0.12, 0.2, "tri", 0.35), splash(0.1), 0))
+	writeWav("rev_good.wav", mix(notes([]float64{523.25, 659.25}, 0.09, 0.25, "square", 0.2), splash(0.15), 0))
+	writeWav("rev_great.wav", mix(notes([]float64{523.25, 659.25, 783.99, 1046.5}, 0.07, 0.25, "square", 0.2), splash(0.2), 0))
+	r21 := notes([]float64{523.25, 659.25, 783.99, 1046.5, 1318.5, 1568.0}, 0.06, 0.3, "square", 0.2)
+	for i := 0; i < 6; i++ {
+		r21 = mix(r21, tone(2637+float64(i%3)*400, 0.08, 0.08, "sin", 30), 0.36+float64(i)*0.05)
+	}
+	writeWav("rev_21.wav", mix(r21, splash(0.25), 0))
+	// the dealer's cards, as the players feel about them
+	cheer := notes([]float64{392, 523.25, 659.25, 783.99, 1046.5}, 0.07, 0.4, "square", 0.2)
+	crowd := noise(1.1, 0.35, 2.2, 9, 0.18) // a muffled roar
+	for i := range crowd {
+		crowd[i] *= math.Min(1, float64(i)/(0.15*sr))
+	}
+	writeWav("rev_dealer_bust.wav", mix(mix(cheer, crowd, 0.05), splash(0.25), 0))
+	groan := slide(220, 150, 0.7, 0.3, "square")
+	aww := noise(0.8, 0.25, 3, 11, 0.08)
+	for i := range aww {
+		aww[i] *= math.Min(1, float64(i)/(0.1*sr))
+	}
+	writeWav("rev_dealer_strong.wav", mix(mix(notes([]float64{311.13, 261.63}, 0.16, 0.3, "tri", 0.35), groan, 0.15), aww, 0.05))
+	writeWav("rev_dealer_ok.wav", mix(tone(196, 0.25, 0.35, "tri", 10), splash(0.1), 0))
+	writeWav("rev_dealer_more.wav", mix(notes([]float64{293.66, 440}, 0.14, 0.22, "square", 0.18), splash(0.1), 0))
+	writeWav("chat.wav", mix(tone(1400, 0.035, 0.18, "sin", 60), tone(2100, 0.03, 0.1, "sin", 80), 0.03))
+}
+
+func fadeEdges(s []float64, sec float64) []float64 {
+	n := int(sec * sr)
+	for i := 0; i < n && i < len(s); i++ {
+		k := float64(i) / float64(n)
+		s[i] *= k
+		s[len(s)-1-i] *= k
+	}
+	return s
 }

@@ -32,6 +32,7 @@ const (
 )
 
 type window struct {
+	title      string
 	x          *conn
 	id, gc     uint32
 	w, h       int // window size in pixels
@@ -50,12 +51,28 @@ type window struct {
 
 // Run opens the game window and runs the game until it's closed.
 func Run(cfg *client.Config, assets *client.Assets, icon []byte) error {
+	return RunApp("The House Always Wins", cfg, icon, func(p client.Platform) *client.App { return client.New(p, cfg, assets) })
+}
+
+// Available reports whether there's an X display to open a window on.
+func Available() bool {
+	x, err := dial()
+	if err != nil {
+		return false
+	}
+	x.c.Close()
+	return true
+}
+
+// RunApp opens a window titled title and runs the app made by mk in it
+// until the window closes.
+func RunApp(title string, cfg *client.Config, icon []byte, mk func(client.Platform) *client.App) error {
 	x, err := dial()
 	if err != nil {
 		return err
 	}
 	defer x.c.Close()
-	w := &window{x: x, in: client.Input{MX: -1, MY: -1}}
+	w := &window{x: x, in: client.Input{MX: -1, MY: -1}, title: title}
 
 	scale := cfg.WindowScale
 	if scale <= 0 {
@@ -76,7 +93,7 @@ func Run(cfg *client.Config, assets *client.Assets, icon []byte) error {
 		w.toggleFullscreen()
 	}
 
-	app := client.New(&platform{w: w}, cfg, assets)
+	app := mk(&platform{w: w})
 	defer app.Close()
 
 	const frameTime = time.Second / 60
@@ -142,7 +159,7 @@ func (w *window) create(icon []byte) error {
 	w.atomState = x.internAtom("_NET_WM_STATE")
 	w.atomFullscreen = x.internAtom("_NET_WM_STATE_FULLSCREEN")
 	utf8 := x.internAtom("UTF8_STRING")
-	title := "The House Always Wins"
+	title := w.title
 	x.changeProperty(w.id, 39, 31, 8, []byte(title))                                          // WM_NAME, STRING
 	x.changeProperty(w.id, x.internAtom("_NET_WM_NAME"), utf8, 8, []byte(title))              // for modern desktops
 	x.changeProperty(w.id, 67, 31, 8, []byte("thehousealwayswins\x00TheHouseAlwaysWins\x00")) // WM_CLASS

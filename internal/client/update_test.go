@@ -3,6 +3,7 @@ package client
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/release"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -39,9 +40,9 @@ func releaseServer(t *testing.T, files map[string]string) *httptest.Server {
 		w.Write([]byte(b))
 	}))
 	t.Cleanup(srv.Close)
-	old, oldAPI := ReleaseBase, ReleaseAPI
-	ReleaseBase, ReleaseAPI = srv.URL+"/v%s/", srv.URL+"/api/%s"
-	t.Cleanup(func() { ReleaseBase, ReleaseAPI = old, oldAPI })
+	old, oldAPI := release.Base, release.API
+	release.Base, release.API = srv.URL+"/v%s/", srv.URL+"/api/%s"
+	t.Cleanup(func() { release.Base, release.API = old, oldAPI })
 	return srv
 }
 

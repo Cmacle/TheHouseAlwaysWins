@@ -26,8 +26,11 @@ func (a *App) volumeFor(name string) float64 {
 		return 0
 	}
 	cat := a.Cfg.EffectsVolume
-	if strings.HasPrefix(name, "talk") {
+	switch {
+	case strings.HasPrefix(name, "talk"):
 		cat = a.Cfg.VoiceVolume
+	case strings.HasPrefix(name, "suspense") || strings.HasPrefix(name, "rev_"):
+		cat = a.Cfg.RevealVolume
 	}
 	return float64(clampPct(a.Cfg.Volume)) / 100 * float64(clampPct(cat)) / 100
 }
@@ -136,7 +139,7 @@ func (a *App) slider(id string, r image.Rectangle, v *int) bool {
 }
 
 func (a *App) drawSettings() {
-	r := ovRect(340, 280)
+	r := ovRect(340, 324)
 	if a.overlayFrame(r, "SETTINGS") {
 		a.Cfg.Save()
 		return
@@ -172,6 +175,7 @@ func (a *App) drawSettings() {
 		voiceTest = "talklow2"
 	}
 	row("vol_voice", "DEALER VOICE", "his babbling", &a.Cfg.VoiceVolume, voiceTest)
+	row("vol_reveal", "CARD REVEAL", "suspense + stings", &a.Cfg.RevealVolume, "rev_great")
 	mute := !a.Cfg.Sound
 	a.checkbox("mute", x0, y+2, "Mute everything (M)", &mute)
 	if mute == a.Cfg.Sound {

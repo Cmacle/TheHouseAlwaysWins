@@ -20,7 +20,11 @@ func Dir() string {
 	return filepath.Dir(exe)
 }
 
-func exePath() (string, error) {
+// startExe is where the program was when it started. It's remembered
+// because after Swap, Linux reports the renamed old file as the executable.
+var startExe, startErr = findExe()
+
+func findExe() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", err
@@ -31,11 +35,26 @@ func exePath() (string, error) {
 	return exe, nil
 }
 
+func exePath() (string, error) { return startExe, startErr }
+
 // Replace puts newFile in place of the running program and starts it. The
 // caller should quit right after. The old program is kept as <name>.old
 // until the next start (Windows can't delete a running program, but it can
 // rename one).
 func Replace(newFile string) error {
+	if err := Swap(newFile); err != nil {
+		return err
+	}
+	if err := Restart(); err != nil {
+		Unswap(newFile)
+		return err
+	}
+	return nil
+}
+
+// Swap puts newFile where the running program is, keeping the running one
+// as <name>.old. Nothing is started.
+func Swap(newFile string) error {
 	exe, err := exePath()
 	if err != nil {
 		return err
@@ -52,16 +71,30 @@ func Replace(newFile string) error {
 		os.Rename(old, exe) // put it back
 		return err
 	}
-	cmd := exec.Command(exe, os.Args[1:]...)
-	cmd.Dir = filepath.Dir(exe)
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	if err := cmd.Start(); err != nil {
-		// couldn't start the new one: go back to the old one
-		os.Rename(exe, newFile)
-		os.Rename(old, exe)
+	return nil
+}
+
+// Unswap undoes Swap (newFile gets the new version back).
+func Unswap(newFile string) {
+	exe, err := exePath()
+	if err != nil {
+		return
+	}
+	os.Rename(exe, newFile)
+	os.Rename(exe+".old", exe)
+}
+
+// Restart starts the program again (the new version after Swap) with the
+// same arguments, sharing this one's console.
+func Restart() error {
+	exe, err := exePath()
+	if err != nil {
 		return err
 	}
-	return nil
+	cmd := exec.Command(exe, os.Args[1:]...)
+	cmd.Dir = filepath.Dir(exe)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	return cmd.Start()
 }
 
 // Cleanup removes what an earlier update left behind. Run it at startup.

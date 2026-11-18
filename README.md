@@ -5,8 +5,21 @@ headless server and play casino blackjack against a scripted dealer. Every
 account keeps a lifetime gain/loss that shows up on an in-game leaderboard, an
 optional web page and Discord.
 
-- **Headless server** (`HouseServer.exe`, or a Linux binary) built to run 24/7.
-  With nobody connected the table stops and the process just waits.
+- **Server** (`HouseServer.exe`, or a Linux binary) built to run 24/7.
+  With nobody connected the table stops and the process just waits. On a
+  desktop it opens its own **server window** with every setting, the log, a
+  command box and an **Update** button; on a headless box it runs in the
+  console as before.
+- **Card reveal** (on by default): cards drawn after the deal are shown big in
+  the middle of the table and flip after a random 0.5-3 seconds, with a
+  suspense sound and a sting for how it went. Dealer cards get stings for how
+  the *players* feel about them (cheers for a dealer bust, groans for a 20).
+- **Chip gifts:** buy a broke friend back in. Gifts only top someone up to the
+  refill amount and don't count as winnings, so nobody can pump an account.
+- **Table chat:** short messages pop up in a bubble by your portrait.
+- **Admins:** make trusted players admins. They get an ADMIN window in the game
+  for every server setting and a console, and can type `/commands` in chat as
+  if they were at the server, including `/update`.
 - **Linux client** (`TheHouseAlwaysWins-linux-amd64` / `-arm64`): the same game
   on Linux desktops, as a single file with nothing to install.
 - **Android app** (`TheHouseAlwaysWins.apk`): the same game on your phone,
@@ -328,6 +341,11 @@ command.
 | `max_split_hands` | 4 | |
 | `resplit_aces` / `hit_split_aces` | false / false | |
 | `allow_surrender` | false | Late surrender |
+| `card_reveal` | true | Cards drawn after the deal are revealed slowly, big in the middle of the table |
+| `card_reveal_min_seconds` / `card_reveal_max_seconds` | 0.5 / 3 | The random wait before a revealed card flips |
+| `table_chat` | true | Players can chat (admins always can, for commands) |
+| `chip_gifts` | true | Players can send chips to someone with less than `refill_amount` |
+| `gift_refills_per_day` | 1 | Most one player can be sent per refill period, in refill amounts (0 = no daily cap) |
 | `turbo_mode` | false | The old fast pace: 15s bets, 20s turns, quick dealing, a chattier dealer. Ignores the six timing settings below |
 | `betting_time_seconds` | 20 | Betting timer (per player in `turns` betting) |
 | `turn_time_seconds` | 25 | Per-turn timer in `turns` play mode |
@@ -401,7 +419,46 @@ The server uses almost no CPU when the table is empty.
   install it as a service.
 - **Linux:** see `deploy/thehousealwayswins.service` for a systemd unit.
 
-### Updates
+### The server window
+
+On Windows (and on Linux with a desktop) the server opens a window:
+
+- **SETTINGS:** every `server.json` setting. Switches toggle with a click;
+  type a value and press SAVE (or Enter). Values are checked first, written to
+  `server.json` and reloaded straight away. Table settings apply from the next
+  hand; the port needs a restart.
+- **LOG + COMMANDS:** the live server log and a command box for any console
+  command (Up/Down recalls earlier ones).
+- **UPDATE:** checks GitHub for a newer server. When there is one the button
+  turns gold; click it and the server downloads it, checks it against
+  `SHA256SUMS.txt`, backs up, swaps itself out and restarts, window and all.
+
+Closing the window saves and stops the server. Use `-nogui` (or `-noconsole`,
+as services do) to run without it.
+
+### Admins
+
+Type `admin <name>` in the server window (or console) to make someone an
+admin, `admin <name> off` to undo it, `admins` to list them. Admins get:
+
+- An **ADMIN** button in the game: the same settings editor and console as the
+  server window.
+- **/commands in chat:** anything you can type at the server, e.g.
+  `/players`, `/give Lou 500`, `/set card_reveal off`, `/kick someone`.
+  The output pops up on screen.
+- **`/update`:** updates the server from GitHub and restarts it. Reconnect a
+  few seconds later and your game offers you the matching update.
+
+### Updating the server
+
+`update` (in the window, console, or `/update` as an admin) installs the newest
+GitHub release for this platform and restarts. `update force` reinstalls the
+current one; `version` shows this version and the latest. The server also
+checks every few hours and logs when a new version is out. Under
+`run-server.bat` or the systemd unit it just exits after installing and lets
+them start the new version; otherwise it starts the new version itself.
+
+### Updates for players
 
 When a player connects, the server tells them its version. If their game is
 older, they're offered the update: **UPDATE NOW** downloads it, checks it and
@@ -451,7 +508,19 @@ refill <user|all>           immediate top-up (counts against net)
 resetstats <user> | setpassword <user> <pass> | delete <user> | kick <user>
 say <message> | reload | save | quit
 backup | backups | restore <backup>
+admin <user> [on|off] | admins
+get [filter] | set <setting> <value>
+update [force] | version
 ```
+
+### Chip gifts
+
+Click a player at the table (or GIFT on the leaderboard) to send them chips.
+You can only help someone with less than `refill_amount`, and only up to it:
+chips they have on the table count. Each player can be sent at most
+`gift_refills_per_day` refills' worth per day. Gifted chips are subtracted from
+the receiver's lifetime gain (like a refill) and added back to the sender's, so
+the Lifetime board only ever shows what was won from the house.
 
 ## Client
 
@@ -461,10 +530,12 @@ backup | backups | restore <backup>
 | Enter | Deal (place bet) |
 | R / C | Rebet last amount / clear |
 | T | Dealer log: everything he's said lately |
+| Y or SAY | Chat (Enter sends, Esc cancels). Admins: `/` starts a command |
+| Click a player | Send them chips (when they're below the refill amount) |
 | H S D P U | Hit, Stand, Double, Split, Surrender |
 | L | Leaderboard (left/right switches Richest / Lifetime / The House) |
 | W (in Profile) | Wardrobe: hats, frames, titles |
-| O or SETTINGS | Volume: master, sound effects, dealer voice (0 = muted) |
+| O or SETTINGS | Volume: master, sound effects, dealer voice, card reveal (0 = muted) |
 | M | Mute / unmute everything |
 | F1 or ? | How to play |
 | F11 or Alt+Enter | Fullscreen |
@@ -472,7 +543,7 @@ backup | backups | restore <backup>
 
 `client.json` stores the server address, your remembered login (a revocable
 token, never your password), the volume settings (`volume`, `effects_volume`,
-`voice_volume`, 0-100), `window_scale` (0 = automatic) and `fullscreen`. Logging out forgets the saved login.
+`voice_volume`, `reveal_volume`, 0-100), `window_scale` (0 = automatic) and `fullscreen`. Logging out forgets the saved login.
 
 ### Replacing the art
 

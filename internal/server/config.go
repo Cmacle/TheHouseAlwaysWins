@@ -104,6 +104,23 @@ type Config struct {
 	// the dealer talks more and tells his long stories less often.
 	TurboMode bool `json:"turbo_mode"`
 
+	// Table chat: short messages shown in a bubble by the player's seat.
+	TableChat bool `json:"table_chat"`
+
+	// Chip gifts: players can send chips to someone with less than the
+	// refill amount, topping them up to it at most (chips on the table count).
+	// GiftRefillsPerDay caps what one player can receive per refill period, in
+	// refill amounts (1 = one free buy-in a day; 0 = no daily cap).
+	ChipGifts         bool    `json:"chip_gifts"`
+	GiftRefillsPerDay float64 `json:"gift_refills_per_day"`
+
+	// Card reveal: cards drawn after the deal (hits, doubles, the dealer's
+	// hole card and draws) are shown big in the middle of the table and
+	// flipped after a random wait between the min and max seconds.
+	CardReveal           bool    `json:"card_reveal"`
+	CardRevealMinSeconds float64 `json:"card_reveal_min_seconds"`
+	CardRevealMaxSeconds float64 `json:"card_reveal_max_seconds"`
+
 	BettingTimeSeconds int `json:"betting_time_seconds"`
 	TurnTimeSeconds    int `json:"turn_time_seconds"`
 	PlayTimeSeconds    int `json:"play_time_seconds"`
@@ -159,6 +176,12 @@ func DefaultConfig() *Config {
 		ResplitAces:           false,
 		HitSplitAces:          false,
 		AllowSurrender:        false,
+		TableChat:             true,
+		ChipGifts:             true,
+		GiftRefillsPerDay:     1,
+		CardReveal:            true,
+		CardRevealMinSeconds:  0.5,
+		CardRevealMaxSeconds:  3,
 		BettingTimeSeconds:    20,
 		TurnTimeSeconds:       25,
 		PlayTimeSeconds:       40,
@@ -319,6 +342,18 @@ func missingKeys(have, want []byte, prefix string) []string {
 }
 
 func (c *Config) validate() error {
+	if c.GiftRefillsPerDay < 0 {
+		c.GiftRefillsPerDay = 0
+	}
+	if c.CardRevealMinSeconds < 0 {
+		c.CardRevealMinSeconds = 0
+	}
+	if c.CardRevealMaxSeconds > 30 {
+		c.CardRevealMaxSeconds = 30
+	}
+	if c.CardRevealMaxSeconds < c.CardRevealMinSeconds {
+		c.CardRevealMaxSeconds = c.CardRevealMinSeconds
+	}
 	if c.Port <= 0 || c.Port > 65535 {
 		return fmt.Errorf("invalid port %d", c.Port)
 	}
