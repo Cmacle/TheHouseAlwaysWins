@@ -183,3 +183,41 @@ func TestPreviewPokerDealInReveal(t *testing.T) {
 	frame()
 	save(t, dir, "47_poker_reveal_flipped.png", a.fb)
 }
+
+func TestPreviewPokerActions(t *testing.T) {
+	a, frame, dir := pokerPreviewApp(t)
+	a.onJoined(proto.Joined{ID: "holdem", Game: proto.GameHoldem, Name: "Hold'em"})
+	before := pokerPreviewState()
+	before.Actions = nil
+	before.Active = 1
+	before.Seats[0].Bet, before.Seats[0].Action = 0, ""
+	before.Seats[1] = proto.PokerSeat{Seat: 1, Username: "Big_Tony", Stack: 420, InHand: true, Connected: true, Cards: []bj.Card{{}, {}}}
+	before.Seats[4].Bet, before.Seats[4].Action = 0, ""
+	before.Seats[5].Bet, before.Seats[5].Action = 0, ""
+	a.onPoker(before)
+	for k := range a.cardSeen {
+		a.cardSeen[k] = time.Now().Add(-time.Hour)
+	}
+	after := pokerPreviewState()
+	after.Actions = nil
+	after.Seats[5].Bet, after.Seats[5].Action = 0, "check"
+	a.onPoker(after)
+	for k := range a.cardSeen {
+		a.cardSeen[k] = time.Now().Add(-time.Hour)
+	}
+	// stagger them: fold just thrown, Deb's call chips mid-air, Dale's bet label up, check rings
+	for i := range a.pkFX {
+		switch a.pkFX[i].seat {
+		case 1:
+			a.pkFX[i].start = time.Now().Add(-200 * time.Millisecond)
+		case 4:
+			a.pkFX[i].start = time.Now().Add(-150 * time.Millisecond)
+		case 5:
+			a.pkFX[i].start = time.Now().Add(-120 * time.Millisecond)
+		default:
+			a.pkFX[i].start = time.Now().Add(-600 * time.Millisecond)
+		}
+	}
+	frame()
+	save(t, dir, "48_poker_actions.png", a.fb)
+}

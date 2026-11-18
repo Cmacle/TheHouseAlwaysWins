@@ -120,6 +120,7 @@ func (a *App) onPoker(ps *proto.PokerState) {
 	if newHand {
 		a.pkRev = nil
 	}
+	a.pokerFX(prev, ps)
 	shell := pokerShell(ps)
 	a.onDealerLines(shell)
 	a.ps, a.st = ps, shell
@@ -158,6 +159,7 @@ func (a *App) drawPoker() {
 	a.blocked = overlayOpen || updating
 	var fly []flying
 	cw, ch := a.A.Theme.CardWidth, a.A.Theme.CardHeight
+	a.pkGeo = map[int]pkGeo{}
 	blink := (a.frame/20)%2 == 0
 
 	// Dale: the dealer, and seat 0
@@ -175,21 +177,24 @@ func (a *App) drawPoker() {
 		} else {
 			a.text(lx, L.cardsY+2, "DALE", a.A.C("gold"), alignRight)
 		}
-		a.text(lx, L.cardsY+12, commas(d.Stack), a.A.C("text"), alignRight)
-		ly := L.cardsY + 22
-		if d.Bet > 0 {
-			a.textOutlined(lx, ly, "BET "+commas(d.Bet), a.A.C("highlight"), alignRight)
-			ly += 10
+		if line, c := a.pokerSeatLine(ps, d); line != "" {
+			a.text(lx, L.cardsY+12, fitText(a.A.Font, line, 90), c, alignRight)
 		}
-		if line, c := a.pokerSeatLine(ps, d); line != "" && !strings.HasPrefix(strings.ToUpper(line), "BET ") {
-			a.text(lx, ly, line, c, alignRight)
+		if d.HandName != "" {
+			a.text(lx, L.cardsY+22, strings.ToUpper(d.HandName), a.A.C("highlight"), alignRight)
 		}
 		if ps.Button == 0 {
 			a.drawButtonPuck(lx-a.A.Font.Width("DALE")-12, L.cardsY+1)
 		}
-		if d.HandName != "" {
-			a.text(ScreenW/2+cw/2+22, L.cardsY+12, strings.ToUpper(d.HandName), a.A.C("highlight"), alignLeft)
+		// his chips and his bet, right of his cards, like everyone else's
+		dpx := x0 + cw + 14 + 8
+		dBottom := L.cardsY + ch
+		a.drawChipPile(dpx, dBottom, d.Stack, false)
+		if d.Bet > 0 {
+			a.drawSeatBet(dpx+pileChip+14, dBottom, d.Bet, false)
 		}
+		a.pkGeo[0] = pkGeo{x: ScreenW / 2, cy: L.cardsY + ch/2, pile: image.Pt(dpx+6, dBottom-8),
+			bet: image.Pt(dpx+pileChip+20, dBottom-6), cards: image.Pt(x0, L.cardsY), labelBottom: L.cardsY + 44, labelX: lx - 30}
 	}
 
 	// the pot and the board
@@ -297,6 +302,9 @@ func (a *App) drawPoker() {
 		// hole cards over the hat
 		cardTop := a.pokerCardTop(cy)
 		cx0 := x - (cw+a.A.Theme.CardFanStep+4)/2
+		betX := px + pileChip/2
+		a.pkGeo[i] = pkGeo{x: x, cy: cy, pile: image.Pt(px+pileChip/2, ar.Max.Y-8), bet: image.Pt(betX, ar.Min.Y-10),
+			cards: image.Pt(cx0, cardTop), labelBottom: cardTop - 2}
 		for ci, c := range sv.Cards {
 			a.drawCardAt(c, fmt.Sprintf("ps%d_%d", i, ci), cx0+ci*(a.A.Theme.CardFanStep+4), cardTop, &fly)
 		}
@@ -338,6 +346,7 @@ func (a *App) drawPoker() {
 	for _, f := range fly {
 		blit(a.fb, f.img, f.x, f.y)
 	}
+	a.drawPokerFX(image.Pt(ScreenW/2, boardY+ch/2))
 
 	a.drawSpeech(st)
 	a.drawLogButton(st)

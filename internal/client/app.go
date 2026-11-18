@@ -221,6 +221,8 @@ type App struct {
 	bs                 *proto.BeggarState
 	roll               *diceRoll
 	pkRev              *pkRevealFX
+	pkFX               []pkFX
+	pkGeo              map[int]pkGeo
 	pkRaise            int64 // the bet/raise amount being chosen
 	pkRaiseFor         int   // hand number the draft belongs to
 	buyTable           proto.TableInfo
