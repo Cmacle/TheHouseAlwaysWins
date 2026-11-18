@@ -192,3 +192,15 @@ func TestSetSetting(t *testing.T) {
 func waitABit() { timeSleep(10) }
 
 func timeSleep(ms int) { <-time.After(time.Duration(ms) * time.Millisecond) }
+
+// A seated player mustn't be told the table is full while a card is being
+// revealed (the reveal only hides the buttons).
+func TestRevealKeepsSeatMessage(t *testing.T) {
+	g, a, _ := giftGame(t)
+	g.phase = proto.PhasePlaying
+	g.reveal = &revealing{seat: 0, hand: 0, card: 2, until: time.Now().Add(time.Second)}
+	st := g.view(a)
+	if strings.Contains(st.Message, "full") || len(st.Actions) != 0 || st.Reveal == nil {
+		t.Fatalf("during a reveal: message %q, actions %v", st.Message, st.Actions)
+	}
+}
