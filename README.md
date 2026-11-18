@@ -14,6 +14,13 @@ Discord.
   sits in seat 0 and plays too, so you always have someone to play against.
   His wins and losses count toward the house's totals. Poker has its own
   voice lines, hats and titles.
+- **Baccarat and Red Dog:** two more tables where everyone bets against the
+  house on one shared deal. Bet Player, Banker or Tie at baccarat; at Red Dog
+  bet that the third card lands between the first two, and double up when
+  the spread looks good. Both use the card-reveal suspense, have their own
+  hats, frame and titles, and Dale has opinions about both.
+- **Table leaderboards:** every table keeps its own board of who has won and
+  lost the most there (the THIS TABLE tab in the leaderboard).
 - **The Beggars Table:** broke and nobody to buy you back in? With fewer than
   50 chips you can roll five dice as often as you like. Five sixes (1 in
   1,000, a setting) pays 50 chips. It's a handout, so it doesn't count toward
@@ -64,7 +71,7 @@ Discord.
   client, on an optional web page and in Discord (a live-updating message,
   `/leaderboard`, `/stats`, `/table`, plus refill, big-win, unlock and new-crown
   announcements).
-- **Unlockables**: 35 hats, 12 avatar frames and 33 titles, earned by total
+- **Unlockables**: 39 hats, 13 avatar frames and 39 titles, earned by total
   money bet, chips held at once, lifetime up or down, streaks, blackjacks and
   more. Harder goals have flashier rewards. **Whoever has the most chips right
   now automatically wears The Crown**, the #1 lifetime earner gets the golden
@@ -75,7 +82,9 @@ Discord.
   earns **The Moneybags**, the **Vault Frame** and the title High Water Mark.
   Record hats go on automatically, but only if you haven't picked a hat
   yourself. Frames grow fancier with rarity: the rarest spill out around the
-  picture (never over it), and the legendary and unique ones are animated.
+  picture (never over it). The best hats and frames are animated: crowns and
+  tiaras gleam and sparkle, the flames flicker, the chip tower wobbles, the
+  halo glows, the shark fin swims, the rainbow runs round and gems twinkle.
 - **A dealer with a mouth on him** (optional): he calls out players by name in
   a speech bubble. Busting, standing scared, splitting tens, big losses, losing
   streaks, going broke and lifetime scores all get roasted. A **vulgar mode**
@@ -138,14 +147,15 @@ replaceable art lives in
 ## The lobby
 
 After you log in you see every open table: what it plays, its stakes, who's
-there. **JOIN** a blackjack table, **SIT** at a Hold'em table (you choose how
-much to bring) or **WATCH** it, or go begging. The **LOBBY** button at the top
+there. **JOIN** a blackjack, baccarat or Red Dog table, **SIT** at a Hold'em
+table (you choose how much to bring) or **WATCH** it, or go begging. The **LOBBY** button at the top
 of any table brings you back; chips you had at a poker table go back into
 your bank.
 
-A fresh server has a blackjack table, a Hold'em table and the Beggars Table.
-Admins see a **NEW TABLE** bar at the bottom of the lobby (type a name and pick
-a game), an **S** button on each table for its settings, and an **X** to close
+A fresh server has one table of each game. A server that's updated gets a
+table for each new game once (close it and it stays closed). Admins see a
+**NEW TABLE** bar at the bottom of the lobby (click to pick the game, type a
+name if you like, then ADD), an **S** button on each table for its settings, and an **X** to close
 it. Closing a table sends everyone at it back to the lobby with their chips.
 The list is saved in `tables.json` next to the accounts.
 
@@ -197,6 +207,43 @@ Table settings (S in the lobby, or `table set <id> <setting> <value>`):
 `seats`, `small_blind`, `big_blind`, `min_buy_in`, `max_buy_in`,
 `action_seconds`, `between_seconds`, `deal_in_seconds`, `dealer_solo_only`,
 `rotate_button`, `dale_think_ms`.
+
+## Baccarat
+
+Punto banco, the casino way. While betting is open, pick a chip (keys 1-5)
+and put it on **PLAYER (P)**, **TIE (T)** or **BANKER (B)**; **CLEAR** takes your
+bets back and **REBET** repeats your last ones. The table waits for the first
+bet, then gives everyone 15 seconds (`bet_seconds`).
+
+Dale deals two cards each to the Player and the Banker. With card reveal on,
+the Player's two come out big and face down and flip together, then the
+Banker's. Cards count face value, tens and pictures count nothing, and only
+the last digit of the total counts. An 8 or 9 in two cards is a natural and
+ends it; otherwise a third card is drawn by the fixed rules. Player pays 1 to
+1, Banker 1 to 1 less a 5% commission (`banker_commission`), and Tie 8 to 1;
+Player and Banker bets push on a tie. A row of dots under the hands shows the
+last few winners.
+
+## Red Dog
+
+Bet the ante, then Dale turns up two cards. The bet is that the third card
+lands strictly between them (aces high), and the gap sets the pay: one card
+5 to 1, two 4 to 1, three 2 to 1, four or more even money. Before the third
+card you can **RAISE (R)** to double your bet or **STAY (S)** (10 seconds,
+`raise_seconds`). Consecutive cards are a push. A pair draws a third card
+that pays 11 to 1 if it makes three of a kind, and pushes otherwise.
+
+Table settings for both: `seats`, `min_bet`, `max_bet`, `bet_seconds`,
+`between_seconds`, plus `banker_commission` (baccarat) and `raise_seconds`
+(Red Dog).
+
+## Table leaderboards
+
+Every table remembers what everyone has won and lost there. Open the
+leaderboard at a table and pick **THIS TABLE** to see its players ranked by
+their net gain at that table, with what they've won, lost and how many rounds
+they've played. Blackjack, Hold'em, baccarat, Red Dog and the Beggars Table
+all keep one.
 
 ## The Beggars Table
 
@@ -282,6 +329,10 @@ Taking the crown is announced to everyone.
 | Shark Fin | Epic | Beat Dale at the showdown 25 times |
 | Pharaoh's Headdress | Legendary | Make a straight flush |
 | Sultan's Turban | Legendary | Make a royal flush |
+| Beret | Uncommon | Bet on 25 rounds of baccarat |
+| Feathered Fascinator | Epic | Win 25 baccarat bets on a natural |
+| Floppy Dog Ears | Uncommon | Win 25 Red Dog bets |
+| Hot Dog | Epic | Hit three of a kind at Red Dog |
 
 **Frames**
 
@@ -297,6 +348,7 @@ Taking the crown is announced to everyone.
 | Inferno Frame | Epic | Win 8 hands in a row |
 | Diamond Frame | Legendary | Have $10,000 at once |
 | Rainbow Frame | Legendary | Bet a total of $1,000,000 |
+| Velvet Rope Frame | Epic | Win 5 tie bets at baccarat |
 | Marathon Frame | Unique | Play more hands than anyone (all games) |
 | Vault Frame | Unique | Hold the most chips at once, ever |
 
@@ -337,6 +389,12 @@ Taking the crown is announced to everyone.
 | Quad God | Epic | Make four of a kind 3 times |
 | Dale Slayer | Epic | Beat Dale at the showdown 100 times |
 | Royalty | Legendary | Make a royal flush |
+| High Society | Uncommon | Bet on 100 rounds of baccarat |
+| A Natural | Rare | Win 10 baccarat bets on a natural |
+| Tie Breaker | Rare | Win a tie bet at baccarat |
+| Top Dog | Rare | Win 100 Red Dog bets |
+| Gutshot | Epic | Win 5 Red Dog bets on a one-card spread |
+| Lucky Dog | Epic | Hit three of a kind at Red Dog |
 
 ## The dealer
 
@@ -634,7 +692,7 @@ admin <user> [on|off] | admins
 get [filter] | set <setting> <value>
 update [force] | version
 tables                      list the open tables
-table add <blackjack|holdem|beggar> <name>
+table add <blackjack|holdem|baccarat|reddog|beggar> <name>
 table remove <id> | table rename <id> <name>
 table get <id> | table set <id> <setting> <value>
 ```

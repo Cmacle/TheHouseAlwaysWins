@@ -62,6 +62,7 @@ const (
 	scrLobby // pick a table
 	scrPoker // a Hold'em table
 	scrBeggar
+	scrCasino // baccarat or Red Dog
 )
 
 const (
@@ -156,6 +157,11 @@ type App struct {
 	lastBet            int64
 	overlay            int
 	leaderboard        []proto.Profile
+	tableBoard         *proto.TableBoard
+	cs                 *proto.CasinoState
+	csRev              *csRevealFX
+	csFX               []csFX
+	chipSel            int64 // the chip picked for betting at baccarat and Red Dog
 	lbScroll           int
 	lbAt               time.Time
 	lastPing           time.Time
@@ -231,6 +237,7 @@ type App struct {
 	lobbyScroll        int
 	settingsTable      string // the admin editor is showing this table's settings
 	newTable           string // admin: name for a new table
+	newTableGame       int    // admin: which game a new table plays
 	panelLogNext       int
 }
 
@@ -320,6 +327,8 @@ func (a *App) Frame(in Input) *image.RGBA {
 		a.drawPoker()
 	case scrBeggar:
 		a.drawBeggar()
+	case scrCasino:
+		a.drawCasino()
 	}
 	a.blocked = false
 	a.handleTab()
@@ -489,7 +498,7 @@ func shortErr(err error) string {
 
 func (a *App) onDisconnect() {
 	a.net = nil
-	wasPlaying := a.screen == scrTable || a.screen == scrLobby || a.screen == scrPoker || a.screen == scrBeggar
+	wasPlaying := a.screen == scrTable || a.screen == scrLobby || a.screen == scrPoker || a.screen == scrBeggar || a.screen == scrCasino
 	a.screen = scrLogin
 	a.overlay = ovNone
 	if !a.kicked {
@@ -537,6 +546,7 @@ func (a *App) handleMsg(m proto.Msg) {
 		a.Cfg.Save()
 		a.screen = scrLobby
 		a.st, a.ps, a.bs, a.roll, a.game, a.lobbyKnown = nil, nil, nil, nil, "", false
+		a.cs, a.csRev, a.csFX = nil, nil, nil
 		a.tokenTry = false
 		a.fPass, a.fPass2, a.fServerPass = "", "", ""
 		a.focusID = ""
@@ -609,6 +619,16 @@ func (a *App) handleMsg(m proto.Msg) {
 			a.toast(e.Message, a.A.C("error"), 3, 1)
 		}
 		a.sound("error")
+	case proto.STableBoard:
+		var tb proto.TableBoard
+		if decode(m, &tb) {
+			a.tableBoard = &tb
+		}
+	case proto.SCasino:
+		var cs proto.CasinoState
+		if decode(m, &cs) && (a.game == proto.GameBaccarat || a.game == proto.GameRedDog) {
+			a.onCasino(&cs)
+		}
 	case proto.SLeaderboard:
 		var lb proto.Leaderboard
 		if decode(m, &lb) {

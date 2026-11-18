@@ -24,6 +24,10 @@ func gameLabel(g string) string {
 		return "BLACKJACK"
 	case proto.GameBeggar:
 		return "DICE"
+	case proto.GameBaccarat:
+		return "BACCARAT"
+	case proto.GameRedDog:
+		return "RED DOG"
 	}
 	return strings.ToUpper(g)
 }
@@ -31,6 +35,7 @@ func gameLabel(g string) string {
 func (a *App) onJoined(j proto.Joined) {
 	a.game, a.tableName = j.Game, j.Name
 	a.st, a.ps, a.bs, a.roll, a.pkRev = nil, nil, nil, nil, nil
+	a.cs, a.csRev, a.csFX, a.tableBoard = nil, nil, nil, nil
 	a.cardSeen, a.cardHidden, a.cardVal, a.flipAt = map[string]time.Time{}, map[string]bool{}, nil, map[string]time.Time{}
 	a.rev, a.chats, a.chatLog, a.chatOpen = nil, nil, nil, false
 	a.sayLog, a.sayID, a.logID = nil, 0, 0
@@ -42,6 +47,8 @@ func (a *App) onJoined(j proto.Joined) {
 		a.screen = scrPoker
 	case proto.GameBeggar:
 		a.screen = scrBeggar
+	case proto.GameBaccarat, proto.GameRedDog:
+		a.screen = scrCasino
 	default:
 		a.screen = scrTable
 	}
@@ -49,8 +56,9 @@ func (a *App) onJoined(j proto.Joined) {
 
 func (a *App) backToLobby() {
 	a.game, a.st, a.ps, a.bs, a.roll, a.pkRev = "", nil, nil, nil, nil, nil
+	a.cs, a.csRev, a.csFX = nil, nil, nil
 	a.chats, a.chatOpen = nil, false
-	if a.screen == scrTable || a.screen == scrPoker || a.screen == scrBeggar {
+	if a.screen == scrTable || a.screen == scrPoker || a.screen == scrBeggar || a.screen == scrCasino {
 		a.screen = scrLobby
 	}
 	if a.overlay == ovGift || a.overlay == ovDealerLog {
@@ -65,7 +73,7 @@ func (a *App) leaveToLobby() {
 
 func (a *App) joinTable(t proto.TableInfo) {
 	if t.ID == a.lobby.Current {
-		a.screen = map[string]int{proto.GameHoldem: scrPoker, proto.GameBeggar: scrBeggar}[t.Game]
+		a.screen = map[string]int{proto.GameHoldem: scrPoker, proto.GameBeggar: scrBeggar, proto.GameBaccarat: scrCasino, proto.GameRedDog: scrCasino}[t.Game]
 		if a.screen == 0 {
 			a.screen = scrTable
 		}
@@ -303,6 +311,10 @@ func (a *App) drawLobbyRow(t proto.TableInfo, r image.Rectangle) {
 		gc = a.A.C("win")
 	case proto.GameBeggar:
 		gc = a.A.C("text_dim")
+	case proto.GameBaccarat:
+		gc = parseHex("#6fa8ff")
+	case proto.GameRedDog:
+		gc = parseHex("#ff7a7a")
 	}
 	a.text(r.Min.X+6, r.Min.Y+4, gameLabel(t.Game), gc, alignLeft)
 	a.text(r.Min.X+6+a.A.Font.Width(gameLabel(t.Game))+8, r.Min.Y+4, fitText(a.A.Font, t.Name, 160), a.A.C("gold"), alignLeft)
@@ -379,33 +391,36 @@ func (a *App) drawLobbyRow(t proto.TableInfo, r image.Rectangle) {
 	}
 }
 
+var newTableGames = []string{proto.GameBlackjack, proto.GameHoldem, proto.GameBaccarat, proto.GameRedDog, proto.GameBeggar}
+
 func (a *App) drawLobbyAdmin(r image.Rectangle) {
 	a.text(r.Min.X, r.Min.Y+5, "NEW TABLE", a.A.C("text_dim"), alignLeft)
 	fx := r.Min.X + a.A.Font.Width("NEW TABLE") + 6
-	fr := image.Rect(fx, r.Min.Y, fx+140, r.Min.Y+18)
-	a.textField("new_table", fr, &a.newTable, false, 30, "name", nil)
-	bx := fr.Max.X + 6
-	for _, g := range []struct{ id, label string }{{proto.GameBlackjack, "+ BLACKJACK"}, {proto.GameHoldem, "+ HOLD'EM"}} {
-		w := a.A.Font.Width(g.label) + 14
-		if a.button("tnew_"+g.id, image.Rect(bx, r.Min.Y, bx+w, r.Min.Y+18), g.label, btn{enabled: true}) {
-			name := strings.TrimSpace(a.newTable)
-			if name == "" {
-				name = a.nextTableName(g.id)
-			}
-			a.adminBackend().Exec("table add " + g.id + " " + name)
-			a.newTable = ""
-			a.focusID = ""
+	game := newTableGames[a.newTableGame%len(newTableGames)]
+	gl := "< " + gameLabel(game) + " >"
+	gw := a.A.Font.Width("< TEXAS HOLD'EM >") + 12
+	if a.button("tnew_game", image.Rect(fx, r.Min.Y, fx+gw, r.Min.Y+18), gl, btn{enabled: true}) {
+		a.newTableGame = (a.newTableGame + 1) % len(newTableGames)
+	}
+	fx += gw + 4
+	addW := a.A.Font.Width("ADD") + 16
+	fr := image.Rect(fx, r.Min.Y, min(fx+140, r.Max.X-addW-4), r.Min.Y+18)
+	a.textField("new_table", fr, &a.newTable, false, 30, "name (optional)", nil)
+	if a.button("tnew_add", image.Rect(fr.Max.X+4, r.Min.Y, fr.Max.X+4+addW, r.Min.Y+18), "ADD", btn{enabled: true, style: styleGold}) {
+		name := strings.TrimSpace(a.newTable)
+		if name == "" {
+			name = a.nextTableName(game)
 		}
-		bx += w + 4
+		a.adminBackend().Exec("table add " + game + " " + name)
+		a.newTable = ""
+		a.focusID = ""
 	}
 }
 
 // nextTableName makes up a name like "Hold'em 2".
 func (a *App) nextTableName(game string) string {
-	base := "Blackjack"
-	if game == proto.GameHoldem {
-		base = "Hold'em"
-	}
+	base := map[string]string{proto.GameBlackjack: "Blackjack", proto.GameHoldem: "Hold'em", proto.GameBaccarat: "Baccarat",
+		proto.GameRedDog: "Red Dog", proto.GameBeggar: "Beggars Table"}[game]
 	n := 1
 	for _, t := range a.lobby.Tables {
 		if t.Game == game {

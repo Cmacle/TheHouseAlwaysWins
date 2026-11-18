@@ -110,6 +110,22 @@ func (a *App) drawFrame(id string, x, y int) {
 			}
 			return c, true
 		}
+	case "frame_bone":
+		// a ghostly glow comes and goes over the bone
+		k := math.Max(0, math.Sin(t/30))
+		anim = func(xx, yy int, c color.RGBA) (color.RGBA, bool) {
+			if c.R > 200 && c.G > 190 {
+				return color.RGBA{uint8(float64(c.R) * (1 - 0.25*k)), c.G, uint8(float64(c.B) * (1 - 0.1*k)), 255}, true
+			}
+			return c, true
+		}
+	case "frame_velvet":
+		anim = func(xx, yy int, c color.RGBA) (color.RGBA, bool) {
+			if c.R > 200 && c.G > 150 && c.B < 120 { // the brass
+				return gleam(t, 60, xx, yy, c), true
+			}
+			return c, true
+		}
 	case "frame_diamond", "frame_marathon", "frame_vault":
 		period := 140.0
 		if id == "frame_diamond" {
@@ -160,21 +176,173 @@ func (a *App) drawHat(id string, x, y int) {
 	}
 	hy := y - a.A.Theme.HatHeight + a.A.Theme.HatOverlap
 	hx := x + 16 - a.A.Theme.HatWidth/2
-	blit(a.fb, spr, hx, hy)
-	if id == "crown" {
-		// twinkle
-		pts := [][2]int{{8, 9}, {16, 6}, {24, 9}, {12, 14}, {20, 14}}
-		for i, p := range pts {
-			ph := (a.frame/8 + i*3) % 10
-			if ph < 2 {
-				px, py := hx+p[0], hy+p[1]
-				c := color.RGBA{255, 255, 255, 255}
-				fillRect(a.fb, image.Rect(px, py, px+1, py+1), c)
-				if ph == 0 {
-					fillRect(a.fb, image.Rect(px-1, py, px+2, py+1), c)
-					fillRect(a.fb, image.Rect(px, py-1, px+1, py+2), c)
+	a.blitHat(id, spr, hx, hy)
+}
+
+// hatMotion says how an animated hat moves this frame: each row's sideways
+// shift, a bob up or down, and a recolour per pixel (nil to keep it).
+type hatMotion struct {
+	sway   func(row, rows int) int
+	bob    int
+	colour func(x, y int, c color.RGBA) color.RGBA
+	sparks [][2]int // twinkle points
+}
+
+func gleam(t float64, period float64, x, y int, c color.RGBA) color.RGBA {
+	g := math.Mod(float64(x+y)-t*0.9, period)
+	if g < 0 {
+		g += period
+	}
+	if g < 3 {
+		return color.RGBA{uint8((int(c.R) + 255*2) / 3), uint8((int(c.G) + 255*2) / 3), uint8((int(c.B) + 255*2) / 3), 255}
+	}
+	return c
+}
+
+// hatAnim is the motion of the best hats (nil for the rest).
+func (a *App) hatAnim(id string) *hatMotion {
+	t := float64(a.frame)
+	switch id {
+	case "crown":
+		return &hatMotion{colour: func(x, y int, c color.RGBA) color.RGBA { return gleam(t, 70, x, y, c) },
+			sparks: [][2]int{{8, 9}, {16, 6}, {24, 9}, {12, 14}, {20, 14}}}
+	case "gold_top_hat", "laurel", "pharaoh":
+		return &hatMotion{colour: func(x, y int, c color.RGBA) color.RGBA { return gleam(t, 80, x, y, c) }}
+	case "tiara":
+		return &hatMotion{colour: func(x, y int, c color.RGBA) color.RGBA { return gleam(t, 60, x, y, c) },
+			sparks: [][2]int{{10, 12}, {16, 8}, {22, 12}, {13, 15}, {19, 15}}}
+	case "turban":
+		return &hatMotion{sparks: [][2]int{{16, 11}, {15, 2}}}
+	case "moneybag":
+		return &hatMotion{bob: int(math.Round(math.Sin(t/18) * 0.6)),
+			colour: func(x, y int, c color.RGBA) color.RGBA { return gleam(t, 90, x, y, c) },
+			sparks: [][2]int{{6, 18}, {26, 18}, {14, 3}}}
+	case "flame":
+		// the fire licks: rows shiver and the colours flicker
+		return &hatMotion{
+			sway: func(row, rows int) int {
+				if row > rows*2/3 {
+					return 0
 				}
+				return int(math.Round(math.Sin(t/4+float64(row)*0.9) * float64(rows-row) / float64(rows) * 1.6))
+			},
+			colour: func(x, y int, c color.RGBA) color.RGBA {
+				if c.R > 200 && c.G > 60 && (x*7+y*3+int(t/3))%5 == 0 {
+					return color.RGBA{255, 246, 200, 255}
+				}
+				return c
+			}}
+	case "space":
+		return &hatMotion{colour: func(x, y int, c color.RGBA) color.RGBA { return gleam(t, 50, x, -y, c) }}
+	case "chip_tower":
+		// the stack wobbles, more at the top
+		return &hatMotion{sway: func(row, rows int) int {
+			return int(math.Round(math.Sin(t/14) * float64(rows-row) / float64(rows) * 2))
+		}}
+	case "nightcap":
+		// the long tip sways
+		return &hatMotion{sway: func(row, rows int) int {
+			if row > rows/2 {
+				return 0
 			}
+			return int(math.Round(math.Sin(t/20) * float64(rows/2-row) / float64(rows/2) * 2))
+		}}
+	case "halo":
+		// a slow glow and a gentle float
+		k := 0.5 + 0.5*math.Sin(t/16)
+		return &hatMotion{bob: int(math.Round(math.Sin(t/16) * 1)), colour: func(x, y int, c color.RGBA) color.RGBA {
+			if c.R < 60 && c.G < 60 {
+				return c // the outline stays
+			}
+			m := func(v uint8) uint8 { return uint8(float64(v) + (255-float64(v))*k*0.6) }
+			return color.RGBA{m(c.R), m(c.G), m(c.B), 255}
+		}}
+	case "wizard":
+		return &hatMotion{sparks: [][2]int{{12, 8}, {18, 12}, {15, 4}, {20, 16}}}
+	case "unicorn":
+		// the horn shimmers through the colours
+		return &hatMotion{colour: func(x, y int, c color.RGBA) color.RGBA {
+			if c.R > 200 && c.G > 200 && c.B > 200 {
+				hc := hsv(float64(y)/20 + t/120)
+				return color.RGBA{uint8((int(hc.R) + int(c.R)) / 2), uint8((int(hc.G) + int(c.G)) / 2), uint8((int(hc.B) + int(c.B)) / 2), 255}
+			}
+			return c
+		}}
+	case "shark_fin":
+		// swimming: up and down, side to side
+		return &hatMotion{bob: int(math.Round(math.Sin(t/12) * 1.2)), sway: func(row, rows int) int {
+			return int(math.Round(math.Sin(t/24) * 1.5))
+		}}
+	case "fascinator":
+		return &hatMotion{sway: func(row, rows int) int {
+			if row > rows/2 {
+				return 0
+			}
+			return int(math.Round(math.Sin(t/10) * float64(rows/2-row) / float64(rows/2) * 1.5))
+		}}
+	case "devil":
+		return &hatMotion{colour: func(x, y int, c color.RGBA) color.RGBA {
+			if c.R > 150 && c.G < 80 {
+				k := 0.5 + 0.5*math.Sin(t/10)
+				return color.RGBA{c.R, uint8(float64(c.G) + 60*k), uint8(float64(c.B) + 30*k), 255}
+			}
+			return c
+		}}
+	}
+	return nil
+}
+
+// blitHat draws a hat sprite at (x, y), animated if it's one of the best.
+func (a *App) blitHat(id string, spr *image.RGBA, x, y int) {
+	m := a.hatAnim(id)
+	if m == nil {
+		blit(a.fb, spr, x, y)
+		return
+	}
+	w, h := spr.Rect.Dx(), spr.Rect.Dy()
+	// the first row with anything in it, so sway counts from the hat's top
+	top := h
+	for yy := 0; yy < h && top == h; yy++ {
+		for xx := 0; xx < w; xx++ {
+			if spr.Pix[spr.PixOffset(spr.Rect.Min.X+xx, spr.Rect.Min.Y+yy)+3] != 0 {
+				top = yy
+				break
+			}
+		}
+	}
+	rows := max(1, h-top)
+	for yy := 0; yy < h; yy++ {
+		dx := 0
+		if m.sway != nil && yy >= top {
+			dx = m.sway(yy-top, rows)
+		}
+		for xx := 0; xx < w; xx++ {
+			o := spr.PixOffset(spr.Rect.Min.X+xx, spr.Rect.Min.Y+yy)
+			if spr.Pix[o+3] == 0 {
+				continue
+			}
+			c := color.RGBA{spr.Pix[o], spr.Pix[o+1], spr.Pix[o+2], 255}
+			if m.colour != nil {
+				c = m.colour(xx, yy, c)
+			}
+			px, py := x+xx+dx, y+yy+m.bob
+			if image.Pt(px, py).In(a.fb.Rect) {
+				q := a.fb.PixOffset(px, py)
+				a.fb.Pix[q], a.fb.Pix[q+1], a.fb.Pix[q+2], a.fb.Pix[q+3] = c.R, c.G, c.B, 255
+			}
+		}
+	}
+	for i, p := range m.sparks {
+		ph := (a.frame/8 + i*3) % 10
+		if ph >= 2 {
+			continue
+		}
+		px, py := x+p[0], y+p[1]+m.bob
+		c := color.RGBA{255, 255, 255, 255}
+		fillRect(a.fb, image.Rect(px, py, px+1, py+1), c)
+		if ph == 0 {
+			fillRect(a.fb, image.Rect(px-1, py, px+2, py+1), c)
+			fillRect(a.fb, image.Rect(px, py-1, px+1, py+2), c)
 		}
 	}
 }
@@ -230,7 +398,9 @@ func statsOf(p proto.Profile) (cosmetics.Stats, map[string]bool) {
 		RankRich: p.RankRich, RankNet: p.RankNet, RankHands: p.RankHands, RankBet: p.RankBet, RankPeak: p.RankPeak,
 		PkHands: p.PokerHands, PkFlush: p.PokerFlushes, PkFullHouse: p.PokerFullHouses, PkQuads: p.PokerQuads,
 		PkStrFlush: p.PokerStrFlushes, PkRoyal: p.PokerRoyals, PkBluffs: p.PokerBluffs, PkBeatDale: p.PokerBeatDale,
-		PkBigPot: p.PokerBiggestPot,
+		PkBigPot:  p.PokerBiggestPot,
+		BacRounds: p.BacRounds, BacNaturals: p.BacNaturals, BacTies: p.BacTies,
+		RdWins: p.RdWins, RdGutshots: p.RdGutshots, RdTrips: p.RdTrips,
 	}, own
 }
 
@@ -360,10 +530,7 @@ func (a *App) drawWardrobe() {
 				if spr := a.hatSprite(it.ID); spr != nil {
 					hx, hy := cx+(cw-spr.Rect.Dx())/2, cy+(ch-spr.Rect.Dy())/2-2
 					if unlocked {
-						blit(a.fb, spr, hx, hy)
-						if it.ID == "crown" {
-							a.drawHat("crown", hx, hy+a.A.Theme.HatHeight-a.A.Theme.HatOverlap)
-						}
+						a.blitHat(it.ID, spr, hx, hy)
 					} else {
 						silhouette(a.fb, spr, hx, hy, color.RGBA{70, 62, 58, 255})
 					}

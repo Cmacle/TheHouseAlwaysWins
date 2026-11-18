@@ -1268,6 +1268,7 @@ func (t *Holdem) finishHand(bluffs map[*hPlayer]bool, beatDale map[*hPlayer]bool
 		}
 		h := PokerHandRecord(delta, p.stack, p.put, p.won, cat, bluffs[p], beatDale[p])
 		t.store.RecordPokerHand(p.user, h)
+		t.store.RecordTable(p.user, t.id, delta)
 		if p.conn != nil {
 			kind := "lose"
 			switch {

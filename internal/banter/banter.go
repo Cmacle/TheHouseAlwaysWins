@@ -109,6 +109,28 @@ const (
 	EvPkDaleLose  = "pk_dale_lose"  // {name} beat him with {item} for {amount}
 	EvPkDaleBluff = "pk_dale_bluff" // he stole the pot and shows the bluff
 
+	// baccarat
+	EvBacHello   = "bac_hello"    // {name} sat down at baccarat
+	EvBacDeal    = "bac_deal"     // betting's closed, here come the cards
+	EvBacNatural = "bac_natural"  // {item} (Player or Banker) has a natural {amount}
+	EvBacPlayer  = "bac_player"   // Player wins
+	EvBacBanker  = "bac_banker"   // Banker wins
+	EvBacTie     = "bac_tie"      // a tie
+	EvBacBigWin  = "bac_big_win"  // {name} won {amount}
+	EvBacBigLose = "bac_big_lose" // {name} lost {amount}
+	EvBacStreak  = "bac_streak"   // {item} has won {amount} in a row
+
+	// Red Dog
+	EvRdHello   = "rd_hello"   // {name} sat down at Red Dog
+	EvRdSpread  = "rd_spread"  // a spread of {amount}, paying {item}
+	EvRdConsec  = "rd_consec"  // consecutive cards: a push
+	EvRdPair    = "rd_pair"    // a pair: drawing for three of a kind
+	EvRdTrips   = "rd_trips"   // three of a kind, 11 to 1
+	EvRdRaise   = "rd_raise"   // {name} doubled their bet
+	EvRdWin     = "rd_win"     // {name} won {amount}
+	EvRdMiss    = "rd_miss"    // the third card missed: the house wins
+	EvRdGutshot = "rd_gutshot" // a one-card spread hit
+
 	// the Beggars Table
 	EvBgHello   = "bg_hello"    // {name} came begging
 	EvBgRoll    = "bg_roll"     // {name} rolls again (now and then)

@@ -69,7 +69,15 @@ const (
 	MPkBluffs    = "pk_bluffs"     // pots won without a showdown holding nothing
 	MPkBeatDale  = "pk_beat_dale"  // showdowns won against Dale
 	MPkBigPot    = "pk_big_pot"    // biggest pot won
-	MFree        = "free"          // everyone has it
+	// Baccarat
+	MBacRounds  = "bac_rounds"  // baccarat rounds bet on
+	MBacNatural = "bac_natural" // bets won on a natural (an 8 or 9 in two cards)
+	MBacTie     = "bac_tie"     // tie bets won
+	// Red Dog
+	MRdWins    = "rd_wins"    // Red Dog bets won
+	MRdGutshot = "rd_gutshot" // bets won on a one-card spread (5 to 1)
+	MRdTrips   = "rd_trips"   // three of a kind hit (11 to 1)
+	MFree      = "free"       // everyone has it
 )
 
 // Item is one unlockable.
@@ -91,6 +99,7 @@ type Stats struct {
 	RankRich, RankNet, RankHands, RankBet, RankPeak                                       bool
 	PkHands, PkFlush, PkFullHouse, PkQuads, PkStrFlush, PkRoyal, PkBluffs, PkBeatDale     int
 	PkBigPot                                                                              int64
+	BacRounds, BacNaturals, BacTies, RdWins, RdGutshots, RdTrips                          int
 }
 
 // Catalog lists every cosmetic, in display order.
@@ -133,6 +142,10 @@ var Catalog = []Item{
 	{ID: "shark_fin", Kind: Hat, Name: "Shark Fin", Desc: "Beat Dale at the showdown 25 times. Something smells like chum.", Tier: Epic, Metric: MPkBeatDale, Goal: 25, Sprite: 31},
 	{ID: "pharaoh", Kind: Hat, Name: "Pharaoh's Headdress", Desc: "Made a straight flush. Ancient, terrible magic.", Tier: Legendary, Metric: MPkStrFlush, Goal: 1, Sprite: 32},
 	{ID: "turban", Kind: Hat, Name: "Sultan's Turban", Desc: "Made a royal flush. All bow.", Tier: Legendary, Metric: MPkRoyal, Goal: 1, Sprite: 33},
+	{ID: "beret", Kind: Hat, Name: "Beret", Desc: "Twenty-five rounds of baccarat. Tres continental.", Tier: Uncommon, Metric: MBacRounds, Goal: 25, Sprite: 35},
+	{ID: "fascinator", Kind: Hat, Name: "Feathered Fascinator", Desc: "Twenty-five bets won on a natural. Darling.", Tier: Epic, Metric: MBacNatural, Goal: 25, Sprite: 36},
+	{ID: "dog_ears", Kind: Hat, Name: "Floppy Dog Ears", Desc: "Twenty-five Red Dog bets won. Good boy.", Tier: Uncommon, Metric: MRdWins, Goal: 25, Sprite: 37},
+	{ID: "hot_dog", Kind: Hat, Name: "Hot Dog", Desc: "Hit three of a kind at Red Dog. Relish it.", Tier: Epic, Metric: MRdTrips, Goal: 1, Sprite: 38},
 
 	// ------------------------------------------------ frames
 	{ID: "frame_wood", Kind: Frame, Name: "Plain Frame", Desc: "Simple. Honest. Wooden.", Tier: Common, Metric: MFree, Sprite: 0},
@@ -146,6 +159,7 @@ var Catalog = []Item{
 	{ID: "frame_diamond", Kind: Frame, Name: "Diamond Frame", Desc: "Held $10,000 at once.", Tier: Legendary, Metric: MPeak, Goal: 10_000, Sprite: 8},
 	{ID: "frame_rainbow", Kind: Frame, Name: "Rainbow Frame", Desc: "A million wagered. Taste the rainbow.", Tier: Legendary, Metric: MWagered, Goal: 1_000_000, Sprite: 9},
 	{ID: "frame_marathon", Kind: Frame, Name: "Marathon Frame", Desc: "Played more hands than anyone. The finish line is a myth.", Tier: Unique, Metric: MRankHands, Sprite: 10},
+	{ID: "frame_velvet", Kind: Frame, Name: "Velvet Rope Frame", Desc: "Won five tie bets. The VIP section is this way.", Tier: Epic, Metric: MBacTie, Goal: 5, Sprite: 12},
 	{ID: "frame_vault", Kind: Frame, Name: "Vault Frame", Desc: "Held the most chips anyone ever has. Lock it up.", Tier: Unique, Metric: MRankPeak, Sprite: 11},
 
 	// ------------------------------------------------ titles
@@ -177,6 +191,12 @@ var Catalog = []Item{
 	{ID: "t_quad_god", Kind: Title, Name: "Quad God", Desc: "Make four of a kind three times.", Tier: Epic, Metric: MPkQuads, Goal: 3},
 	{ID: "t_dale_slayer", Kind: Title, Name: "Dale Slayer", Desc: "Beat Dale at the showdown 100 times.", Tier: Epic, Metric: MPkBeatDale, Goal: 100},
 	{ID: "t_royalty", Kind: Title, Name: "Royalty", Desc: "Make a royal flush.", Tier: Legendary, Metric: MPkRoyal, Goal: 1},
+	{ID: "t_high_society", Kind: Title, Name: "High Society", Desc: "Bet on 100 rounds of baccarat.", Tier: Uncommon, Metric: MBacRounds, Goal: 100},
+	{ID: "t_natural", Kind: Title, Name: "A Natural", Desc: "Win 10 baccarat bets on a natural.", Tier: Rare, Metric: MBacNatural, Goal: 10},
+	{ID: "t_tie_breaker", Kind: Title, Name: "Tie Breaker", Desc: "Win a tie bet at baccarat.", Tier: Rare, Metric: MBacTie, Goal: 1},
+	{ID: "t_top_dog", Kind: Title, Name: "Top Dog", Desc: "Win 100 Red Dog bets.", Tier: Rare, Metric: MRdWins, Goal: 100},
+	{ID: "t_gutshot", Kind: Title, Name: "Gutshot", Desc: "Win 5 Red Dog bets on a one-card spread.", Tier: Epic, Metric: MRdGutshot, Goal: 5},
+	{ID: "t_lucky_dog", Kind: Title, Name: "Lucky Dog", Desc: "Hit three of a kind at Red Dog.", Tier: Epic, Metric: MRdTrips, Goal: 1},
 	{ID: "t_owns_house", Kind: Title, Name: "Owns The House", Desc: "Have the most chips right now.", Tier: Unique, Metric: MRankRich},
 	{ID: "t_goat", Kind: Title, Name: "The G.O.A.T.", Desc: "Be #1 on the lifetime leaderboard.", Tier: Unique, Metric: MRankNet},
 	{ID: "t_high_water", Kind: Title, Name: "High Water Mark", Desc: "Hold more chips at once than anyone ever has.", Tier: Unique, Metric: MRankPeak},
@@ -292,6 +312,18 @@ func (it *Item) Progress(s Stats) (cur, goal int64) {
 		return int64(s.PkBeatDale), it.Goal
 	case MPkBigPot:
 		return s.PkBigPot, it.Goal
+	case MBacRounds:
+		return int64(s.BacRounds), it.Goal
+	case MBacNatural:
+		return int64(s.BacNaturals), it.Goal
+	case MBacTie:
+		return int64(s.BacTies), it.Goal
+	case MRdWins:
+		return int64(s.RdWins), it.Goal
+	case MRdGutshot:
+		return int64(s.RdGutshots), it.Goal
+	case MRdTrips:
+		return int64(s.RdTrips), it.Goal
 	case MFree:
 		return 1, 1
 	}
@@ -364,6 +396,18 @@ func (it *Item) Requirement() string {
 		return fmt.Sprintf("Beat Dale at the showdown %s times", num(it.Goal))
 	case MPkBigPot:
 		return "Win a Hold'em pot of " + m(it.Goal)
+	case MBacRounds:
+		return fmt.Sprintf("Bet on %s rounds of baccarat", num(it.Goal))
+	case MBacNatural:
+		return times("Win a baccarat bet on a natural", it.Goal)
+	case MBacTie:
+		return times("Win a tie bet at baccarat", it.Goal)
+	case MRdWins:
+		return fmt.Sprintf("Win %s Red Dog bets", num(it.Goal))
+	case MRdGutshot:
+		return times("Win a Red Dog bet on a one-card spread", it.Goal)
+	case MRdTrips:
+		return times("Hit three of a kind at Red Dog", it.Goal)
 	case MFree:
 		return "Free for everyone"
 	}

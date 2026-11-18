@@ -187,8 +187,13 @@ func (t *Beggar) roll(p *bgPlayer) {
 	}
 	t.nextID++
 	t.rolls++
-	n := t.store.BeggarRoll(p.user)
 	win := t.rng.Intn(t.bc.Odds) == 0
+	n := t.store.BeggarRoll(p.user)
+	prize := int64(0)
+	if win {
+		prize = t.bc.Prize
+	}
+	t.store.RecordTable(p.user, t.id, prize)
 	faces := make([]int, 5)
 	for {
 		six := 0

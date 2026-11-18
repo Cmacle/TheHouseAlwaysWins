@@ -1205,6 +1205,7 @@ func (g *Game) settle() {
 		results = append(results, roundResult{p: p, delta: delta, before: g.store.Balance(p.user) + staked, doubleLost: doubleLost, doubleWon: doubleWon, pushed: pushed})
 		p.prevBet, p.prevDelta = p.pendingBet, delta
 		g.store.Settle(p.user, res)
+		g.store.RecordTable(p.user, g.tableID, delta)
 		g.sendProfile(p)
 		kind := "push"
 		switch {

@@ -182,7 +182,7 @@ func TestPokerEndToEnd(t *testing.T) {
 	}
 	a := newTestApp(t, s.Addr().String(), "alice")
 	apps := []*App{a}
-	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 3 }, "lobby")
+	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 5 }, "lobby")
 	var holdem proto.TableInfo
 	for _, ti := range a.lobby.Tables {
 		if ti.Game == proto.GameHoldem {
@@ -238,8 +238,8 @@ func TestBeggarEndToEnd(t *testing.T) {
 	}
 	a := newTestApp(t, s.Addr().String(), "pauper")
 	apps := []*App{a}
-	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 3 }, "lobby")
-	a.joinTable(a.lobby.Tables[2])
+	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 5 }, "lobby")
+	a.joinTable(tableOf(a, proto.GameBeggar))
 	pump(t, apps, nil, func() bool { return a.screen == scrBeggar && a.bs != nil && a.bs.CanRoll }, "at the Beggars Table")
 	pump(t, apps, map[*App]Input{a: {Keys: []Key{KeySpace}}}, func() bool { return true }, "")
 	pump(t, apps, nil, func() bool { return a.roll != nil }, "dice thrown")
@@ -253,4 +253,64 @@ func TestBeggarEndToEnd(t *testing.T) {
 		}
 	}
 	pump(t, apps, nil, func() bool { return a.bs != nil && !a.bs.CanRoll }, "too rich to beg")
+}
+
+func TestCasinoEndToEnd(t *testing.T) {
+	s := startServerS(t, 39521, func(c *server.Config) { c.CardRevealMinSeconds, c.CardRevealMaxSeconds = 0.2, 0.3 })
+	var out strings.Builder
+	s.Exec("table set baccarat bet_seconds 3", &out)
+	s.Exec("table set reddog bet_seconds 3", &out)
+	s.Exec("table set reddog raise_seconds 3", &out)
+	pumpWait = 40 * time.Second
+	defer func() { pumpWait = 15 * time.Second }()
+	a := newTestApp(t, s.Addr().String(), "punter")
+	apps := []*App{a}
+	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 5 }, "lobby")
+	for _, game := range []string{proto.GameBaccarat, proto.GameRedDog} {
+		var ti proto.TableInfo
+		for _, x := range a.lobby.Tables {
+			if x.Game == game {
+				ti = x
+			}
+		}
+		a.joinTable(ti)
+		pump(t, apps, nil, func() bool { return a.screen == scrCasino && a.cs != nil && a.cs.Game == game && a.cs.CanBet }, game+" table")
+		before := a.profile.Balance
+		// pick the 100 chip and bet it (P for Player at baccarat, A for the ante)
+		key := 'p'
+		if game == proto.GameRedDog {
+			key = 'a'
+		}
+		pump(t, apps, map[*App]Input{a: {Chars: []rune{'3'}}}, func() bool { return true }, "")
+		pump(t, apps, map[*App]Input{a: {Chars: []rune{key}}}, func() bool { return true }, "")
+		pump(t, apps, nil, func() bool { me := a.csMe(); return me != nil && len(me.Bets) > 0 }, "bet placed")
+		pump(t, apps, nil, func() bool {
+			if a.cs.CanRaise {
+				a.Frame(Input{MX: -1, MY: -1, Chars: []rune{'r'}})
+			}
+			me := a.csMe()
+			return me != nil && me.Settled
+		}, game+" round settled")
+		me := a.csMe()
+		pump(t, apps, nil, func() bool { return a.profile.Balance == before+me.Result }, "chips paid")
+		t.Logf("%s: result %+d", game, me.Result)
+		a.leaveToLobby()
+		pump(t, apps, nil, func() bool { return a.screen == scrLobby }, "back to the lobby")
+	}
+	// the table leaderboard has us on it
+	a.lbSort = "table"
+	a.joinTable(tableOf(a, proto.GameBaccarat))
+	pump(t, apps, nil, func() bool { return a.cs != nil }, "back at baccarat")
+	a.openLeaderboard()
+	pump(t, apps, nil, func() bool { return a.tableBoard != nil && len(a.tableBoard.Entries) == 1 }, "table board")
+}
+
+// tableOf is the lobby's first table of a game.
+func tableOf(a *App, game string) proto.TableInfo {
+	for _, t := range a.lobby.Tables {
+		if t.Game == game {
+			return t
+		}
+	}
+	return proto.TableInfo{}
 }
