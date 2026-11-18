@@ -753,7 +753,28 @@ func (a *App) openLeaderboard() {
 
 func (a *App) requestLeaderboard() {
 	a.lbAt = a.now
+	if a.lbSort == "table" {
+		a.send(proto.CTableBoard, proto.TableBoardReq{Table: a.currentTable()})
+		return
+	}
 	a.send(proto.CLeaderboard, proto.LeaderboardReq{Sort: a.lbSort})
+}
+
+// currentTable is the id of the table you're at ("" in the lobby).
+func (a *App) currentTable() string {
+	switch {
+	case a.game == "":
+		return ""
+	case a.ps != nil:
+		return a.ps.Table
+	case a.bs != nil:
+		return a.bs.Table
+	case a.cs != nil:
+		return a.cs.Table
+	case a.st != nil:
+		return a.st.TableID
+	}
+	return ""
 }
 
 func chipLabel(v int64) string {

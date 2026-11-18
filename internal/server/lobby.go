@@ -82,8 +82,65 @@ func defaultTables(cfg *Config) []TableDef {
 	return []TableDef{
 		{ID: "blackjack", Name: name, Game: proto.GameBlackjack},
 		{ID: "holdem", Name: "Texas Hold'em", Game: proto.GameHoldem},
+		{ID: "baccarat", Name: "Baccarat", Game: proto.GameBaccarat},
+		{ID: "reddog", Name: "Red Dog", Game: proto.GameRedDog},
 		{ID: "beggars", Name: "Beggars Table", Game: proto.GameBeggar},
 	}
+}
+
+// offerNewGames adds a default table for each game this server hasn't seen
+// before, so a server that already has a tables.json still gets tables for
+// games added in an update. An admin who closes one doesn't get it back.
+func (l *Lobby) offerNewGames(defs []TableDef) []TableDef {
+	path := filepath.Join(filepath.Dir(l.path), "tables-offered.json")
+	var offered []string
+	b, err := os.ReadFile(path)
+	if err == nil {
+		_ = json.Unmarshal(b, &offered)
+	} else {
+		// no record yet: everything before 1.9 came with these
+		offered = []string{proto.GameBlackjack, proto.GameHoldem, proto.GameBeggar}
+	}
+	seen := map[string]bool{}
+	for _, g := range offered {
+		seen[g] = true
+	}
+	ids := map[string]bool{}
+	for _, d := range defs {
+		ids[d.ID] = true
+		seen[d.Game] = true
+	}
+	changed := err != nil
+	for _, d := range defaultTables(l.s.cfg()) {
+		if seen[d.Game] {
+			continue
+		}
+		seen[d.Game] = true
+		changed = true
+		if ids[d.ID] {
+			continue
+		}
+		// keep the Beggars Table last
+		at := len(defs)
+		for i, e := range defs {
+			if e.Game == proto.GameBeggar {
+				at = i
+				break
+			}
+		}
+		defs = append(defs[:at], append([]TableDef{d}, defs[at:]...)...)
+		l.s.Log.Printf("opened a %s table (new in this version)", d.Game)
+	}
+	if changed {
+		var list []string
+		for g := range seen {
+			list = append(list, g)
+		}
+		sort.Strings(list)
+		b, _ := json.MarshalIndent(list, "", "  ")
+		_ = writeFileSafe(path, append(b, '\n'), true)
+	}
+	return defs
 }
 
 func (l *Lobby) load() []TableDef {
@@ -97,7 +154,7 @@ func (l *Lobby) load() []TableDef {
 	if len(defs) == 0 {
 		defs = defaultTables(l.s.cfg())
 	}
-	return defs
+	return l.offerNewGames(defs)
 }
 
 func (l *Lobby) save() {
@@ -170,6 +227,8 @@ func (l *Lobby) setNotifier(n Notifier) {
 			t.notify = n
 		case beggarTable:
 			t.Do(func() { t.notify = n })
+		case casinoTable:
+			t.Do(func() { t.notify = n })
 		}
 	}
 }
@@ -219,8 +278,21 @@ func (l *Lobby) open(d TableDef) (*tableRec, error) {
 		b := newBeggar(d.ID, d.Name, s.cfg(), bc, s.Store, s.notifier(), s.Log)
 		b.exec = s.Exec
 		t = beggarTable{b}
+	case proto.GameBaccarat, proto.GameRedDog:
+		cc, err := casinoConfig(d)
+		if err != nil {
+			return nil, err
+		}
+		var rules casinoRules = &Baccarat{}
+		if d.Game == proto.GameRedDog {
+			rules = &RedDog{}
+		}
+		rules.reset()
+		c := newCasino(d.ID, d.Name, rules, s.cfg(), cc, s.Store, s.notifier(), s.Log)
+		c.exec = s.Exec
+		t = casinoTable{c}
 	default:
-		return nil, fmt.Errorf("unknown game %q (blackjack, holdem or beggar)", d.Game)
+		return nil, fmt.Errorf("unknown game %q (blackjack, holdem, baccarat, reddog or beggar)", d.Game)
 	}
 	return &tableRec{def: d, t: t, stop: make(chan struct{})}, nil
 }
@@ -693,6 +765,10 @@ func (l *Lobby) AddTable(game, name string) (string, error) {
 		game = proto.GameHoldem
 	case "beggar", "beggars", "dice":
 		game = proto.GameBeggar
+	case "baccarat", "bac", "punto":
+		game = proto.GameBaccarat
+	case "reddog", "red-dog", "red_dog", "acey", "acey-deucey":
+		game = proto.GameRedDog
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -796,6 +872,10 @@ func (l *Lobby) TableSettings(id string) ([]proto.SettingInfo, error) {
 		for _, st := range settingsOfValue(reflect.ValueOf(&bc).Elem(), "", "") {
 			out = append(out, proto.SettingInfo{Key: st.Key, Label: LabelOf(st.Key), Kind: st.Kind, Value: st.Value})
 		}
+	case proto.GameBaccarat, proto.GameRedDog:
+		for _, st := range settingsOfValue(reflect.ValueOf(casinoSettingsOf(r.def)).Elem(), "", "") {
+			out = append(out, proto.SettingInfo{Key: st.Key, Label: LabelOf(st.Key), Kind: st.Kind, Value: st.Value})
+		}
 	}
 	return out, nil
 }
@@ -852,6 +932,12 @@ func (l *Lobby) SetTableSetting(id, key, value string) error {
 					kind = st.Kind
 				}
 			}
+		case proto.GameBaccarat, proto.GameRedDog:
+			for _, st := range settingsOfValue(reflect.ValueOf(casinoSettingsOf(TableDef{Game: r.def.Game})).Elem(), "", "") {
+				if st.Key == key {
+					kind = st.Kind
+				}
+			}
 		}
 		if kind == "" {
 			return fmt.Errorf("there's no setting %q for this table", key)
@@ -874,6 +960,10 @@ func (l *Lobby) SetTableSetting(id, key, value string) error {
 		}
 	case proto.GameBeggar:
 		if _, err := beggarConfig(def); err != nil {
+			return err
+		}
+	case proto.GameBaccarat, proto.GameRedDog:
+		if _, err := casinoConfig(def); err != nil {
 			return err
 		}
 	}
@@ -1048,4 +1138,25 @@ func (t *Holdem) summary() string {
 func mkMsg(typ string, v any) proto.Msg {
 	b, _ := json.Marshal(v)
 	return proto.Msg{Type: typ, Data: b}
+}
+
+// casinoSettingsOf is a baccarat or Red Dog table's settings, in its game's
+// own settings type (for listing and checking them).
+func casinoSettingsOf(d TableDef) any {
+	var b []byte
+	if len(d.Settings) > 0 {
+		b, _ = json.Marshal(d.Settings)
+	}
+	if d.Game == proto.GameBaccarat {
+		c := defaultBaccarat()
+		if b != nil {
+			_ = json.Unmarshal(b, &c)
+		}
+		return &c
+	}
+	c := defaultRedDog()
+	if b != nil {
+		_ = json.Unmarshal(b, &c)
+	}
+	return &c
 }

@@ -499,6 +499,68 @@ var hatSprites = []sprite{
 		".kk..................kk.",
 	}, map[rune]string{'b': "a07a48", 'B': "c8a06a", 'y': "f2c14e", 'g': "f2c14e", 'G': "fff2b8",
 		'n': "3f9a52", 'N': "8fe0a0"}},
+	// 35 beret (baccarat rounds): black wool, slouched to one side, with the
+	// little stalk on top
+	{[]string{
+		"..........kk..........",
+		"..........kk..........",
+		"......kkkkkkkkkk......",
+		"....kkbbbbbbbbbbkkk...",
+		"...kbbBbbbbbbbbbbbbk..",
+		"..kbbBbbbbbbbbbbbbbbk.",
+		".kbbbbbbbbbbbbbbbbbbbk",
+		".kbbbbbbbbbbbbbbbbbbk.",
+		"..kkrrrrrrrrrrrrrrkk..",
+		"....kkkkkkkkkkkkkk....",
+	}, map[rune]string{'b': "2a2a32", 'B': "4a4a58", 'r': "8a1f2a"}},
+	// 36 feathered fascinator (naturals): a little pillbox with a veil and
+	// a tall plume
+	{[]string{
+		"..............kk......",
+		".............kpPk.....",
+		"............kpPpk.....",
+		"............kpPk......",
+		"...........kpPpk......",
+		"...........kpPk.......",
+		"..........kpPk........",
+		"..........kpk.........",
+		"......kkkkkpkk........",
+		".....kmmmmmmmmk.......",
+		"....kmMmmmmmmmmk......",
+		"....kmmmmmmmmmmk..kk..",
+		"....kkkkkkkkkkkk.kgk..",
+		"....v.v.v.v.v.v..kk...",
+		".....v.v.v.v.v........",
+	}, map[rune]string{'p': "d83f8a", 'P': "ff9ad0", 'm': "6a1f4a", 'M': "a03a72", 'g': "f2c14e", 'v': "2a2a32"}},
+	// 37 floppy dog ears (Red Dog wins): a headband with two long ears
+	{[]string{
+		"....kkkkkkkkkkkkkkkkkkkk....",
+		"...kbbbbbbbbbbbbbbbbbbbbk...",
+		"..kbkkkkkkkkkkkkkkkkkkkkbk..",
+		".kbbk..................kbbk.",
+		"kbBbk..................kbBbk",
+		"kbBbk..................kbBbk",
+		"kbBbk..................kbBbk",
+		"kbbbk..................kbbbk",
+		"kbbbk..................kbbbk",
+		".kbk....................kbk.",
+		"..k......................k..",
+	}, map[rune]string{'b': "8a5a30", 'B': "c88a5a"}},
+	// 38 hot dog (Red Dog three of a kind): a hot dog in a bun, with
+	// mustard
+	{[]string{
+		"....kkkkkkkkkkkkkkkkkk....",
+		"..kkbbbbbbbbbbbbbbbbbbkk..",
+		".kbBBbbbbbbbbbbbbbbbbbbbk.",
+		"kkkkkkkkkkkkkkkkkkkkkkkkkk",
+		"krrrrrryrrryrrrryrrryrrrrk",
+		"krRrryrrryrrryrrryrrryrrrk",
+		"krrrrrrrrrrrrrrrrrrrrrrrrk",
+		"kkkkkkkkkkkkkkkkkkkkkkkkkk",
+		".kbbbbbbbbbbbbbbbbbbbbbbk.",
+		"..kkbbbbbbbbbbbbbbbbbbkk..",
+		"....kkkkkkkkkkkkkkkkkk....",
+	}, map[rune]string{'b': "e0a050", 'B': "f8d090", 'r': "b8402a", 'R': "e07050", 'y': "ffd23f"}},
 }
 
 func genHats() {

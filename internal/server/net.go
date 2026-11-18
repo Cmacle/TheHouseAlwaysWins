@@ -209,6 +209,20 @@ func (c *conn) handle(m proto.Msg) bool {
 		}
 		c.lobbyOK = h.Lobby
 		return true
+	case proto.CTableBoard:
+		var req proto.TableBoardReq
+		_ = decode(m, &req)
+		tb := proto.TableBoard{Table: req.Table, Entries: s.Store.TableBoard(req.Table, 100)}
+		for _, ti := range s.Lobby.Tables() {
+			if ti.ID == req.Table {
+				tb.Name = ti.Name
+			}
+		}
+		if tb.Entries == nil {
+			tb.Entries = []proto.TableEntry{}
+		}
+		c.send(proto.STableBoard, tb)
+		return true
 	case proto.CLeaderboard:
 		var req proto.LeaderboardReq
 		_ = decode(m, &req)
@@ -277,7 +291,7 @@ func (c *conn) handle(m proto.Msg) bool {
 	}
 
 	switch m.Type {
-	case proto.CBet, proto.CAction, proto.CSitOut, proto.CChat, proto.CPoker, proto.CDice:
+	case proto.CBet, proto.CAction, proto.CSitOut, proto.CChat, proto.CPoker, proto.CDice, proto.CCasino:
 		s.Lobby.route(c, m)
 	case proto.CGiftInfo:
 		var gi proto.GiftInfo

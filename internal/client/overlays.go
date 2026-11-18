@@ -33,7 +33,13 @@ func (a *App) drawLeaderboard() {
 		return
 	}
 	// tabs
-	tabs := []struct{ sort, label string }{{"balance", "RICHEST NOW"}, {"net", "LIFETIME GAIN"}, {"peak", "PEAK HOLDINGS"}, {"house", "THE HOUSE"}}
+	tabs := []struct{ sort, label string }{{"balance", "RICHEST NOW"}, {"net", "LIFETIME GAIN"}, {"peak", "PEAK HOLDINGS"}}
+	if a.currentTable() != "" {
+		tabs = append(tabs, struct{ sort, label string }{"table", "THIS TABLE"})
+	} else if a.lbSort == "table" {
+		a.lbSort = "balance"
+	}
+	tabs = append(tabs, struct{ sort, label string }{"house", "THE HOUSE"})
 	tw := min(104, (r.Dx()-28-6*(len(tabs)-1))/len(tabs))
 	tx := r.Min.X + r.Dx()/2 - (tw*len(tabs)+6*(len(tabs)-1))/2
 	for _, t := range tabs {
@@ -50,13 +56,17 @@ func (a *App) drawLeaderboard() {
 			if t.sort != "house" {
 				a.leaderboard = nil
 			}
+			a.tableBoard = nil
 			a.lbScroll = 0
 			a.requestLeaderboard()
 		}
 		tx += tw + 6
 	}
 	if a.in.key(KeyLeft) || a.in.key(KeyRight) {
-		order := []string{"balance", "net", "peak", "house"}
+		order := []string{}
+		for _, t := range tabs {
+			order = append(order, t.sort)
+		}
 		i := 0
 		for k, v := range order {
 			if v == a.lbSort {
@@ -80,6 +90,10 @@ func (a *App) drawLeaderboard() {
 	}
 	if a.lbSort == "house" {
 		a.drawHouse(r)
+		return
+	}
+	if a.lbSort == "table" {
+		a.drawTableBoard(r)
 		return
 	}
 	rich := a.lbSort == "balance"
@@ -335,4 +349,108 @@ func (a *App) drawHelp() {
 			y -= 5
 		}
 	}
+}
+
+// drawTableBoard is the table's own leaderboard: who has done best here.
+func (a *App) drawTableBoard(r image.Rectangle) {
+	tb := a.tableBoard
+	x0 := r.Min.X + 14
+	right := r.Max.X - 18
+	narrow := r.Dx() < 440
+	name := "This table"
+	if tb != nil && tb.Name != "" {
+		name = tb.Name
+	}
+	a.text(r.Min.X+r.Dx()/2, r.Min.Y+54, strings.ToUpper(name)+": GAINS AND LOSSES HERE", a.A.C("gold"), alignCenter)
+	cols := []struct {
+		x     int
+		label string
+		al    align
+	}{
+		{x0 + 16, "#", alignRight}, {x0 + 48, "PLAYER", alignLeft}, {right - 168, "NET HERE", alignRight},
+		{right - 112, "WON", alignRight}, {right - 56, "LOST", alignRight}, {right, "ROUNDS", alignRight},
+	}
+	if narrow {
+		cols[2].x, cols[3].label, cols[4].label, cols[5].x = right-48, "", "", right
+	}
+	hy := r.Min.Y + 68
+	for i, c := range cols {
+		col := a.A.C("text_dim")
+		if i == 2 {
+			col = a.A.C("gold")
+		}
+		a.text(c.x, hy, c.label, col, c.al)
+	}
+	rowH := 22
+	top := hy + 11
+	visible := (r.Max.Y - 22 - top) / rowH
+	var entries []proto.TableEntry
+	if tb != nil {
+		entries = tb.Entries
+	}
+	maxScroll := max(0, len(entries)-visible)
+	if a.in.Wheel != 0 {
+		a.lbScroll -= a.in.Wheel * 2
+	}
+	a.lbScroll = clampi(a.lbScroll, 0, maxScroll)
+	switch {
+	case tb == nil:
+		a.text(r.Min.X+r.Dx()/2, top+30, "Loading...", a.A.C("text_dim"), alignCenter)
+	case len(entries) == 0:
+		a.text(r.Min.X+r.Dx()/2, top+30, "Nobody has played a round here yet.", a.A.C("text_dim"), alignCenter)
+	}
+	nameW := cols[2].x - 70 - cols[1].x
+	for i := 0; i < visible && a.lbScroll+i < len(entries); i++ {
+		idx := a.lbScroll + i
+		e := entries[idx]
+		y := top + i*rowH
+		row := image.Rect(x0, y, r.Max.X-14, y+rowH)
+		if strings.EqualFold(e.Username, a.username) {
+			fillRect(a.fb, row, a.A.C("row_me"))
+		} else if idx%2 == 1 {
+			fillRect(a.fb, row, a.A.C("row_alt"))
+		}
+		ty := y + 7
+		rankCol := a.A.C("text")
+		switch idx {
+		case 0:
+			rankCol = a.A.C("gold")
+		case 1:
+			rankCol = parseHex("#d8dde6")
+		case 2:
+			rankCol = parseHex("#d08a4a")
+		}
+		a.text(cols[0].x, ty, fmt.Sprint(idx+1), rankCol, alignRight)
+		ax, ay := x0+24, y+4
+		blit(a.fb, a.avatarImg(e.Username, e.AvatarVersion, 16), ax, ay)
+		if h := a.smallHat(e.Hat); h != nil {
+			blit(a.fb, h, ax+8-h.Rect.Dx()/2, ay-h.Rect.Dy()+3)
+		}
+		nm := fitText(a.A.Font, e.Username, nameW)
+		a.text(cols[1].x, y+3, nm, a.A.C("text"), alignLeft)
+		if e.Online {
+			dx := cols[1].x + a.A.Font.Width(nm) + 5
+			fillRect(a.fb, image.Rect(dx, y+5, dx+3, y+8), a.A.C("online"))
+		}
+		if t, c, ok := titleOf(e.Title); ok {
+			a.text(cols[1].x, y+12, fitText(a.A.Font, t, nameW+20), c, alignLeft)
+		}
+		nc := a.A.C("text")
+		if e.Net > 0 {
+			nc = a.A.C("win")
+		} else if e.Net < 0 {
+			nc = a.A.C("lose")
+		}
+		a.text(cols[2].x, ty, signed(e.Net), nc, alignRight)
+		if !narrow {
+			a.text(cols[3].x, ty, commas(e.Won), a.A.C("win"), alignRight)
+			a.text(cols[4].x, ty, commas(e.Lost), a.A.C("lose"), alignRight)
+		}
+		a.text(cols[5].x, ty, commas(int64(e.Hands)), a.A.C("text"), alignRight)
+	}
+	foot := "Everything won and lost at this table, by everyone who's played here."
+	if maxScroll > 0 {
+		foot += "  Scroll for more."
+	}
+	a.text(r.Min.X+r.Dx()/2, r.Max.Y-16, fitText(a.A.Font, foot, r.Dx()-20), a.A.C("text_dim"), alignCenter)
 }

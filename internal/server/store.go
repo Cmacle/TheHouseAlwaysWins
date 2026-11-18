@@ -96,9 +96,17 @@ type Account struct {
 	BiggestBet      int64 `json:"biggest_bet,omitempty"` // most riding on one hand, any game
 	// The Beggars Table. What it pays out is a handout, like a refill: it
 	// isn't counted as winnings.
-	BeggarRolls int64 `json:"beggar_rolls,omitempty"`
-	BeggarWins  int64 `json:"beggar_wins,omitempty"`
-	BeggarTotal int64 `json:"beggar_total,omitempty"`
+	BacRounds   int `json:"bac_rounds,omitempty"`
+	BacNaturals int `json:"bac_naturals,omitempty"`
+	BacTies     int `json:"bac_ties,omitempty"`
+	RdWins      int `json:"rd_wins,omitempty"`
+	RdGutshots  int `json:"rd_gutshots,omitempty"`
+	RdTrips     int `json:"rd_trips,omitempty"`
+	// Tables: gains and losses at each table, by table id
+	Tables      map[string]*TableStat `json:"tables,omitempty"`
+	BeggarRolls int64                 `json:"beggar_rolls,omitempty"`
+	BeggarWins  int64                 `json:"beggar_wins,omitempty"`
+	BeggarTotal int64                 `json:"beggar_total,omitempty"`
 
 	Unlocked []string `json:"unlocked,omitempty"`
 	Hat      string   `json:"hat,omitempty"`
@@ -131,7 +139,9 @@ func (s *Store) stats(a *Account) cosmetics.Stats {
 		RankPeak: key != "" && key == s.topPeak,
 		PkHands:  a.PokerHands, PkFlush: a.PokerFlushes, PkFullHouse: a.PokerFullHouses, PkQuads: a.PokerQuads,
 		PkStrFlush: a.PokerStrFlushes, PkRoyal: a.PokerRoyals, PkBluffs: a.PokerBluffs, PkBeatDale: a.PokerBeatDale,
-		PkBigPot: a.PokerBiggestPot,
+		PkBigPot:  a.PokerBiggestPot,
+		BacRounds: a.BacRounds, BacNaturals: a.BacNaturals, BacTies: a.BacTies,
+		RdWins: a.RdWins, RdGutshots: a.RdGutshots, RdTrips: a.RdTrips,
 	}
 }
 
@@ -181,6 +191,8 @@ func (s *Store) profileOf(a *Account) proto.Profile {
 		Unlocked: append([]string(nil), a.Unlocked...), Hat: hat, Frame: frame, Title: title,
 		EquippedHat: a.Hat, RankRich: st.RankRich, RankNet: st.RankNet, RankHands: st.RankHands, RankBet: st.RankBet, RankPeak: st.RankPeak, BiggestBet: a.BiggestBet,
 		BeggarRolls: a.BeggarRolls, BeggarWins: a.BeggarWins,
+		BacRounds: a.BacRounds, BacNaturals: a.BacNaturals, BacTies: a.BacTies,
+		RdWins: a.RdWins, RdGutshots: a.RdGutshots, RdTrips: a.RdTrips,
 		PokerHands: a.PokerHands, PokerFlushes: a.PokerFlushes, PokerFullHouses: a.PokerFullHouses,
 		PokerQuads: a.PokerQuads, PokerStrFlushes: a.PokerStrFlushes, PokerRoyals: a.PokerRoyals,
 		PokerBluffs: a.PokerBluffs, PokerBeatDale: a.PokerBeatDale, PokerBiggestPot: a.PokerBiggestPot,
@@ -1377,4 +1389,144 @@ func (s *Store) Chips(username string) int64 {
 		return a.Balance + a.TableStack
 	}
 	return 0
+}
+
+// TableStat is one player's record at one table.
+type TableStat struct {
+	Net   int64 `json:"net"`
+	Won   int64 `json:"won"`  // total of winning rounds
+	Lost  int64 `json:"lost"` // total of losing rounds
+	Hands int   `json:"hands"`
+	Best  int64 `json:"best,omitempty"` // biggest single win
+}
+
+// RecordTable adds one round's result at a table to a player's table record.
+func (s *Store) RecordTable(username, table string, delta int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.accounts[strings.ToLower(username)]
+	if !ok || table == "" {
+		return
+	}
+	if a.Tables == nil {
+		a.Tables = map[string]*TableStat{}
+	}
+	ts := a.Tables[table]
+	if ts == nil {
+		ts = &TableStat{}
+		a.Tables[table] = ts
+	}
+	ts.Hands++
+	ts.Net += delta
+	switch {
+	case delta > 0:
+		ts.Won += delta
+		ts.Best = max(ts.Best, delta)
+	case delta < 0:
+		ts.Lost += -delta
+	}
+	s.dirty = true
+}
+
+// TableBoard ranks everyone who has played at a table by their gains there.
+func (s *Store) TableBoard(table string, limit int) []proto.TableEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []proto.TableEntry
+	for _, a := range s.accounts {
+		ts := a.Tables[table]
+		if ts == nil || ts.Hands == 0 {
+			continue
+		}
+		hat, _, title := s.look(a)
+		out = append(out, proto.TableEntry{Username: a.Username, AvatarVersion: a.AvatarVersion, Hat: hat, Title: title,
+			Net: ts.Net, Won: ts.Won, Lost: ts.Lost, Hands: ts.Hands, Best: ts.Best,
+			Online: s.online[strings.ToLower(a.Username)]})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Net != out[j].Net {
+			return out[i].Net > out[j].Net
+		}
+		return strings.ToLower(out[i].Username) < strings.ToLower(out[j].Username)
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
+// GameResult is one baccarat or Red Dog bet settled.
+type GameResult struct {
+	Game    string // proto.GameBaccarat or proto.GameRedDog
+	Wagered int64
+	Payout  int64 // stake + winnings returned
+	Natural bool  // baccarat: won on a natural
+	Tie     bool  // baccarat: won a tie bet
+	Gutshot bool  // Red Dog: won on a one-card spread
+	Trips   bool  // Red Dog: three of a kind
+}
+
+// SettleGame pays a baccarat or Red Dog bet and counts it like a hand.
+func (s *Store) SettleGame(username string, r GameResult) {
+	s.Settle(username, []HandResult{{Wagered: r.Wagered, Payout: r.Payout}})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.accounts[strings.ToLower(username)]
+	if !ok {
+		return
+	}
+	won := r.Payout > r.Wagered
+	switch r.Game {
+	case proto.GameBaccarat:
+		a.BacRounds++
+		if won && r.Natural {
+			a.BacNaturals++
+		}
+		if won && r.Tie {
+			a.BacTies++
+		}
+	case proto.GameRedDog:
+		if won {
+			a.RdWins++
+		}
+		if won && r.Gutshot {
+			a.RdGutshots++
+		}
+		if r.Trips {
+			a.RdTrips++
+		}
+	}
+	s.touched(a)
+}
+
+// RecordTableHouse adds the house's result from a table game round.
+func (s *Store) RecordTableHouse(delta int64) (proto.HouseStats, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	h := &s.house
+	prev := h.Tier
+	h.Net += delta
+	switch {
+	case delta > 0:
+		h.Won += delta
+		h.RoundsWon++
+	case delta < 0:
+		h.Lost += -delta
+		h.RoundsLost++
+	}
+	h.BiggestWin = max(h.BiggestWin, delta)
+	h.BiggestLoss = max(h.BiggestLoss, -delta)
+	h.Tier = banter.Tier(h.Net, h.Tier)
+	s.dirty = true
+	return *h, prev
+}
+
+// Credit gives chips back (a stake from a round that was called off).
+func (s *Store) Credit(username string, amount int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.accounts[strings.ToLower(username)]; ok && amount > 0 {
+		a.Balance += amount
+		s.dirty = true
+	}
 }

@@ -517,6 +517,41 @@ func genFrames() {
 				c.sprite(44, y, []string{".kk.", "kGgk", "kgdk", ".kk."}, bp)
 			}
 		},
+		// 12 velvet rope (epic): a red velvet band hung on brass stanchions
+		// at the corners, with the rope swagging between them
+		func(c *canvas) {
+			c.ring(3, func(x, y, d int) color.NRGBA {
+				switch {
+				case d == 3:
+					return hex("4a0a14")
+				case (x+y)%5 == 0:
+					return hex("d8404e")
+				}
+				return hex("a01c2c")
+			})
+			// swagged rope along the bottom and top
+			for i := 0; i < 36; i++ {
+				x := 6 + i
+				sag := int(3 * math.Sin(float64(i%18)/18*math.Pi))
+				c.set(x, 44+sag-1, hex("c8283a"))
+				c.set(x, 45+sag-1, hex("7a1020"))
+				c.set(x, 3-sag/2, hex("c8283a"))
+			}
+			post := []string{
+				".kk.",
+				"kGgk",
+				"kgdk",
+				".kk.",
+				".kk.",
+				"kggk",
+				"kgdk",
+				"kkkk",
+			}
+			pp := map[rune]color.NRGBA{'g': hex("f2c14e"), 'G': hex("fff2b8"), 'd': hex("b8861f")}
+			for _, p := range [][2]int{{0, 0}, {44, 0}, {0, 40}, {44, 40}} {
+				c.sprite(p[0], p[1], post, pp)
+			}
+		},
 	}
 	img := newImg(frameS*len(styles), frameS)
 	for i, st := range styles {

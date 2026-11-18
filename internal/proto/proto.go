@@ -62,6 +62,8 @@ const (
 	CLeaveTable  = "leave_table" // back to the lobby
 	CPoker       = "poker"       // a poker action
 	CDice        = "dice"        // roll at the Beggars Table
+	CTableBoard  = "table_board" // a table's own leaderboard
+	CCasino      = "casino"      // a bet or move at a baccarat or Red Dog table
 	CRecords     = "records"     // who holds the record-based cosmetics
 )
 
@@ -88,6 +90,8 @@ const (
 	SPoker       = "poker"  // poker table state
 	SBeggar      = "beggar" // Beggars Table state
 	SDice        = "dice"   // your dice are rolling
+	STableBoard  = "table_board"
+	SCasino      = "casino" // baccarat or Red Dog table state
 	SRecords     = "records"
 )
 
@@ -171,6 +175,12 @@ type Profile struct {
 	RankBet         bool     `json:"rank_bet,omitempty"`   // holds the biggest-bet record
 	RankPeak        bool     `json:"rank_peak,omitempty"`  // holds the most-chips-ever record
 	BiggestBet      int64    `json:"biggest_bet,omitempty"`
+	BacRounds       int      `json:"bac_rounds,omitempty"`
+	BacNaturals     int      `json:"bac_naturals,omitempty"`
+	BacTies         int      `json:"bac_ties,omitempty"`
+	RdWins          int      `json:"rd_wins,omitempty"`
+	RdGutshots      int      `json:"rd_gutshots,omitempty"`
+	RdTrips         int      `json:"rd_trips,omitempty"`
 	BeggarRolls     int64    `json:"beggar_rolls,omitempty"`
 	BeggarWins      int64    `json:"beggar_wins,omitempty"`
 	PokerHands      int      `json:"poker_hands,omitempty"`
@@ -310,6 +320,8 @@ const (
 	GameBlackjack = "blackjack"
 	GameHoldem    = "holdem"
 	GameBeggar    = "beggar"
+	GameBaccarat  = "baccarat"
+	GameRedDog    = "reddog"
 )
 
 // TableInfo describes a table in the lobby.
@@ -616,4 +628,107 @@ type DealerLine struct {
 	Cont bool   `json:"cont,omitempty"` // continues the previous line
 	Para bool   `json:"para,omitempty"` // ...starting a new paragraph
 	At   int64  `json:"at"`             // unix ms
+}
+
+// TableBoardReq asks for a table's leaderboard.
+type TableBoardReq struct {
+	Table string `json:"table"`
+}
+
+// TableBoard is a table's own leaderboard: gains and losses at that table.
+type TableBoard struct {
+	Table   string       `json:"table"`
+	Name    string       `json:"name"`
+	Entries []TableEntry `json:"entries"`
+}
+
+type TableEntry struct {
+	Username      string `json:"username"`
+	AvatarVersion string `json:"avatar_version,omitempty"`
+	Hat           string `json:"hat,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Net           int64  `json:"net"`
+	Won           int64  `json:"won"`
+	Lost          int64  `json:"lost"`
+	Hands         int    `json:"hands"`
+	Best          int64  `json:"best,omitempty"`
+	Online        bool   `json:"online,omitempty"`
+}
+
+// CasinoAct is a move at a baccarat or Red Dog table: bet (Spot, Amount),
+// clear, rebet, raise, stay, sit, stand.
+type CasinoAct struct {
+	Action string `json:"action"`
+	Spot   string `json:"spot,omitempty"`
+	Amount int64  `json:"amount,omitempty"`
+}
+
+// CasinoSeat is a player at a baccarat or Red Dog table.
+type CasinoSeat struct {
+	Seat          int              `json:"seat"`
+	Username      string           `json:"username,omitempty"`
+	AvatarVersion string           `json:"avatar_version,omitempty"`
+	Hat           string           `json:"hat,omitempty"`
+	Frame         string           `json:"frame,omitempty"`
+	Title         string           `json:"title,omitempty"`
+	Connected     bool             `json:"connected,omitempty"`
+	Balance       int64            `json:"balance"` // chips in the bank, less what's bet
+	Bets          map[string]int64 `json:"bets,omitempty"`
+	Raised        bool             `json:"raised,omitempty"`
+	Result        int64            `json:"result,omitempty"` // this round's win or loss, once settled
+	Settled       bool             `json:"settled,omitempty"`
+}
+
+// CardReveal is a card (or cards) held face down for a moment, then flipped.
+type CardReveal struct {
+	Spot  string `json:"spot"` // "player", "banker", "reddog"
+	From  int    `json:"from"` // first card of the spot being revealed
+	Count int    `json:"count"`
+	Until int64  `json:"until"` // unix ms, server clock
+	Shown bool   `json:"shown,omitempty"`
+}
+
+// CasinoState is a baccarat or Red Dog table.
+type CasinoState struct {
+	Table      string       `json:"table"`
+	Name       string       `json:"name"`
+	Game       string       `json:"game"`
+	Phase      string       `json:"phase"` // betting, dealing, raise, result
+	HandNumber int          `json:"hand_number"`
+	Message    string       `json:"message,omitempty"`
+	Deadline   int64        `json:"deadline,omitempty"`
+	TimerTotal int64        `json:"timer_total,omitempty"`
+	ServerTime int64        `json:"server_time"`
+	MinBet     int64        `json:"min_bet"`
+	MaxBet     int64        `json:"max_bet"`
+	YourSeat   int          `json:"your_seat"` // -1 watching
+	Spots      []string     `json:"spots"`     // where bets go
+	Seats      []CasinoSeat `json:"seats"`
+	Spectators int          `json:"spectators,omitempty"`
+	CanBet     bool         `json:"can_bet,omitempty"`
+	CanRaise   bool         `json:"can_raise,omitempty"`
+	CanRebet   bool         `json:"can_rebet,omitempty"`
+	Reveal     *CardReveal  `json:"reveal,omitempty"`
+
+	// baccarat
+	PlayerCards []blackjack.Card `json:"player_cards,omitempty"`
+	BankerCards []blackjack.Card `json:"banker_cards,omitempty"`
+	PlayerTotal int              `json:"player_total"`
+	BankerTotal int              `json:"banker_total"`
+	Winner      string           `json:"winner,omitempty"`  // player, banker, tie
+	History     []string         `json:"history,omitempty"` // recent winners, oldest first
+	// Red Dog
+	Cards  []blackjack.Card `json:"cards,omitempty"`
+	Spread int              `json:"spread,omitempty"` // cards between the first two; -1 consecutive, 0 a pair
+	Pays   string           `json:"pays,omitempty"`   // "5 to 1"
+
+	Settings       Settings     `json:"settings"`
+	DealerSay      string       `json:"dealer_say,omitempty"`
+	DealerSayID    int          `json:"dealer_say_id,omitempty"`
+	DealerSayUntil int64        `json:"dealer_say_until,omitempty"`
+	DealerSayCont  bool         `json:"dealer_say_cont,omitempty"`
+	DealerSayPara  bool         `json:"dealer_say_para,omitempty"`
+	DealerLog      []DealerLine `json:"dealer_log,omitempty"`
+	HouseNet       int64        `json:"house_net"`
+	HouseTier      int          `json:"house_tier"`
 }
