@@ -35,7 +35,7 @@ func Dial(addr string) (*NetClient, error) {
 	}
 	n := &NetClient{Addr: addr, conn: c, in: make(chan proto.Msg, 512), w: bufio.NewWriter(c), dead: make(chan struct{})}
 	go n.reader()
-	n.Send(proto.CHello, proto.Hello{Version: proto.Version})
+	n.Send(proto.CHello, proto.Hello{Version: proto.Version, Lobby: true})
 	return n, nil
 }
 

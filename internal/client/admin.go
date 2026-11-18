@@ -26,9 +26,11 @@ type AdminBackend interface {
 // netAdmin talks to the server over the connection (admins in the game).
 type netAdmin struct{ a *App }
 
-func (n netAdmin) RequestSettings() { n.a.send(proto.CSettings, nil) }
+func (n netAdmin) RequestSettings() {
+	n.a.send(proto.CSettings, proto.SettingsReq{Table: n.a.settingsTable})
+}
 func (n netAdmin) SetSetting(k, v string) {
-	n.a.send(proto.CSetSetting, proto.SetSetting{Key: k, Value: v})
+	n.a.send(proto.CSetSetting, proto.SetSetting{Key: k, Value: v, Table: n.a.settingsTable})
 }
 func (n netAdmin) Exec(line string) {
 	if !strings.HasPrefix(line, "/") {
@@ -68,7 +70,12 @@ func (a *App) openAdmin() {
 
 func (a *App) drawAdmin() {
 	r := ovRect(560, max(320, ScreenH-40))
-	if a.overlayFrame(r, "ADMIN") {
+	title := "ADMIN"
+	if a.settingsTable != "" {
+		title = "TABLE: " + strings.ToUpper(a.settingsTable)
+	}
+	if a.overlayFrame(r, title) {
+		a.settingsTable = ""
 		return
 	}
 	a.drawAdminBody(image.Rect(r.Min.X+10, r.Min.Y+30, r.Max.X-10, r.Max.Y-8))
