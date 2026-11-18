@@ -128,7 +128,8 @@ func (s *Store) stats(a *Account) cosmetics.Stats {
 		Busts: a.Busts, DoublesWon: a.DoublesWon, Splits: a.Splits, Refills: a.RefillCount,
 		RankRich: key != "" && key == s.topRich, RankNet: key != "" && key == s.topNet,
 		RankHands: key != "" && key == s.topHands, RankBet: key != "" && key == s.topBet,
-		PkHands: a.PokerHands, PkFlush: a.PokerFlushes, PkFullHouse: a.PokerFullHouses, PkQuads: a.PokerQuads,
+		RankPeak: key != "" && key == s.topPeak,
+		PkHands:  a.PokerHands, PkFlush: a.PokerFlushes, PkFullHouse: a.PokerFullHouses, PkQuads: a.PokerQuads,
 		PkStrFlush: a.PokerStrFlushes, PkRoyal: a.PokerRoyals, PkBluffs: a.PokerBluffs, PkBeatDale: a.PokerBeatDale,
 		PkBigPot: a.PokerBiggestPot,
 	}
@@ -138,17 +139,21 @@ func (s *Store) stats(a *Account) cosmetics.Stats {
 func (s *Store) look(a *Account) (hat, frame, title string) {
 	st := s.stats(a)
 	own := a.owned()
+	// the hat you chose comes first; a record hat is worn automatically only
+	// when you haven't picked one (you can still pick it while you hold it)
 	switch {
+	case a.Hat != "" && cosmetics.Has(a.Hat, st, own):
+		hat = a.Hat
 	case st.RankRich:
 		hat = "crown"
 	case st.RankNet:
 		hat = "laurel"
+	case st.RankPeak:
+		hat = "moneybag"
 	case st.RankHands:
 		hat = "nightcap"
 	case st.RankBet:
 		hat = "chip_tower"
-	case a.Hat != "" && cosmetics.Has(a.Hat, st, own):
-		hat = a.Hat
 	}
 	frame = "frame_wood"
 	if a.Frame != "" && cosmetics.Has(a.Frame, st, own) {
@@ -174,7 +179,7 @@ func (s *Store) profileOf(a *Account) proto.Profile {
 		BestWinStreak: a.BestWinStreak, WorstLoseStreak: a.WorstLoseStreak, Busts: a.Busts,
 		DoublesWon: a.DoublesWon, Splits: a.Splits, RefillCount: a.RefillCount,
 		Unlocked: append([]string(nil), a.Unlocked...), Hat: hat, Frame: frame, Title: title,
-		EquippedHat: a.Hat, RankRich: st.RankRich, RankNet: st.RankNet, RankHands: st.RankHands, RankBet: st.RankBet, BiggestBet: a.BiggestBet,
+		EquippedHat: a.Hat, RankRich: st.RankRich, RankNet: st.RankNet, RankHands: st.RankHands, RankBet: st.RankBet, RankPeak: st.RankPeak, BiggestBet: a.BiggestBet,
 		BeggarRolls: a.BeggarRolls, BeggarWins: a.BeggarWins,
 		PokerHands: a.PokerHands, PokerFlushes: a.PokerFlushes, PokerFullHouses: a.PokerFullHouses,
 		PokerQuads: a.PokerQuads, PokerStrFlushes: a.PokerStrFlushes, PokerRoyals: a.PokerRoyals,
@@ -263,6 +268,25 @@ func (s *Store) recomputeRanks() {
 		bet = ""
 	}
 	s.topBet = bet
+	// the peak is a record too: kept until someone beats it outright
+	var peak string
+	var bestPeak int64
+	peakTie := false
+	for k, a := range s.accounts {
+		switch {
+		case a.PeakBalance > bestPeak:
+			peak, bestPeak, peakTie = k, a.PeakBalance, false
+		case a.PeakBalance == bestPeak && bestPeak > 0:
+			peakTie = true
+		}
+	}
+	if h, ok := s.accounts[s.topPeak]; ok && h.PeakBalance == bestPeak && bestPeak > 0 {
+		peak, peakTie = s.topPeak, false
+	}
+	if peakTie || bestPeak <= s.CrownMin {
+		peak = ""
+	}
+	s.topPeak = peak
 	s.topRich, s.topNet, s.topHands = rich, net, hands
 }
 
@@ -299,8 +323,22 @@ func (s *Store) Records() proto.Records {
 	if a, ok := s.accounts[s.topBet]; ok {
 		b.User, b.Value = a.Username, a.BiggestBet
 	}
-	out.Records = append(out.Records, h, b)
+	pk := proto.Record{Metric: cosmetics.MRankPeak}
+	if a, ok := s.accounts[s.topPeak]; ok {
+		pk.User, pk.Value = a.Username, a.PeakBalance
+	}
+	out.Records = append(out.Records, h, b, pk)
 	return out
+}
+
+// TopPeak is who holds the record for most chips at once, and how many.
+func (s *Store) TopPeak() (string, int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.accounts[s.topPeak]; ok {
+		return a.Username, a.PeakBalance
+	}
+	return "", 0
 }
 
 // TopHands is who has played the most hands ("" if nobody or a tie).
@@ -370,6 +408,7 @@ type Store struct {
 	topRich  string
 	topHands string
 	topBet   string
+	topPeak  string
 	topNet   string
 	unlocks  []Unlock
 	changes  int  // successful saves, to know when a backup is due
@@ -1006,6 +1045,7 @@ func (s *Store) SetOnline(username string, on bool) {
 const (
 	SortNet     = "net"     // lifetime gain/loss
 	SortBalance = "balance" // most chips right now
+	SortPeak    = "peak"    // most chips ever held at once
 )
 
 // Leaderboard returns accounts sorted by lifetime net (SortNet) or current
@@ -1019,8 +1059,11 @@ func (s *Store) Leaderboard(limit int, by string) []proto.Profile {
 	}
 	sort.Slice(out, func(i, j int) bool {
 		a1, a2, b1, b2 := out[i].Net, out[j].Net, out[i].Balance, out[j].Balance
-		if by == SortBalance {
+		switch by {
+		case SortBalance:
 			a1, a2, b1, b2 = b1, b2, a1, a2
+		case SortPeak:
+			a1, a2 = out[i].PeakBalance, out[j].PeakBalance
 		}
 		if a1 != a2 {
 			return a1 > a2

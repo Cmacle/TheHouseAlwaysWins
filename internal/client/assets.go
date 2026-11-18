@@ -59,7 +59,7 @@ func defaultTheme() Theme {
 		ChipValues:    []int64{5, 10, 25, 100, 500, 1000},
 		FontCellWidth: 6, FontCellHeight: 8, FontColumns: 16, FontFirstChar: 32, FontSpaceWidth: 4,
 		NineSliceEdge: 4, PanelEdge: 5,
-		HatWidth: 32, HatHeight: 20, HatOverlap: 6, FrameSize: 36, DealerCellW: 48, DealerCellH: 48, CigarX: 41, CigarY: 26,
+		HatWidth: 32, HatHeight: 20, HatOverlap: 6, FrameSize: 48, DealerCellW: 48, DealerCellH: 48, CigarX: 41, CigarY: 26,
 		Mouth: [2][3]int{{22, 28, 5}, {20, 28, 6}},
 		Colors: map[string]string{
 			"text":       "#f3ead2",
@@ -336,7 +336,7 @@ up by whole pixels, so draw at 1x.
                         unicorn, grad cap, golden top hat, tiara, hair on
                         fire, space helmet, crown, laurel wreath,
                         nightcap, chip tower
-  frames.png            avatar frames in one row, frame_size square (36x36),
+  frames.png            avatar frames in one row, frame_size square (48x48),
                         a ring around the 32x32 picture. Order: plain, felt,
                         silver, gold, ruby, frozen, bone, inferno, diamond,
                         rainbow (the rainbow one is animated in-game),

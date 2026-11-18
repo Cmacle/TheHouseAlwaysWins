@@ -58,19 +58,24 @@ Discord.
   all-at-once play, hidden or visible hands, and the usual casino rule options.
 - **Daily refill**: once a day, anyone below the refill amount is topped up to it,
   and the top-up is **subtracted from their lifetime gain/loss**.
-- **Two leaderboards**: **Richest now** (most chips at this moment) and
-  **Lifetime gain** (everything won minus lost, minus refills). They appear in the
+- **Three leaderboards**: **Richest now** (most chips at this moment),
+  **Lifetime gain** (everything won minus lost, minus refills) and **Peak
+  holdings** (the most chips anyone has held at once, ever). They appear in the
   client, on an optional web page and in Discord (a live-updating message,
   `/leaderboard`, `/stats`, `/table`, plus refill, big-win, unlock and new-crown
   announcements).
-- **Unlockables**: 34 hats, 11 avatar frames and 32 titles, earned by total
+- **Unlockables**: 35 hats, 12 avatar frames and 33 titles, earned by total
   money bet, chips held at once, lifetime up or down, streaks, blackjacks and
   more. Harder goals have flashier rewards. **Whoever has the most chips right
   now automatically wears The Crown**, the #1 lifetime earner gets the golden
   Laurel Wreath, and whoever has played the most hands wears **The Nightcap**
   (and can use the Marathon Frame and the title Part Of The Furniture). The
   biggest single bet ever made earns **The Chip Tower** and the title Bet The
-  Farm, until someone beats it.
+  Farm, until someone beats it, and the record for most chips held at once
+  earns **The Moneybags**, the **Vault Frame** and the title High Water Mark.
+  Record hats go on automatically, but only if you haven't picked a hat
+  yourself. Frames grow fancier with rarity: the rarest spill out around the
+  picture (never over it), and the legendary and unique ones are animated.
 - **A dealer with a mouth on him** (optional): he calls out players by name in
   a speech bubble. Busting, standing scared, splitting tens, big losses, losing
   streaks, going broke and lifetime scores all get roasted. A **vulgar mode**
@@ -161,17 +166,28 @@ chips come from the house and his results count in the house's totals. The
 table setting **dealer solo only** (off by default) makes him sit out whenever
 two or more people are playing.
 
-Before every hand there's a short window (10 seconds, `deal_in_seconds`) to
-press **DEAL ME IN (D or Enter)**. Only players who press it get cards; the
-hand starts as soon as everyone has. Miss three hands in a row and you're
-sat out until you press SIT IN.
+Before every hand the table waits for someone to press **DEAL ME IN (D or
+Enter)**, as long as it takes. The first one in starts a short clock (10
+seconds, `deal_in_seconds`) for everyone else; only players who press it get
+cards, and the hand starts as soon as everyone has. Miss three hands in a row
+and you're sat out until you press SIT IN.
+
+Play goes clockwise: from Dale at the top, down the right side of the table
+and round to the left. Dale keeps the dealer button while he's playing; the
+table setting `rotate_button` passes it round the table instead.
 
 With **Card reveal** on (the server setting blackjack uses), the flop, turn
 and river come out face down, big in the middle of the table, and flip after
 a moment with the suspense sound. If they improve your hand you'll hear it
-("YOU HAVE TWO PAIR!"). Your current hand (your cards plus the board, like
+("YOU HAVE TWO PAIR!"). At the showdown the hands come out one at a time,
+the last player to bet or raise first and then clockwise, each held face down
+for a moment before it flips; the pot is paid after the last one. Your
+current hand (your cards plus the board, like
 "Pair of Aces") is shown over your cards and in your panel, and every
-player's bet this round sits by their chips.
+player's bet this round sits by their chips. Every action pops up over the
+player's seat with its own animation (folded cards fly into the muck, a check
+knocks, bets slide chips), then stays as a badge until the betting round
+ends.
 
 On your turn: **FOLD (F)**, **CHECK/CALL (C)** and **BET/RAISE (R)**. Pick the
 amount with MIN, 1/2 POT, POT and ALL IN, the **+**/**-** buttons or the
@@ -180,7 +196,7 @@ mouse wheel. Win without a showdown and you can **SHOW CARDS** to rub it in.
 Table settings (S in the lobby, or `table set <id> <setting> <value>`):
 `seats`, `small_blind`, `big_blind`, `min_buy_in`, `max_buy_in`,
 `action_seconds`, `between_seconds`, `deal_in_seconds`, `dealer_solo_only`,
-`dale_think_ms`.
+`rotate_button`, `dale_think_ms`.
 
 ## The Beggars Table
 
@@ -257,6 +273,7 @@ Taking the crown is announced to everyone.
 | Laurel Wreath | Unique | Be #1 on the Lifetime leaderboard |
 | The Nightcap | Unique | Play more hands than anyone (all games) |
 | The Chip Tower | Unique | Make the biggest single bet (all games); kept until beaten |
+| The Moneybags | Unique | Hold the most chips at once, ever; kept until beaten |
 | Green Visor | Common | Play 25 hands of Hold'em |
 | Sailor Cap | Uncommon | Make a flush |
 | Fedora | Rare | Make a full house |
@@ -281,6 +298,7 @@ Taking the crown is announced to everyone.
 | Diamond Frame | Legendary | Have $10,000 at once |
 | Rainbow Frame | Legendary | Bet a total of $1,000,000 |
 | Marathon Frame | Unique | Play more hands than anyone (all games) |
+| Vault Frame | Unique | Hold the most chips at once, ever |
 
 **Titles**
 
@@ -312,6 +330,7 @@ Taking the crown is announced to everyone.
 | The G.O.A.T. | Unique | Be #1 on the Lifetime leaderboard |
 | Part Of The Furniture | Unique | Play more hands than anyone (all games) |
 | Bet The Farm | Unique | Make the biggest single bet (all games); kept until beaten |
+| High Water Mark | Unique | Hold the most chips at once, ever; kept until beaten |
 | Grinder | Uncommon | Play 250 hands of Hold'em |
 | Pot Committed | Rare | Win a Hold'em pot of $5,000 |
 | Stone Cold Bluffer | Rare | Win 25 pots holding nothing (no showdown) |
@@ -643,7 +662,7 @@ the Lifetime board only ever shows what was won from the house.
 | Y or SAY | Chat (Enter sends, Esc cancels). Admins: `/` starts a command |
 | Click a player | Send them chips (when they're below the refill amount) |
 | H S D P U | Hit, Stand, Double, Split, Surrender |
-| L | Leaderboard (left/right switches Richest / Lifetime / The House) |
+| L | Leaderboard (left/right switches Richest / Lifetime / Peak / The House) |
 | W (in Profile) | Wardrobe: hats, frames, titles |
 | O or SETTINGS | Volume: master, sound effects, dealer voice, card reveal (0 = muted) |
 | M | Mute / unmute everything |

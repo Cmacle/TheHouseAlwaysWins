@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"math"
 	"math/rand"
+	"strings"
 	"time"
 
 	bj "github.com/Cmacle/TheHouseAlwaysWins/internal/blackjack"
@@ -33,6 +34,8 @@ type pkRevealFX struct {
 	label     string
 	labelCol  color.RGBA
 	before    int // your hand's strength before these cards
+	hand      bool
+	seat      int // hand reveals: whose
 }
 
 var categoryNames = map[int]string{
@@ -51,10 +54,10 @@ func (a *App) onPokerReveal(ps *proto.PokerState) {
 		return
 	}
 	r := a.pkRev
-	if r == nil || r.from != rv.From {
+	if r == nil || r.from != rv.From || r.hand != rv.Hand || r.seat != rv.Seat {
 		flip := time.UnixMilli(rv.Until - a.clockOffset)
-		r = &pkRevealFX{from: rv.From, n: rv.Count, start: a.now, flip: flip, before: -1}
-		if me := a.pokerMe(); me != nil && me.InHand && !me.Folded {
+		r = &pkRevealFX{from: rv.From, n: rv.Count, start: a.now, flip: flip, before: -1, hand: rv.Hand, seat: rv.Seat}
+		if me := a.pokerMe(); me != nil && me.InHand && !me.Folded && !rv.Hand {
 			r.before = poker.Strength(me.Cards, ps.Board[:min(rv.From, len(ps.Board))])
 		}
 		left := flip.Sub(a.now)
@@ -70,8 +73,14 @@ func (a *App) onPokerReveal(ps *proto.PokerState) {
 		a.pkRev = r
 	}
 	r.cards = r.cards[:0]
-	for i := rv.From; i < rv.From+rv.Count && i < len(ps.Board); i++ {
-		r.cards = append(r.cards, ps.Board[i])
+	if rv.Hand {
+		if rv.Shown && rv.Seat >= 0 && rv.Seat < len(ps.Seats) {
+			r.cards = append(r.cards, ps.Seats[rv.Seat].Cards...)
+		}
+	} else {
+		for i := rv.From; i < rv.From+rv.Count && i < len(ps.Board); i++ {
+			r.cards = append(r.cards, ps.Board[i])
+		}
 	}
 	if rv.Shown && !r.flipped {
 		a.pkRevealFlipped(ps)
@@ -82,6 +91,34 @@ func (a *App) onPokerReveal(ps *proto.PokerState) {
 func (a *App) pkRevealFlipped(ps *proto.PokerState) {
 	r := a.pkRev
 	r.flipped, r.flippedAt = true, a.now
+	if r.hand {
+		// a hand at the showdown: what it makes, and how good that is
+		if r.seat < 0 || r.seat >= len(ps.Seats) {
+			return
+		}
+		sv := ps.Seats[r.seat]
+		cat := poker.Strength(sv.Cards, ps.Board)
+		name := sv.HandName
+		if name == "" {
+			name = poker.Describe(sv.Cards, ps.Board)
+		}
+		who := sv.Username
+		if r.seat == ps.YourSeat {
+			who = "YOU"
+		}
+		r.label, r.labelCol = strings.ToUpper(who+": "+name), a.A.C("text")
+		switch {
+		case cat >= poker.Trips:
+			r.labelCol = a.A.C("gold")
+			a.sound("rev_great")
+		case cat >= poker.Pair:
+			r.labelCol = a.A.C("highlight")
+			a.sound("rev_good")
+		default:
+			a.sound("rev_meh")
+		}
+		return
+	}
 	me := a.pokerMe()
 	if me == nil || !me.InHand || me.Folded || r.before < 0 {
 		a.sound("rev_meh")
@@ -90,7 +127,7 @@ func (a *App) pkRevealFlipped(ps *proto.PokerState) {
 	after := poker.Strength(me.Cards, ps.Board)
 	switch {
 	case after > r.before:
-		r.label, r.labelCol = categoryNames[after]+"!", a.A.C("win")
+		r.label, r.labelCol = "YOU HAVE "+categoryNames[after]+"!", a.A.C("win")
 		if after >= poker.Trips {
 			r.labelCol = a.A.C("gold")
 			a.sound("rev_great")
@@ -106,7 +143,7 @@ func (a *App) pkRevealFlipped(ps *proto.PokerState) {
 // remembers where it goes.
 func (a *App) pkRevealHides(i, x, y int) bool {
 	r := a.pkRev
-	if r == nil || i < r.from || i >= r.from+r.n {
+	if r == nil || r.hand || i < r.from || i >= r.from+r.n {
 		return false
 	}
 	for len(r.slots) <= i-r.from {
@@ -211,9 +248,25 @@ func (a *App) drawPokerReveal() {
 		}
 	}
 	if r.label != "" && labelY > 0 {
-		a.textBig(cx, labelY, "YOU HAVE "+r.label, r.labelCol, 2, alignCenter)
+		lw := a.A.Font.Width(r.label)*2 + 12
+		fillRect(a.fb, image.Rect(cx-lw/2, labelY-3, cx+lw/2, labelY+19), color.RGBA{0, 0, 0, 160})
+		a.textBig(cx, labelY, r.label, r.labelCol, 2, alignCenter)
 	}
 	if allDone && r.flipped {
 		a.pkRev = nil
 	}
+}
+
+// pkRevealHidesHand says whether a seat's hole card ci is out being shown at
+// the showdown, and remembers where it goes back to.
+func (a *App) pkRevealHidesHand(seat, ci, x, y int) bool {
+	r := a.pkRev
+	if r == nil || !r.hand || r.seat != seat {
+		return false
+	}
+	for len(r.slots) <= ci {
+		r.slots = append(r.slots, image.Point{})
+	}
+	r.slots[ci] = image.Pt(x, y)
+	return true
 }

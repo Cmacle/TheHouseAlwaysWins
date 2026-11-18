@@ -269,3 +269,27 @@ func TestBiggestBetRecord(t *testing.T) {
 		t.Fatalf("bob: record %v, biggest %d", p.RankBet, p.BiggestBet)
 	}
 }
+
+// Holding a record doesn't lock you into its hat: the hat you equip shows.
+func TestEquippedHatBeatsRecordHat(t *testing.T) {
+	s, _ := newTestStore(t)
+	if _, _, err := s.Register("hatter", "pass1234", nil, 1000, ""); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.topHands = "hatter"
+	s.accounts["hatter"].Unlocked = append(s.accounts["hatter"].Unlocked, "fedora")
+	s.mu.Unlock()
+	if p, _ := s.Profile("hatter"); p.Hat != "nightcap" {
+		t.Fatalf("with no hat picked the record hat shows, got %q", p.Hat)
+	}
+	if err := s.Equip("hatter", "hat", "fedora"); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := s.Profile("hatter"); p.Hat != "fedora" {
+		t.Fatalf("equipped fedora but showing %q", p.Hat)
+	}
+	if err := s.Equip("hatter", "hat", "nightcap"); err != nil {
+		t.Fatalf("can't pick the record hat: %v", err)
+	}
+}

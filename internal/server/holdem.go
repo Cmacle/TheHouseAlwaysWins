@@ -34,6 +34,7 @@ type holdemCfg struct {
 	DealerSoloOnly bool  `json:"dealer_solo_only"` // Dale only plays someone who's alone
 	DaleThinkMS    int   `json:"dale_think_ms"`    // how long he takes to act
 	DealInSeconds  int   `json:"deal_in_seconds"`  // time to press DEAL ME IN before a hand
+	RotateButton   bool  `json:"rotate_button"`    // the dealer button goes around the table even when Dale plays
 }
 
 func defaultHoldem() holdemCfg {
@@ -67,6 +68,7 @@ const (
 	pkTurn     = "turn"
 	pkRiver    = "river"
 	pkShowdown = "showdown"
+	pkShows    = "shows" // the showdown, one hand at a time
 )
 
 // pkReveal holds new board cards face down for a moment, then flips them
@@ -75,6 +77,8 @@ type pkReveal struct {
 	from, n int
 	until   time.Time
 	shown   bool
+	hand    bool // a player's hole cards at the showdown, not the board
+	seat    int
 }
 
 type hPlayer struct {
@@ -141,6 +145,7 @@ type Holdem struct {
 	timerTotal time.Duration
 	pending    *holdemCfg // settings change waiting for the hand to end
 	reveal     *pkReveal  // board cards being revealed
+	revealTest bool       // tests: run showdown reveals even in instant mode
 	infoBox    infoBox
 	instant    bool   // tests: timers don't wait, the test runs them
 	queued     func() // tests: the timer that would have fired
@@ -372,6 +377,10 @@ func (t *Holdem) standUp(p *hPlayer) {
 	if p.seat <= 0 {
 		return
 	}
+	if p.inHand && t.phase == pkShows {
+		p.leaving = true // the pots aren't paid yet: finishHand takes them out
+		return
+	}
 	if p.inHand && !p.folded && t.phase != pkShowdown && t.phase != pkWaiting {
 		p.leaving = true
 		t.fold(p, "left")
@@ -479,7 +488,7 @@ func (t *Holdem) rebuy(p *hPlayer, amount int64) {
 	if p.seat <= 0 {
 		return
 	}
-	if p.inHand && t.phase != pkWaiting && t.phase != pkShowdown {
+	if p.inHand && t.phase != pkWaiting && t.phase != pkShowdown || t.phase == pkShows {
 		t.errTo(p, "You can add chips between hands.")
 		return
 	}
@@ -603,15 +612,14 @@ func (t *Holdem) maybeStart() {
 		}
 		return
 	}
-	// everyone who can play has a few seconds to deal themselves in
+	// wait, as long as it takes, for someone to deal themselves in; then the
+	// others get a few seconds to join them
 	t.phase = pkReady
 	for _, p := range t.humans() {
 		p.dealIn = false
 	}
-	t.message = "New hand. Press DEAL ME IN to play it."
-	d := time.Duration(t.hc.DealInSeconds) * time.Second
-	t.setDeadline(d)
-	t.after(d, t.startHand)
+	t.clearDeadline()
+	t.message = "Press DEAL ME IN to start the next hand."
 }
 
 // dealMeIn marks a player in for the coming hand; once everyone who can
@@ -621,6 +629,13 @@ func (t *Holdem) dealMeIn(p *hPlayer) {
 		return
 	}
 	p.dealIn, p.missed = true, 0
+	if t.timer == nil && t.queued == nil {
+		// the first one in starts the clock for everyone else
+		d := time.Duration(t.hc.DealInSeconds) * time.Second
+		t.setDeadline(d)
+		t.after(d, t.startHand)
+		t.message = p.user + " is in. Deal yourself in for this hand."
+	}
 	for _, o := range t.humans() {
 		if t.playing(o) && !o.dealIn {
 			t.broadcast()
@@ -657,8 +672,7 @@ func (t *Holdem) startHand() {
 	daleIn := in > 0 && (!t.hc.DealerSoloOnly || in == 1)
 	if in+map[bool]int{true: 1}[daleIn] < 2 {
 		t.phase = pkWaiting
-		t.message = "Nobody dealt in."
-		t.after(time.Duration(t.hc.BetweenSeconds)*time.Second, t.maybeStart)
+		t.maybeStart() // back to waiting for someone to deal in
 		t.broadcast()
 		return
 	}
@@ -693,8 +707,12 @@ func (t *Holdem) startHand() {
 	for _, p := range players {
 		p.inHand = true
 	}
-	// move the button to the next player in the hand
+	// move the button to the next player in the hand; Dale, the dealer,
+	// keeps it while he plays unless the table rotates it
 	t.button = players[0].seat
+	if daleIn && !t.hc.RotateButton {
+		t.button = 0
+	}
 	t.deck = poker.NewDeck(t.rng)
 	t.board = nil
 	t.pots = nil
@@ -1017,7 +1035,7 @@ func (t *Holdem) endRound() {
 	}
 	// the new cards stay face down, big in the middle, then flip
 	d := t.revealDelay()
-	t.reveal = &pkReveal{from: from, n: len(t.board) - from, until: time.Now().Add(d)}
+	t.reveal = &pkReveal{from: from, n: len(t.board) - from, until: time.Now().Add(d), seat: -1}
 	t.broadcast()
 	t.after(d, func() {
 		t.reveal.shown = true
@@ -1109,6 +1127,64 @@ func (t *Holdem) showdown() {
 	t.active = -1
 	t.clearDeadline()
 	t.returnUncalled()
+	var live []*hPlayer
+	for _, p := range t.seats {
+		if p != nil && p.inHand && !p.folded {
+			live = append(live, p)
+		}
+	}
+	if !t.cfg.CardReveal || (t.instant && !t.revealTest) || len(live) < 2 {
+		t.awardShowdown()
+		return
+	}
+	// one at a time: whoever bet or raised last shows first, then the rest
+	// clockwise
+	start := t.button
+	if t.lastAgg >= 0 && t.lastAgg < len(t.seats) {
+		if a := t.seats[t.lastAgg]; a != nil && a.inHand && !a.folded {
+			start = t.lastAgg - 1
+		}
+	}
+	queue := t.inOrder(start, func(p *hPlayer) bool { return p.inHand && !p.folded && !p.show })
+	if len(queue) == 0 {
+		t.awardShowdown()
+		return
+	}
+	for _, p := range live {
+		sc, best := poker.Best(append(append([]poker.Card{}, p.hole...), t.board...))
+		p.result, p.best = sc.Name(), best[:]
+	}
+	t.phase = pkShows
+	t.showNext(queue)
+}
+
+// showNext reveals the next hand at the showdown, with suspense.
+func (t *Holdem) showNext(q []*hPlayer) {
+	if len(q) == 0 {
+		t.reveal = nil
+		t.awardShowdown()
+		return
+	}
+	p := q[0]
+	d := t.revealDelay()
+	if len(q) == 1 {
+		d += 500 * time.Millisecond // the last one hangs a little longer
+	}
+	t.reveal = &pkReveal{hand: true, seat: p.seat, n: len(p.hole), until: time.Now().Add(d)}
+	t.message = t.display(p) + " shows..."
+	t.broadcast()
+	t.after(d, func() {
+		p.show = true
+		t.reveal.shown = true
+		t.message = t.display(p) + ": " + p.result
+		t.eventAll(proto.Event{Kind: "reveal", Seat: p.seat})
+		t.broadcast()
+		t.after(revealSettle+400*time.Millisecond, func() { t.showNext(q[1:]) })
+	})
+}
+
+// awardShowdown scores the hands left and pays the pots.
+func (t *Holdem) awardShowdown() {
 	t.phase = pkShowdown
 	n := len(t.seats)
 	contrib := make([]int64, n)
@@ -1296,8 +1372,8 @@ func (t *Holdem) view(viewer *hPlayer) proto.PokerState {
 		st.Board = []poker.Card{}
 	}
 	if r := t.reveal; r != nil {
-		st.Reveal = &proto.PokerReveal{From: r.from, Count: r.n, Until: r.until.UnixMilli(), Shown: r.shown}
-		if !r.shown {
+		st.Reveal = &proto.PokerReveal{From: r.from, Count: r.n, Until: r.until.UnixMilli(), Shown: r.shown, Hand: r.hand, Seat: r.seat}
+		if !r.shown && !r.hand {
 			for i := r.from; i < r.from+r.n && i < len(st.Board); i++ {
 				st.Board[i] = poker.Card{}
 			}
@@ -1340,7 +1416,7 @@ func (t *Holdem) view(viewer *hPlayer) proto.PokerState {
 					sv.Cards = make([]poker.Card, len(p.hole))
 				}
 			}
-			if p.show && t.phase == pkShowdown {
+			if p.show && (t.phase == pkShowdown || t.phase == pkShows) {
 				sv.HandName = p.result
 				sv.Best = p.best
 			}
