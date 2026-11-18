@@ -101,7 +101,17 @@ type Assets struct {
 
 // SoundNames lists the sound files the client knows about.
 var SoundNames = []string{"card", "chip", "click", "win", "blackjack", "lose", "push", "bust", "turn", "refill", "shuffle", "error",
-	"talk1", "talk2", "talk3", "talk4", "talklow1", "talklow2", "talklow3", "talklow4"}
+	"talk1", "talk2", "talk3", "talk4", "talklow1", "talklow2", "talklow3", "talklow4",
+	"chat", "rev_bust", "rev_safe", "rev_meh", "rev_good", "rev_great", "rev_21",
+	"rev_dealer_bust", "rev_dealer_strong", "rev_dealer_ok", "rev_dealer_more"}
+
+func init() {
+	for _, st := range SuspenseStyles {
+		for _, l := range SuspenseLengths {
+			SoundNames = append(SoundNames, fmt.Sprintf("suspense_%s_%d", st, l))
+		}
+	}
+}
 
 // ExportDefaults writes every default asset that does not yet exist in dir, so
 // players can see and replace them.
@@ -333,7 +343,14 @@ up by whole pixels, so draw at 1x.
 Sounds (WAV, PCM): card, chip, click, win, blackjack, lose, push, bust, turn,
 refill, shuffle, error (.wav). The dealer's voice blips (one plays per word
 he says): talk1-talk4 for the regular dealer, talklow1-talklow4 for the
-vulgar one.
+vulgar one. chat plays for chat messages.
+
+Card reveal: suspense_<drum|rise|heart>_<5..30>.wav build up to the flip
+(the number is tenths of a second; the one that fits the wait is picked).
+Stings for how a player's card went: rev_bust, rev_safe (11 or under),
+rev_meh (12-16), rev_good (17-18), rev_great (19-20), rev_21. For the
+dealer's cards, as the players feel: rev_dealer_bust, rev_dealer_strong
+(20-21), rev_dealer_ok, rev_dealer_more (he has to draw again).
 
 theme.json            sizes, chip values and text colours (#rrggbb or
                       #rrggbbaa)

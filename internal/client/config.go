@@ -17,7 +17,8 @@ type Config struct {
 	Volume        int    `json:"volume"`
 	EffectsVolume int    `json:"effects_volume"`
 	VoiceVolume   int    `json:"voice_volume"`
-	WindowScale   int    `json:"window_scale"` // 0 = automatic
+	RevealVolume  int    `json:"reveal_volume"` // card reveal suspense and stings
+	WindowScale   int    `json:"window_scale"`  // 0 = automatic
 	Fullscreen    bool   `json:"fullscreen"`
 	AssetsDir     string `json:"assets_dir"`
 
@@ -27,7 +28,7 @@ type Config struct {
 // LoadConfig reads client.json from dir, creating defaults if needed.
 func LoadConfig(dir string) *Config {
 	c := &Config{Server: "127.0.0.1:7777", RememberMe: true, Sound: true, AssetsDir: "assets",
-		Volume: 80, EffectsVolume: 100, VoiceVolume: 70}
+		Volume: 80, EffectsVolume: 100, VoiceVolume: 70, RevealVolume: 85}
 	c.path = filepath.Join(dir, "client.json")
 	if b, err := os.ReadFile(c.path); err == nil {
 		_ = json.Unmarshal(b, c)

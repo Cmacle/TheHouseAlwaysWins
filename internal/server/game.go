@@ -1,6 +1,7 @@
 package server
 
 import (
+	"io"
 	"fmt"
 	"log"
 	"strings"
@@ -44,6 +45,7 @@ type player struct {
 	needLog    bool  // send the dealer's recent lines with the next state
 	prevBet    int64 // last round's bet and how it went, for the dealer
 	prevDelta  int64
+	chatAt     []time.Time // recent chat messages, for flood control
 }
 
 type evKind int
@@ -104,13 +106,16 @@ type Game struct {
 	lastStory  time.Time
 	forceSay   bool
 	sayLog     []proto.DealerLine
-	crashes    int       // crashes caught (see safely)
-	aborting   bool      // calling off a hand after a crash
-	handTalk   int       // lines this hand (he keeps it to a few)
-	betNudged  bool      // nagged a slow bettor this round
-	dared      bool      // dared someone to bet big this round
-	bettingAt  time.Time // when betting opened
-	turnNudged string    // whose turn he last nagged (seat:hand)
+	crashes    int  // crashes caught (see safely)
+	aborting   bool // calling off a hand after a crash
+	reveal     *revealing
+	exec       func(line string, w io.Writer) // run a server command (admins)
+	holdBust   bool                           // a card reveal is coming: don't announce a bust yet
+	handTalk   int                            // lines this hand (he keeps it to a few)
+	betNudged  bool                           // nagged a slow bettor this round
+	dared      bool                           // dared someone to bet big this round
+	bettingAt  time.Time                      // when betting opened
+	turnNudged string                         // whose turn he last nagged (seat:hand)
 	idleLogged bool
 }
 
@@ -429,6 +434,22 @@ func (g *Game) onMessage(p *player, m proto.Msg) {
 		var a proto.Action
 		if decode(m, &a) == nil {
 			g.onAction(p, strings.ToLower(a.Action))
+		}
+	case proto.CGiftInfo:
+		var gi proto.GiftInfo
+		if decode(m, &gi) == nil && p.conn != nil {
+			max, why := g.giftMax(p, gi.To)
+			p.conn.send(proto.SGiftInfo, proto.GiftInfo{To: gi.To, Max: max, Reason: why, Balance: g.store.Balance(gi.To)})
+		}
+	case proto.CGift:
+		var gf proto.Gift
+		if decode(m, &gf) == nil {
+			g.onGift(p, gf.To, gf.Amount)
+		}
+	case proto.CChat:
+		var c proto.Chat
+		if decode(m, &c) == nil {
+			g.onChat(p, c.Text)
 		}
 	case proto.CSitOut:
 		var s proto.SitOut
@@ -929,6 +950,9 @@ func (g *Game) armTurnTimer() {
 }
 
 func (g *Game) onAction(p *player, act string) {
+	if g.reveal != nil {
+		return // wait for the card to turn over
+	}
 	if g.phase != proto.PhasePlaying || !p.inHand {
 		g.errTo(p, "You can't do that right now.")
 		return
@@ -946,11 +970,9 @@ func (g *Game) onAction(p *player, act string) {
 	r := g.rules
 	before, beforeSoft := h.Total()
 	splitTens := act == "split" && len(h.Cards) == 2 && h.Cards[0].Value() == 10 && h.Cards[1].Value() == 10
-	defer func() {
-		if g.phase == proto.PhasePlaying || g.phase == proto.PhaseDealer {
-			g.reactToAction(p, act, h, before, beforeSoft, splitTens)
-		}
-	}()
+	reveal := false
+	g.holdBust = g.cfg.CardReveal // the bust news waits for the reveal
+	defer func() { g.holdBust = false }()
 	switch act {
 	case "hit":
 		if !r.CanHit(h) {
@@ -958,6 +980,7 @@ func (g *Game) onAction(p *player, act string) {
 			return
 		}
 		g.drawTo(p, h)
+		reveal = true
 	case "stand":
 		h.Done = true
 	case "double":
@@ -974,6 +997,7 @@ func (g *Game) onAction(p *player, act string) {
 		g.eventAll(proto.Event{Kind: "chip", Seat: p.seat})
 		g.drawTo(p, h)
 		h.Done = true
+		reveal = true
 	case "split":
 		if !r.CanSplit(h, len(p.hands)) {
 			g.errTo(p, "You can't split this hand.")
@@ -1007,18 +1031,34 @@ func (g *Game) onAction(p *player, act string) {
 		g.errTo(p, "Unknown action.")
 		return
 	}
-	g.fillSplit(p)
-	if turns {
-		if curHand(p) < 0 {
+	g.holdBust = false
+	finish := func() {
+		g.fillSplit(p)
+		switch {
+		case turns && curHand(p) < 0:
 			g.endTurn()
-			return
+		case turns:
+			g.armTurnTimer()
+			g.broadcast()
+		case g.allDone():
+			g.dealerPlay()
+		default:
+			g.broadcast()
 		}
-		g.armTurnTimer()
-	} else if g.allDone() {
-		g.dealerPlay()
+		if g.phase == proto.PhasePlaying || g.phase == proto.PhaseDealer {
+			g.reactToAction(p, act, h, before, beforeSoft, splitTens)
+		}
+	}
+	if reveal && g.cfg.CardReveal {
+		g.startReveal(p.seat, idx, len(h.Cards)-1, func() string {
+			if h.Busted() && p.conn != nil {
+				p.conn.event(proto.Event{Kind: "bust", Seat: p.seat, Text: "Bust!"})
+			}
+			return playerOutcome(h)
+		}, finish)
 		return
 	}
-	g.broadcast()
+	finish()
 }
 
 func (g *Game) drawTo(p *player, h *bj.Hand) {
@@ -1026,7 +1066,7 @@ func (g *Game) drawTo(p *player, h *bj.Hand) {
 	g.eventAll(proto.Event{Kind: "card", Seat: p.seat})
 	if t, _ := h.Total(); t >= 21 {
 		h.Done = true
-		if t > 21 && p.conn != nil {
+		if t > 21 && p.conn != nil && !g.holdBust {
 			p.conn.event(proto.Event{Kind: "bust", Seat: p.seat, Text: "Bust!"})
 		}
 	}
@@ -1044,6 +1084,10 @@ func (g *Game) dealerPlay() {
 	g.after(g.cfg.Timing().Dealer, func() {
 		g.holeHidden = false
 		g.eventAll(proto.Event{Kind: "card", Seat: -1})
+		if g.cfg.CardReveal {
+			g.startReveal(-1, 0, 1, g.dealerOutcome, g.dealerContinue)
+			return
+		}
 		g.broadcast()
 		g.dealerContinue()
 	})
@@ -1069,6 +1113,10 @@ func (g *Game) dealerContinue() {
 		g.after(g.cfg.Timing().Dealer, func() {
 			g.dealer = append(g.dealer, g.shoe.Draw())
 			g.eventAll(proto.Event{Kind: "card", Seat: -1})
+			if g.cfg.CardReveal {
+				g.startReveal(-1, 0, len(g.dealer)-1, g.dealerOutcome, g.dealerContinue)
+				return
+			}
 			g.broadcast()
 			g.dealerContinue()
 		})
@@ -1238,6 +1286,7 @@ func (g *Game) settings() proto.Settings {
 		Decks: c.Decks, DealerHitsSoft17: c.DealerHitsSoft17, BlackjackPays: c.BlackjackPays,
 		Surrender: c.AllowSurrender, RefillAmount: c.RefillAmount, ServerName: c.ServerName,
 		DealerTrashTalk: c.DealerTrashTalk, DealerVulgar: c.DealerTrashTalk && c.DealerVulgar,
+		ChipGifts: c.ChipGifts && c.RefillAmount > 0, TableChat: c.TableChat, CardReveal: c.CardReveal,
 	}
 }
 
@@ -1281,7 +1330,7 @@ func (g *Game) view(viewer *player) proto.TableState {
 	}
 	// dealer
 	for i, c := range g.dealer {
-		if i == 1 && g.holeHidden {
+		if (i == 1 && g.holeHidden) || (g.reveal != nil && g.reveal.seat == -1 && g.reveal.card == i) {
 			st.Dealer.Cards = append(st.Dealer.Cards, bj.Card{})
 			continue
 		}
@@ -1318,7 +1367,7 @@ func (g *Game) view(viewer *player) proto.TableState {
 					sv.ActiveHand = curHand(p)
 				}
 			}
-			for _, h := range p.hands {
+			for hi, h := range p.hands {
 				hv := proto.HandView{Bet: h.Bet, Done: h.Done, Doubled: h.Doubled, Result: h.Result, Payout: h.Payout}
 				if hide && p != viewer {
 					hv.Cards = make([]bj.Card, len(h.Cards))
@@ -1326,6 +1375,12 @@ func (g *Game) view(viewer *player) proto.TableState {
 					hv.Cards = append([]bj.Card(nil), h.Cards...)
 					hv.Total, hv.Soft = h.Total()
 					hv.Natural = h.Natural()
+				}
+				if rv := g.reveal; rv != nil && rv.seat == i && rv.hand == hi && rv.card < len(hv.Cards) {
+					// still face down: nobody knows yet, not even its owner
+					hv.Cards[rv.card] = bj.Card{}
+					hv.Total, hv.Soft = bj.Total(hv.Cards)
+					hv.Done = false
 				}
 				if hv.Cards == nil {
 					hv.Cards = []bj.Card{}
@@ -1335,8 +1390,11 @@ func (g *Game) view(viewer *player) proto.TableState {
 		}
 		st.Seats[i] = sv
 	}
+	if rv := g.reveal; rv != nil {
+		st.Reveal = &proto.RevealView{Seat: rv.seat, Hand: rv.hand, Card: rv.card, Until: rv.until.UnixMilli()}
+	}
 	// what can the viewer do?
-	if viewer.seat >= 0 {
+	if viewer.seat >= 0 && g.reveal == nil {
 		if g.phase == proto.PhaseBetting && viewer.eligible {
 			if g.cfg.BettingMode == "simultaneous" || (viewer.seat == g.betTurn && !viewer.betPlaced) {
 				st.CanBet = true
@@ -1422,6 +1480,15 @@ func (g *Game) NotifyUser(user, text string) {
 	})
 }
 
+// RefreshProfile sends a player their profile again (after admin changes).
+func (g *Game) RefreshProfile(user string) {
+	g.Do(func() {
+		if p := g.byUser[strings.ToLower(user)]; p != nil {
+			g.sendProfile(p)
+		}
+	})
+}
+
 // Broadcast pushes fresh state to everyone (after admin changes).
 func (g *Game) Broadcast() {
 	g.Do(func() {
@@ -1499,6 +1566,7 @@ func (g *Game) abortHand() {
 		}
 	}
 	g.dealer = nil
+	g.reveal = nil
 	g.sayQueue, g.story = nil, nil
 	g.eventAll(proto.Event{Kind: "info", Text: "The dealer fumbled the cards. That hand is off - all bets returned."})
 	_ = g.store.Save()

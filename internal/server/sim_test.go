@@ -23,6 +23,7 @@ func testServer(t *testing.T, mut func(*Config)) *Server {
 	cfg.BettingTimeSeconds, cfg.TurnTimeSeconds, cfg.PlayTimeSeconds, cfg.ResultsTimeSeconds = 3, 3, 5, 1
 	cfg.DealDelayMS, cfg.DealerDelayMS = 1, 1
 	cfg.AllowSurrender = true
+	cfg.CardRevealMinSeconds, cfg.CardRevealMaxSeconds = 0.01, 0.05
 	if mut != nil {
 		mut(cfg)
 	}

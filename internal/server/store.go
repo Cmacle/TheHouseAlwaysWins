@@ -51,6 +51,15 @@ type Account struct {
 	Blackjacks  int   `json:"blackjacks"`
 	BiggestWin  int64 `json:"biggest_win"`
 	RefillTotal int64 `json:"refill_total"`
+	// Admins can run server commands from the game (/command in chat).
+	Admin bool `json:"admin,omitempty"`
+	// Chips sent to and received from other players. Received chips count
+	// like a refill (subtracted from Net), sent ones are added back, so
+	// lifetime gain stays what you actually won from the house.
+	GiftsIn      int64  `json:"gifts_in,omitempty"`
+	GiftsOut     int64  `json:"gifts_out,omitempty"`
+	GiftPeriod   string `json:"gift_period,omitempty"`
+	GiftPeriodIn int64  `json:"gift_period_in,omitempty"` // received this refill period
 	// Chips added or removed by an admin console command (not part of Net).
 	AdminAdjust int64 `json:"admin_adjust"`
 
@@ -134,6 +143,7 @@ func (s *Store) profileOf(a *Account) proto.Profile {
 		DoublesWon: a.DoublesWon, Splits: a.Splits, RefillCount: a.RefillCount,
 		Unlocked: append([]string(nil), a.Unlocked...), Hat: hat, Frame: frame, Title: title,
 		EquippedHat: a.Hat, RankRich: st.RankRich, RankNet: st.RankNet,
+		Admin: a.Admin, GiftsIn: a.GiftsIn, GiftsOut: a.GiftsOut,
 		Online: s.online[strings.ToLower(a.Username)],
 	}
 }
@@ -576,6 +586,83 @@ func (s *Store) Balance(username string) int64 {
 		return a.Balance
 	}
 	return 0
+}
+
+// SetAdmin makes an account an admin or not.
+func (s *Store) SetAdmin(username string, on bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.accounts[strings.ToLower(username)]
+	if !ok {
+		return false
+	}
+	a.Admin = on
+	s.dirty = true
+	return true
+}
+
+// IsAdmin reports whether an account is an admin.
+func (s *Store) IsAdmin(username string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.accounts[strings.ToLower(username)]
+	return ok && a.Admin
+}
+
+// Admins lists the admin accounts.
+func (s *Store) Admins() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for _, a := range s.accounts {
+		if a.Admin {
+			out = append(out, a.Username)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// GiftedIn reports how many chips an account has received this refill period.
+func (s *Store) GiftedIn(username, period string) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.accounts[strings.ToLower(username)]; ok && a.GiftPeriod == period {
+		return a.GiftPeriodIn
+	}
+	return 0
+}
+
+// Gift moves chips from one account to another. The caller checks the
+// limits; Gift only refuses if the sender can't cover it.
+func (s *Store) Gift(from, to string, amount int64, period string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, ok1 := s.accounts[strings.ToLower(from)]
+	t, ok2 := s.accounts[strings.ToLower(to)]
+	switch {
+	case !ok1 || !ok2:
+		return errors.New("no such player")
+	case f == t:
+		return errors.New("you can't send chips to yourself")
+	case amount <= 0:
+		return errors.New("send at least 1 chip")
+	case f.Balance < amount:
+		return errors.New("you don't have that many chips")
+	}
+	f.Balance -= amount
+	f.Net += amount
+	f.GiftsOut += amount
+	t.Balance += amount
+	t.Net -= amount
+	t.GiftsIn += amount
+	if t.GiftPeriod != period {
+		t.GiftPeriod, t.GiftPeriodIn = period, 0
+	}
+	t.GiftPeriodIn += amount
+	s.touched(f)
+	s.touched(t)
+	return nil
 }
 
 // Debit removes chips for a wager. It fails if the balance is too low.

@@ -78,6 +78,7 @@ const (
 	EvWinStreak  = "win_streak"  // {name} won {streak} in a row
 	EvLeave      = "leave"       // {name} walked away
 	EvRefill     = "refill"      // {name} got the daily refill of {amount}
+	EvGift       = "gift"        // {name} sent {item} {amount} chips
 
 	// between hands, other ways to run his mouth
 	EvAlone    = "alone"    // only {name} at the table

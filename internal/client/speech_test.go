@@ -126,9 +126,10 @@ func TestSettingsSlider(t *testing.T) {
 	a.overlay = ovSettings
 	a.Frame(Input{MX: -1, MY: -1})
 	// press on the left end of the master slider and let go
-	y := 40 + 44 + 11 + 8
-	a.Frame(Input{MX: 176, MY: y, Pressed: true, Down: true, MouseInside: true})
-	a.Frame(Input{MX: 176, MY: y, Released: true, MouseInside: true})
+	r := ovRect(340, 324)
+	y, x := r.Min.Y+44+11+8, r.Min.X+26
+	a.Frame(Input{MX: x, MY: y, Pressed: true, Down: true, MouseInside: true})
+	a.Frame(Input{MX: x, MY: y, Released: true, MouseInside: true})
 	if a.Cfg.Volume > 5 {
 		t.Fatalf("master volume %d after dragging to the left", a.Cfg.Volume)
 	}

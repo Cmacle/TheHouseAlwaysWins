@@ -489,6 +489,27 @@ func init() {
 		"Welfare day, {name}. {amount}. Enjoy it for about six minutes.",
 	)
 
+	more(clean, EvGift,
+		"{name} just spotted {item} {amount}. Friendship. It's beautiful. It's also coming to me.",
+		"{name} sent {item} {amount} chips. That's not charity, that's a transfer. To the house. With a layover.",
+		"Aw. {name} bought {item} back in. {amount}. I'll take good care of it.",
+		"{name} to {item}, {amount} chips. You know you're just paying me twice, right?",
+		"Look at that. {name} loaned {item} {amount}. Never lend money to a gambler. Ask my brother. Ask my ex-wife.",
+		"{amount} from {name} to {item}. In Reno we called that a rescue mission. Nobody ever came back from those.",
+		"{item}, you got {amount} from {name}. Say thank you. Then put it in the circle.",
+		"{name} is buying {item} back in. {amount}. That's the nicest thing anyone's done at this table. Don't worry, it won't happen again.",
+		"Chips changing hands that aren't going to me. {name}, {item}, I'm watching. {amount}. Noted.",
+		"{name} spots {item} {amount}. The Management doesn't love this. I don't love this. Play the cards.",
+	)
+	more(vulgar, EvGift,
+		"{name} just threw {item} a {amount} chip life raft. It's got a hole in it. The hole is me.",
+		"{name} sent {item} {amount}. That's sweet. Disgusting, but sweet.",
+		"Look at {name}, bailing out {item} with {amount}. You enabler. I love it.",
+		"{amount} from {name} to {item}. Hell of a friend. Hell of a donor. To me. Eventually.",
+		"{item}, {name} just paid your bail. {amount}. Try not to get locked up again.",
+		"{name} bought {item} back in for {amount}. Codependency. Good for business.",
+	)
+
 	// ------------------------------------------------------------ between hands
 
 	more(clean, EvAlone,

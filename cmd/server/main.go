@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	_ "time/tzdata" // so "timezone" works on Windows without Go installed
 
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/selfupdate"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/server"
 )
 
@@ -22,6 +23,7 @@ func main() {
 	}
 	cfgPath := flag.String("config", def, "path to server.json (created with defaults if missing)")
 	noConsole := flag.Bool("noconsole", false, "don't read admin commands from stdin (for services)")
+	noGUI := flag.Bool("nogui", false, "don't open the server window, even if there's a desktop")
 	version := flag.Bool("version", false, "print version and exit")
 	printCfg := flag.Bool("print-config", false, "print the default server.json and exit")
 	flag.Parse()
@@ -34,8 +36,20 @@ func main() {
 		fmt.Println(server.Version)
 		return
 	}
-	if err := server.Main(*cfgPath, !*noConsole); err != nil {
+	selfupdate.Cleanup()
+	var err error
+	gui := !*noGUI && !*noConsole && guiAvailable()
+	if gui {
+		console := !hideOwnConsole()
+		err = runWithWindow(*cfgPath, console)
+	} else {
+		err = server.Main(*cfgPath, server.Options{Console: !*noConsole})
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
+		if gui {
+			showError("The server couldn't start:\n\n" + err.Error())
+		}
 		os.Exit(1)
 	}
 }

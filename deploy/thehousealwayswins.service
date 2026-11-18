@@ -14,6 +14,7 @@ User=house
 WorkingDirectory=/opt/thehousealwayswins
 ExecStart=/opt/thehousealwayswins/house-server -config /opt/thehousealwayswins/server.json -noconsole
 Restart=always
+Environment=HOUSE_SUPERVISED=1
 RestartSec=5
 
 [Install]

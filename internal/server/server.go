@@ -13,6 +13,7 @@ import (
 
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/discord"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/release"
 )
 
 // Version is the server build version.
@@ -34,6 +35,7 @@ func New(cfg *Config, baseDir string, lg *log.Logger) (*Server, error) {
 	s := &Server{Store: store, Log: lg}
 	s.cfgp.Store(cfg)
 	s.Game = NewGame(cfg, store, nil, lg)
+	s.Game.exec = s.Exec
 	return s, nil
 }
 
@@ -81,7 +83,15 @@ func (s *Server) EnableDiscord(stop <-chan struct{}) {
 }
 
 // Main runs the server until interrupted. It is what the server exe calls.
-func Main(configPath string, interactive bool) error {
+// Options are how Main runs.
+type Options struct {
+	Console bool      // read commands from stdin
+	LogTo   io.Writer // also send the log here (the server window)
+	// Started is called once the server is up (from another goroutine).
+	Started func(*Server)
+}
+
+func Main(configPath string, opt Options) error {
 	abs, err := filepath.Abs(configPath)
 	if err != nil {
 		return err
@@ -103,6 +113,9 @@ func Main(configPath string, interactive bool) error {
 	if err == nil {
 		defer logFile.Close()
 		out = io.MultiWriter(os.Stdout, logFile)
+	}
+	if opt.LogTo != nil {
+		out = io.MultiWriter(out, opt.LogTo)
 	}
 	lg := log.New(out, "", log.LstdFlags)
 	lg.Printf("The House Always Wins server %s", Version)
@@ -162,20 +175,43 @@ func Main(configPath string, interactive bool) error {
 	}()
 
 	quit := make(chan struct{}, 1)
-	if interactive {
-		go s.RunConsole(os.Stdin, os.Stdout, func() error {
-			nc, _, err := LoadConfig(abs)
-			if err != nil {
-				return err
-			}
-			if !filepath.IsAbs(nc.DataDir) {
-				nc.DataDir = filepath.Join(baseDir, nc.DataDir)
-			}
-			s.cfgp.Store(nc)
-			s.Game.Reload(nc)
-			return nil
-		}, func() { quit <- struct{}{} })
+	s.reloadFn = func() error {
+		nc, _, err := LoadConfig(abs)
+		if err != nil {
+			return err
+		}
+		if !filepath.IsAbs(nc.DataDir) {
+			nc.DataDir = filepath.Join(baseDir, nc.DataDir)
+		}
+		s.cfgp.Store(nc)
+		s.Game.Reload(nc)
+		return nil
 	}
+	s.quitFn = func() {
+		select {
+		case quit <- struct{}{}:
+		default:
+		}
+	}
+	if opt.Console {
+		go s.RunConsole(os.Stdin, os.Stdout)
+	}
+	if opt.Started != nil {
+		go opt.Started(s)
+	}
+	// look for a newer server now and then, and tell admins
+	go func() {
+		for {
+			if v := s.Latest(false); v != "" && release.Newer(v, Version) {
+				lg.Printf("a newer server is out: v%s (type 'update' to install it)", v)
+			}
+			select {
+			case <-stop:
+				return
+			case <-time.After(6 * time.Hour):
+			}
+		}
+	}()
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
@@ -191,6 +227,9 @@ func Main(configPath string, interactive bool) error {
 		lg.Printf("save failed: %v", err)
 	}
 	s.backup("shutdown")
+	if s.restartPending() {
+		s.finishRestart()
+	}
 	lg.Printf("bye")
 	return nil
 }

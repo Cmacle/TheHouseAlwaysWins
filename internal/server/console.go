@@ -11,25 +11,33 @@ import (
 // RunConsole reads admin commands from r. It returns when r hits EOF (for
 // example when the server runs as a background service with no stdin), which
 // does not stop the server.
-func (s *Server) RunConsole(r io.Reader, w io.Writer, reload func() error, quit func()) {
+func (s *Server) RunConsole(r io.Reader, w io.Writer) {
 	sc := bufio.NewScanner(r)
 	fmt.Fprintln(w, "Type 'help' for console commands.")
 	for sc.Scan() {
-		f := strings.Fields(sc.Text())
-		if len(f) == 0 {
-			continue
+		s.Exec(sc.Text(), w)
+	}
+}
+
+// Exec runs one console command, writing its output to w. The server
+// console, admins in the game (typing /command in chat) and the server
+// window all use it.
+func (s *Server) Exec(line string, w io.Writer) {
+	f := strings.Fields(strings.TrimPrefix(strings.TrimSpace(line), "/"))
+	if len(f) == 0 {
+		return
+	}
+	cmd, args := strings.ToLower(f[0]), f[1:]
+	need := func(n int, usage string) bool {
+		if len(args) < n {
+			fmt.Fprintln(w, "usage:", usage)
+			return false
 		}
-		cmd, args := strings.ToLower(f[0]), f[1:]
-		need := func(n int, usage string) bool {
-			if len(args) < n {
-				fmt.Fprintln(w, "usage:", usage)
-				return false
-			}
-			return true
-		}
-		switch cmd {
-		case "help", "?":
-			fmt.Fprint(w, `commands:
+		return true
+	}
+	switch cmd {
+	case "help", "?":
+		fmt.Fprint(w, `commands:
   players                     who is at the table
   leaderboard [n] [rich]      top n by lifetime net (or by chips with "rich")
   stats <user>                account details
@@ -42,6 +50,11 @@ func (s *Server) RunConsole(r io.Reader, w io.Writer, reload func() error, quit 
   delete <user>               delete an account
   kick <user>                 disconnect a player
   say <message>               message everyone at the table
+  admin <user> [on|off]       make someone an admin (they can type /commands in chat)
+  admins                      list admins
+  get [filter]                show settings (server.json)
+  set <setting> <value>       change a setting and reload (e.g. set card_reveal off)
+  update [force]              download the newest server from GitHub and restart into it
   reload                      reload server.json (applies at the next hand; port changes need a restart)
   save                        write accounts to disk now
   backup                      make a backup now
@@ -49,164 +62,212 @@ func (s *Server) RunConsole(r io.Reader, w io.Writer, reload func() error, quit 
   restore <backup>            put a backup back (backs up first; restart after)
   quit                        save and shut down
 `)
-		case "players", "who":
-			for _, l := range s.Game.PlayerList() {
-				fmt.Fprintln(w, " ", l)
-			}
-		case "leaderboard", "lb", "top":
-			n, by := 10, SortNet
-			for _, a := range args {
-				if v, err := strconv.Atoi(a); err == nil {
-					n = v
-				} else if strings.HasPrefix(strings.ToLower(a), "r") || strings.HasPrefix(strings.ToLower(a), "b") {
-					by = SortBalance
-				}
-			}
-			for i, p := range s.Store.Leaderboard(n, by) {
-				fmt.Fprintf(w, "  %3d. %-16s net %+d  balance %d  hands %d\n", i+1, p.Username, p.Net, p.Balance, p.HandsPlayed)
-			}
-		case "house", "dealer":
-			h := s.Store.House()
-			fmt.Fprintf(w, "  house net %+d over %d rounds (%d player hands)\n  won %d in %d rounds, lost %d in %d rounds\n  dealer blackjacks %d, dealer busts %d, player busts %d\n  best round %+d, worst round -%d\n",
-				h.Net, h.HandsDealt, h.PlayerHands, h.Won, h.RoundsWon, h.Lost, h.RoundsLost, h.DealerBlackjacks, h.DealerBusts, h.PlayerBusts, h.BiggestWin, h.BiggestLoss)
-		case "accounts":
-			names := s.Store.Usernames()
-			fmt.Fprintf(w, "  %d account(s): %s\n", len(names), strings.Join(names, ", "))
-		case "stats":
-			if !need(1, "stats <user>") {
-				continue
-			}
-			p, ok := s.Store.Profile(args[0])
-			if !ok {
-				fmt.Fprintln(w, "  no such account")
-				continue
-			}
-			fmt.Fprintf(w, "  %s  balance %d  net %+d  won %d  lost %d  refills %d\n  hands %d (W%d L%d P%d)  blackjacks %d  biggest win %d  online %v\n",
-				p.Username, p.Balance, p.Net, p.Won, p.Lost, p.RefillTotal, p.HandsPlayed, p.HandsWon, p.HandsLost, p.HandsPushed, p.Blackjacks, p.BiggestWin, p.Online)
-		case "give":
-			if !need(2, "give <user> <amount>") {
-				continue
-			}
-			amt, err := strconv.ParseInt(args[1], 10, 64)
-			if err != nil {
-				fmt.Fprintln(w, "  bad amount")
-				continue
-			}
-			bal, ok := s.Store.AdminAdjust(args[0], amt)
-			if !ok {
-				fmt.Fprintln(w, "  no such account")
-				continue
-			}
-			fmt.Fprintf(w, "  %s now has %d\n", args[0], bal)
-			s.Game.NotifyUser(args[0], fmt.Sprintf("The house adjusted your chips by %+d.", amt))
-			s.Game.notify.LeaderboardChanged()
-		case "refill":
-			if !need(1, "refill <user|all>") {
-				continue
-			}
-			users := []string{args[0]}
-			if strings.EqualFold(args[0], "all") {
-				users = s.Store.Usernames()
-			}
-			var done []string
-			for _, u := range users {
-				if s.Game.InHand(u) {
-					fmt.Fprintf(w, "  %s is mid-hand, skipped\n", u)
-					continue
-				}
-				if d := s.Store.ForceRefill(u, s.cfg().RefillAmount); d > 0 {
-					done = append(done, u)
-					fmt.Fprintf(w, "  %s +%d\n", u, d)
-					s.Game.NotifyUser(u, fmt.Sprintf("Refill: +%d chips", d))
-				}
-			}
-			if len(done) > 0 {
-				s.Game.notify.Refilled(done, s.cfg().RefillAmount)
-				s.Game.notify.LeaderboardChanged()
-			}
-			s.Game.Broadcast()
-		case "resetstats":
-			if !need(1, "resetstats <user>") {
-				continue
-			}
-			if s.Game.InHand(args[0]) {
-				fmt.Fprintln(w, "  player is mid-hand, try again in a moment")
-				continue
-			}
-			s.backup("before-resetstats")
-			fmt.Fprintln(w, " ", okText(s.Store.ResetStats(args[0], s.cfg().RefillAmount)))
-			s.Game.Broadcast()
-			s.Game.notify.LeaderboardChanged()
-		case "setpassword":
-			if !need(2, "setpassword <user> <password>") {
-				continue
-			}
-			fmt.Fprintln(w, " ", okText(s.Store.SetPassword(args[0], args[1])))
-		case "delete":
-			if !need(1, "delete <user>") {
-				continue
-			}
-			s.backup("before-delete")
-			s.Game.Kick(args[0], "Your account was deleted.")
-			fmt.Fprintln(w, " ", okText(s.Store.Delete(args[0])))
-			s.Game.notify.LeaderboardChanged()
-		case "kick":
-			if !need(1, "kick <user>") {
-				continue
-			}
-			fmt.Fprintln(w, " ", okText(s.Game.Kick(args[0], "You were kicked by the house.")))
-		case "say":
-			s.Game.Announce("[House] " + strings.Join(args, " "))
-		case "reload":
-			if err := reload(); err != nil {
-				fmt.Fprintln(w, "  reload failed:", err)
-			} else {
-				fmt.Fprintln(w, "  config reloaded; table settings apply at the next hand")
-			}
-		case "save":
-			if err := s.Store.Save(); err != nil {
-				fmt.Fprintln(w, "  save failed:", err)
-			} else {
-				fmt.Fprintln(w, "  saved")
-			}
-		case "backup":
-			if name, err := s.Store.Backup("manual", s.configPath); err != nil {
-				fmt.Fprintln(w, "  backup failed:", err)
-			} else {
-				s.Store.PruneBackups(s.cfg().BackupKeep, s.cfg().BackupDays)
-				fmt.Fprintln(w, "  saved", name)
-			}
-		case "backups":
-			list := s.Store.Backups()
-			if len(list) == 0 {
-				fmt.Fprintln(w, "  no backups yet")
-			}
-			for i, n := range list {
-				if i == 30 {
-					fmt.Fprintf(w, "  ... and %d older\n", len(list)-30)
-					break
-				}
-				fmt.Fprintln(w, " ", n)
-			}
-			fmt.Fprintln(w, "  folder:", s.Store.backupDir())
-		case "restore":
-			if !need(1, "restore <backup file name>   (see 'backups')") {
-				continue
-			}
-			if err := s.Store.Restore(args[0], s.configPath); err != nil {
-				fmt.Fprintln(w, "  restore failed:", err)
-				continue
-			}
-			s.Log.Printf("restored backup %s; saving is paused until restart", args[0])
-			fmt.Fprintln(w, "  restored. Saving is paused so nothing overwrites it: type 'quit' and start the server again to load it.")
-			fmt.Fprintln(w, "  (the backup's config is in server.json.restored if you want it)")
-		case "quit", "exit", "stop":
-			quit()
-			return
-		default:
-			fmt.Fprintln(w, "  unknown command, try 'help'")
+	case "players", "who":
+		for _, l := range s.Game.PlayerList() {
+			fmt.Fprintln(w, " ", l)
 		}
+	case "leaderboard", "lb", "top":
+		n, by := 10, SortNet
+		for _, a := range args {
+			if v, err := strconv.Atoi(a); err == nil {
+				n = v
+			} else if strings.HasPrefix(strings.ToLower(a), "r") || strings.HasPrefix(strings.ToLower(a), "b") {
+				by = SortBalance
+			}
+		}
+		for i, p := range s.Store.Leaderboard(n, by) {
+			fmt.Fprintf(w, "  %3d. %-16s net %+d  balance %d  hands %d\n", i+1, p.Username, p.Net, p.Balance, p.HandsPlayed)
+		}
+	case "house", "dealer":
+		h := s.Store.House()
+		fmt.Fprintf(w, "  house net %+d over %d rounds (%d player hands)\n  won %d in %d rounds, lost %d in %d rounds\n  dealer blackjacks %d, dealer busts %d, player busts %d\n  best round %+d, worst round -%d\n",
+			h.Net, h.HandsDealt, h.PlayerHands, h.Won, h.RoundsWon, h.Lost, h.RoundsLost, h.DealerBlackjacks, h.DealerBusts, h.PlayerBusts, h.BiggestWin, h.BiggestLoss)
+	case "accounts":
+		names := s.Store.Usernames()
+		fmt.Fprintf(w, "  %d account(s): %s\n", len(names), strings.Join(names, ", "))
+	case "stats":
+		if !need(1, "stats <user>") {
+			return
+		}
+		p, ok := s.Store.Profile(args[0])
+		if !ok {
+			fmt.Fprintln(w, "  no such account")
+			return
+		}
+		fmt.Fprintf(w, "  %s  balance %d  net %+d  won %d  lost %d  refills %d\n  hands %d (W%d L%d P%d)  blackjacks %d  biggest win %d  online %v\n",
+			p.Username, p.Balance, p.Net, p.Won, p.Lost, p.RefillTotal, p.HandsPlayed, p.HandsWon, p.HandsLost, p.HandsPushed, p.Blackjacks, p.BiggestWin, p.Online)
+	case "give":
+		if !need(2, "give <user> <amount>") {
+			return
+		}
+		amt, err := strconv.ParseInt(args[1], 10, 64)
+		if err != nil {
+			fmt.Fprintln(w, "  bad amount")
+			return
+		}
+		bal, ok := s.Store.AdminAdjust(args[0], amt)
+		if !ok {
+			fmt.Fprintln(w, "  no such account")
+			return
+		}
+		fmt.Fprintf(w, "  %s now has %d\n", args[0], bal)
+		s.Game.NotifyUser(args[0], fmt.Sprintf("The house adjusted your chips by %+d.", amt))
+		s.Game.notify.LeaderboardChanged()
+	case "refill":
+		if !need(1, "refill <user|all>") {
+			return
+		}
+		users := []string{args[0]}
+		if strings.EqualFold(args[0], "all") {
+			users = s.Store.Usernames()
+		}
+		var done []string
+		for _, u := range users {
+			if s.Game.InHand(u) {
+				fmt.Fprintf(w, "  %s is mid-hand, skipped\n", u)
+				continue
+			}
+			if d := s.Store.ForceRefill(u, s.cfg().RefillAmount); d > 0 {
+				done = append(done, u)
+				fmt.Fprintf(w, "  %s +%d\n", u, d)
+				s.Game.NotifyUser(u, fmt.Sprintf("Refill: +%d chips", d))
+			}
+		}
+		if len(done) > 0 {
+			s.Game.notify.Refilled(done, s.cfg().RefillAmount)
+			s.Game.notify.LeaderboardChanged()
+		}
+		s.Game.Broadcast()
+	case "resetstats":
+		if !need(1, "resetstats <user>") {
+			return
+		}
+		if s.Game.InHand(args[0]) {
+			fmt.Fprintln(w, "  player is mid-hand, try again in a moment")
+			return
+		}
+		s.backup("before-resetstats")
+		fmt.Fprintln(w, " ", okText(s.Store.ResetStats(args[0], s.cfg().RefillAmount)))
+		s.Game.Broadcast()
+		s.Game.notify.LeaderboardChanged()
+	case "setpassword":
+		if !need(2, "setpassword <user> <password>") {
+			return
+		}
+		fmt.Fprintln(w, " ", okText(s.Store.SetPassword(args[0], args[1])))
+	case "delete":
+		if !need(1, "delete <user>") {
+			return
+		}
+		s.backup("before-delete")
+		s.Game.Kick(args[0], "Your account was deleted.")
+		fmt.Fprintln(w, " ", okText(s.Store.Delete(args[0])))
+		s.Game.notify.LeaderboardChanged()
+	case "kick":
+		if !need(1, "kick <user>") {
+			return
+		}
+		fmt.Fprintln(w, " ", okText(s.Game.Kick(args[0], "You were kicked by the house.")))
+	case "say":
+		s.Game.Announce("[House] " + strings.Join(args, " "))
+	case "admin":
+		if !need(1, "admin <user> [on|off]") {
+			return
+		}
+		on := len(args) < 2 || strings.EqualFold(args[1], "on") || strings.EqualFold(args[1], "yes") || args[1] == "1"
+		if !s.Store.SetAdmin(args[0], on) {
+			fmt.Fprintln(w, "  no such account")
+			return
+		}
+		if on {
+			fmt.Fprintf(w, "  %s is now an admin\n", args[0])
+			s.Game.NotifyUser(args[0], "You're an admin now: type /help in chat for server commands.")
+		} else {
+			fmt.Fprintf(w, "  %s is no longer an admin\n", args[0])
+		}
+		s.Game.RefreshProfile(args[0])
+	case "admins":
+		if a := s.Store.Admins(); len(a) > 0 {
+			fmt.Fprintln(w, "  admins:", strings.Join(a, ", "))
+		} else {
+			fmt.Fprintln(w, "  no admins yet ('admin <user>' makes one)")
+		}
+	case "get", "settings":
+		filter := strings.ToLower(strings.Join(args, " "))
+		for _, st := range SettingsOf(s.cfg()) {
+			if filter != "" && !strings.Contains(st.Key, filter) {
+				continue
+			}
+			v := st.Value
+			if secretKeys[st.Key] && v != "" {
+				v = "(set)"
+			}
+			fmt.Fprintf(w, "  %s = %s\n", st.Key, v)
+		}
+	case "set":
+		if !need(2, "set <setting> <value>   ('get' lists them)") {
+			return
+		}
+		if err := s.SetSetting(args[0], strings.Join(args[1:], " ")); err != nil {
+			fmt.Fprintln(w, "  not changed:", err)
+			return
+		}
+		s.Log.Printf("setting %s changed", args[0])
+		fmt.Fprintf(w, "  %s changed; table settings apply at the next hand\n", args[0])
+	case "update":
+		s.Update(w, len(args) > 0 && strings.EqualFold(args[0], "force"))
+	case "version":
+		latest := s.Latest(false)
+		fmt.Fprintf(w, "  server v%s; latest release v%s\n", Version, latest)
+	case "reload":
+		if err := s.reload(); err != nil {
+			fmt.Fprintln(w, "  reload failed:", err)
+		} else {
+			fmt.Fprintln(w, "  config reloaded; table settings apply at the next hand")
+		}
+	case "save":
+		if err := s.Store.Save(); err != nil {
+			fmt.Fprintln(w, "  save failed:", err)
+		} else {
+			fmt.Fprintln(w, "  saved")
+		}
+	case "backup":
+		if name, err := s.Store.Backup("manual", s.configPath); err != nil {
+			fmt.Fprintln(w, "  backup failed:", err)
+		} else {
+			s.Store.PruneBackups(s.cfg().BackupKeep, s.cfg().BackupDays)
+			fmt.Fprintln(w, "  saved", name)
+		}
+	case "backups":
+		list := s.Store.Backups()
+		if len(list) == 0 {
+			fmt.Fprintln(w, "  no backups yet")
+		}
+		for i, n := range list {
+			if i == 30 {
+				fmt.Fprintf(w, "  ... and %d older\n", len(list)-30)
+				break
+			}
+			fmt.Fprintln(w, " ", n)
+		}
+		fmt.Fprintln(w, "  folder:", s.Store.backupDir())
+	case "restore":
+		if !need(1, "restore <backup file name>   (see 'backups')") {
+			return
+		}
+		if err := s.Store.Restore(args[0], s.configPath); err != nil {
+			fmt.Fprintln(w, "  restore failed:", err)
+			return
+		}
+		s.Log.Printf("restored backup %s; saving is paused until restart", args[0])
+		fmt.Fprintln(w, "  restored. Saving is paused so nothing overwrites it: type 'quit' and start the server again to load it.")
+		fmt.Fprintln(w, "  (the backup's config is in server.json.restored if you want it)")
+	case "quit", "exit", "stop":
+		s.quit()
+	default:
+		fmt.Fprintln(w, "  unknown command, try 'help'")
 	}
+
 }
 
 func okText(ok bool) string {

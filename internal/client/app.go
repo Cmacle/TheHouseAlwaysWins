@@ -56,6 +56,7 @@ type TouchPlatform interface {
 const (
 	scrLogin = iota
 	scrTable
+	scrPanel // the server window
 )
 
 const (
@@ -71,6 +72,8 @@ const (
 	ovWardrobe
 	ovSettings
 	ovDealerLog
+	ovAdmin
+	ovGift
 )
 
 type dialRes struct {
@@ -133,51 +136,75 @@ type App struct {
 	reconnectAt  time.Time
 
 	// session
-	username    string
-	profile     proto.Profile
-	st          *proto.TableState
-	clockOffset int64
-	avatars     map[string]*avatar
-	toasts      []toast
-	cardSeen    map[string]time.Time
-	cardHidden  map[string]bool
-	cardVal     map[string]blackjack.Card
-	flipAt      map[string]time.Time
-	betDraft    int64
-	lastBet     int64
-	overlay     int
-	leaderboard []proto.Profile
-	lbScroll    int
-	lbAt        time.Time
-	lastPing    time.Time
-	resultAt    time.Time
-	resultDelta int64
-	resultKind  string
-	lbSort      string
-	smallHats   map[string]*image.RGBA
-	wardTab     string
-	wardSel     string
-	fields      map[string]*fieldState
-	caretAt     int
-	house       proto.HouseStats
-	pickTarget  string
-	soundCache  map[string][]byte
-	kbOn        bool
-	sayID       int
-	sayAt       time.Time
-	sayWords    []string
-	sayStarts   []time.Duration
-	sayEnd      time.Duration
-	sayBlipped  int
-	L           tableLayout
-	tableBG     *image.RGBA
-	kbAsk       bool // a text field was tapped: show the keyboard (again)
-	upd         updater
-	focusRect   image.Rectangle
-	sayLog      []logEntry // what the dealer said recently, newest last
-	logID       int        // id of the last line added to sayLog
-	logUnread   bool
-	logScroll   int
+	username           string
+	profile            proto.Profile
+	st                 *proto.TableState
+	clockOffset        int64
+	avatars            map[string]*avatar
+	toasts             []toast
+	cardSeen           map[string]time.Time
+	cardHidden         map[string]bool
+	cardVal            map[string]blackjack.Card
+	flipAt             map[string]time.Time
+	betDraft           int64
+	lastBet            int64
+	overlay            int
+	leaderboard        []proto.Profile
+	lbScroll           int
+	lbAt               time.Time
+	lastPing           time.Time
+	resultAt           time.Time
+	resultDelta        int64
+	resultKind         string
+	lbSort             string
+	smallHats          map[string]*image.RGBA
+	wardTab            string
+	wardSel            string
+	fields             map[string]*fieldState
+	caretAt            int
+	house              proto.HouseStats
+	pickTarget         string
+	soundCache         map[string][]byte
+	kbOn               bool
+	sayID              int
+	sayAt              time.Time
+	sayWords           []string
+	sayStarts          []time.Duration
+	sayEnd             time.Duration
+	sayBlipped         int
+	L                  tableLayout
+	tableBG            *image.RGBA
+	kbAsk              bool // a text field was tapped: show the keyboard (again)
+	upd                updater
+	focusRect          image.Rectangle
+	sayLog             []logEntry // what the dealer said recently, newest last
+	logID              int        // id of the last line added to sayLog
+	logUnread          bool
+	logScroll          int
+	rev                *revealFX
+	chats              map[int]chatBubble // seat -> latest message
+	chatLog            []proto.Chat       // recent chat incl. spectators
+	chatOpen           bool               // typing a message
+	chatDraft          string
+	console            []string // admin command output
+	giftTo             string
+	giftInfo           proto.GiftInfo
+	giftAmt            string
+	adminSet           []proto.SettingInfo
+	adminEdit          map[string]string
+	adminScroll        int
+	adminFilter        string
+	adminMsg           string
+	adminErr           bool
+	adminTab           int
+	adminCmd           string
+	adminHist          []string
+	adminHistAt        int
+	adminB             AdminBackend // nil = over the connection
+	consoleAt          time.Time
+	adminConsoleScroll int
+	pnl                PanelBackend // the server window's server
+	panelLogNext       int
 }
 
 // logEntry is one thing the dealer said (a whole story is one entry).
@@ -258,6 +285,8 @@ func (a *App) Frame(in Input) *image.RGBA {
 		a.drawLogin()
 	case scrTable:
 		a.drawTable()
+	case scrPanel:
+		a.drawPanel()
 	}
 	a.blocked = false
 	a.handleTab()
@@ -266,7 +295,7 @@ func (a *App) Frame(in Input) *image.RGBA {
 		a.drawUpdate() // on top of everything
 	}
 	if ti, ok := a.P.(TextInputHost); ok {
-		on := a.focusID != "" && a.screen == scrLogin
+		on := a.focusID != "" && a.screen != scrPanel
 		// a tap on a text box asks again, in case the keyboard was closed
 		if on != a.kbOn || (on && a.kbAsk) {
 			a.kbOn = on
@@ -481,6 +510,7 @@ func (a *App) handleMsg(m proto.Msg) {
 		a.setStatus("", false)
 		a.cardSeen = map[string]time.Time{}
 		a.toasts = nil
+		a.rev, a.chats, a.chatLog, a.chatOpen = nil, nil, nil, false
 		if a.serverInfo.MOTD != "" {
 			a.toast(a.serverInfo.MOTD, a.A.C("gold"), 5, 1)
 		}
@@ -532,6 +562,29 @@ func (a *App) handleMsg(m proto.Msg) {
 		var p proto.Profile
 		if decode(m, &p) && strings.EqualFold(p.Username, a.username) {
 			a.profile = p
+		}
+	case proto.SChat:
+		var c proto.Chat
+		if decode(m, &c) {
+			a.onChat(c)
+		}
+	case proto.SConsole:
+		var c proto.Console
+		if decode(m, &c) {
+			a.onConsole(c)
+		}
+	case proto.SGiftInfo:
+		var g proto.GiftInfo
+		if decode(m, &g) && strings.EqualFold(g.To, a.giftTo) {
+			a.giftInfo = g
+			if a.giftAmt == "" && g.Max > 0 {
+				a.giftAmt = fmt.Sprint(g.Max)
+			}
+		}
+	case proto.SSettings:
+		var s proto.SettingsList
+		if decode(m, &s) {
+			a.onSettings(s)
 		}
 	case proto.SKicked:
 		var e proto.ErrorMsg

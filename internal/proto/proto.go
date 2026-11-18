@@ -51,6 +51,11 @@ const (
 	CPing        = "ping"
 	CProfile     = "profile"
 	CEquip       = "equip"
+	CGiftInfo    = "gift_info" // how much can I send this player?
+	CGift        = "gift"
+	CChat        = "chat"
+	CSettings    = "settings"    // admins: list the server settings
+	CSetSetting  = "set_setting" // admins: change one
 )
 
 // Server -> client message types.
@@ -66,6 +71,10 @@ const (
 	SProfile     = "profile"
 	SKicked      = "kicked"
 	SPong        = "pong"
+	SGiftInfo    = "gift_info"
+	SChat        = "chat"
+	SConsole     = "console" // command output, for admins
+	SSettings    = "settings"
 )
 
 type Hello struct {
@@ -142,6 +151,9 @@ type Profile struct {
 	EquippedHat     string   `json:"equipped_hat,omitempty"`
 	RankRich        bool     `json:"rank_rich,omitempty"` // currently #1 richest
 	RankNet         bool     `json:"rank_net,omitempty"`  // currently #1 lifetime
+	Admin           bool     `json:"admin,omitempty"`
+	GiftsIn         int64    `json:"gifts_in,omitempty"`
+	GiftsOut        int64    `json:"gifts_out,omitempty"`
 }
 
 // Equip asks to wear a cosmetic. Kind is hat, frame or title; an empty ID
@@ -196,6 +208,57 @@ type Event struct {
 	Delta int64  `json:"delta,omitempty"`
 }
 
+// GiftInfo asks (To) or answers (all fields) how many chips can be sent.
+type GiftInfo struct {
+	To      string `json:"to"`
+	Max     int64  `json:"max"`              // 0 = can't send now
+	Reason  string `json:"reason,omitempty"` // why not / what limits it
+	Balance int64  `json:"balance"`          // their chips
+}
+
+// Gift sends chips to another player.
+type Gift struct {
+	To     string `json:"to"`
+	Amount int64  `json:"amount"`
+}
+
+// Chat is a table chat message. From the client only Text is used; a
+// message starting with "/" from an admin is run as a server command.
+type Chat struct {
+	From  string `json:"from,omitempty"`
+	Seat  int    `json:"seat"` // -1 = not seated
+	Text  string `json:"text"`
+	Admin bool   `json:"admin,omitempty"`
+	At    int64  `json:"at,omitempty"` // unix ms
+}
+
+// SettingInfo is one server setting, for admins.
+type SettingInfo struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Kind  string `json:"kind"` // bool, int, float, string, list
+	Value string `json:"value"`
+	Group string `json:"group,omitempty"`
+}
+
+// SettingsList lists the server settings (answering CSettings / CSetSetting).
+type SettingsList struct {
+	Settings []SettingInfo `json:"settings"`
+	Changed  string        `json:"changed,omitempty"` // key that was just set
+	Error    string        `json:"error,omitempty"`
+}
+
+// SetSetting changes one server setting.
+type SetSetting struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// Console is the output of a server command run from the client.
+type Console struct {
+	Lines []string `json:"lines"`
+}
+
 type ErrorMsg struct {
 	Message string `json:"message"`
 }
@@ -226,6 +289,9 @@ type Settings struct {
 	ServerName       string `json:"server_name"`
 	DealerTrashTalk  bool   `json:"dealer_trash_talk"`
 	DealerVulgar     bool   `json:"dealer_vulgar"`
+	ChipGifts        bool   `json:"chip_gifts,omitempty"`
+	TableChat        bool   `json:"table_chat,omitempty"`
+	CardReveal       bool   `json:"card_reveal,omitempty"`
 }
 
 // HouseStats are the dealer's lifetime results.
@@ -282,6 +348,15 @@ type DealerView struct {
 }
 
 // TableState is a full personalised table snapshot.
+// RevealView is a card being revealed slowly (the "card reveal" setting):
+// it's face down in the hand until the reveal ends.
+type RevealView struct {
+	Seat  int   `json:"seat"` // -1 = the dealer
+	Hand  int   `json:"hand"`
+	Card  int   `json:"card"`
+	Until int64 `json:"until"` // unix ms, server clock
+}
+
 type TableState struct {
 	Phase      string     `json:"phase"`
 	HandNumber int        `json:"hand_number"`
@@ -306,6 +381,8 @@ type TableState struct {
 	// story told a page at a time); DealerSayPara: and it starts a paragraph.
 	DealerSayCont bool `json:"dealer_say_cont,omitempty"`
 	DealerSayPara bool `json:"dealer_say_para,omitempty"`
+	// Reveal is set while a card is being revealed.
+	Reveal *RevealView `json:"reveal,omitempty"`
 	// DealerLog is what the dealer said recently, sent once after you join.
 	DealerLog []DealerLine `json:"dealer_log,omitempty"`
 	HouseNet  int64        `json:"house_net"`

@@ -24,7 +24,11 @@ type Server struct {
 
 	ln         net.Listener
 	configPath string
-	nconn      atomic.Int32
+	// set by Main: reload server.json, shut down
+	reloadFn func() error
+	quitFn   func()
+	upd      updateState
+	nconn    atomic.Int32
 }
 
 type conn struct {
@@ -266,7 +270,7 @@ func (c *conn) handle(m proto.Msg) bool {
 	}
 
 	switch m.Type {
-	case proto.CBet, proto.CAction, proto.CSitOut:
+	case proto.CBet, proto.CAction, proto.CSitOut, proto.CGift, proto.CGiftInfo, proto.CChat:
 		s.Game.events <- event{kind: evMsg, c: c, msg: m}
 	case proto.CAvatarSet:
 		var a proto.AvatarSet
@@ -294,6 +298,26 @@ func (c *conn) handle(m proto.Msg) bool {
 			c.send(proto.SProfile, p)
 		}
 		s.Game.Broadcast()
+	case proto.CSettings, proto.CSetSetting:
+		if !s.Store.IsAdmin(c.user) {
+			c.send(proto.SError, proto.ErrorMsg{Message: "Only admins can change server settings."})
+			return true
+		}
+		var res proto.SettingsList
+		if m.Type == proto.CSetSetting {
+			var ss proto.SetSetting
+			if decode(m, &ss) != nil {
+				return true
+			}
+			if err := s.SetSetting(ss.Key, ss.Value); err != nil {
+				res.Error = err.Error()
+			} else {
+				res.Changed = ss.Key
+				s.Log.Printf("admin %s set %s", c.user, ss.Key)
+			}
+		}
+		res.Settings = s.SettingInfos(true)
+		c.send(proto.SSettings, res)
 	case proto.CLogout:
 		s.Store.RevokeToken(c.user, c.token)
 		return false
