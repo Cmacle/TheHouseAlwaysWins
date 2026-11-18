@@ -82,6 +82,33 @@ const (
 	EvRefill     = "refill"      // {name} got the daily refill of {amount}
 	EvGift       = "gift"        // {name} sent {item} {amount} chips
 
+	// Texas Hold'em ({name} is a player, {amount} chips, {item} a hand name)
+	EvPkHello     = "pk_hello"      // {name} sat down at his poker table
+	EvPkSolo      = "pk_solo"       // just him and {name}, heads up
+	EvPkLeave     = "pk_leave"      // {name} left with {amount}
+	EvPkFold      = "pk_fold"       // {name} folded (having put in {amount})
+	EvPkCheck     = "pk_check"      // {name} checked
+	EvPkCall      = "pk_call"       // {name} called a big bet of {amount}
+	EvPkRaise     = "pk_raise"      // {name} bet or raised to {amount}
+	EvPkAllIn     = "pk_allin"      // {name} went all in ({amount})
+	EvPkWin       = "pk_win"        // {name} won {amount} ({item} at a showdown)
+	EvPkBigPot    = "pk_big_pot"    // {name} took down a big pot of {amount}
+	EvPkMonster   = "pk_monster"    // {name} showed {item} (a full house or better)
+	EvPkRoyal     = "pk_royal"      // {name} made a royal flush
+	EvPkBadBeat   = "pk_bad_beat"   // {name} lost a strong hand to him ({item} won)
+	EvPkBust      = "pk_bust"       // {name} is out of chips at the table
+	EvPkRebuy     = "pk_rebuy"      // {name} added {amount} chips
+	EvPkSlow      = "pk_slow"       // {name} is taking forever
+	EvPkFlop      = "pk_flop"       // a scary flop (all one suit, or paired)
+	EvPkDaleRaise = "pk_dale_raise" // he bets or raises
+	EvPkDaleCall  = "pk_dale_call"  // he calls a big bet
+	EvPkDaleCheck = "pk_dale_check" // he checks
+	EvPkDaleFold  = "pk_dale_fold"  // he folds
+	EvPkDaleAllIn = "pk_dale_allin" // he shoves
+	EvPkDaleWin   = "pk_dale_win"   // he won {amount} (from {name})
+	EvPkDaleLose  = "pk_dale_lose"  // {name} beat him with {item} for {amount}
+	EvPkDaleBluff = "pk_dale_bluff" // he stole the pot and shows the bluff
+
 	// between hands, other ways to run his mouth
 	EvAlone    = "alone"    // only {name} at the table
 	EvHeadline = "headline" // fake breaking news (often about {name})

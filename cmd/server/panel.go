@@ -51,7 +51,7 @@ func (b *panelBackend) refresh() {
 		return
 	}
 	cfg := b.s.Config()
-	_, _, names, _ := b.s.Game.Summary()
+	_, names, _ := b.s.Lobby.Summary()
 	latest, upd, busy := b.s.UpdateStatus()
 	host := cfg.ListenAddress
 	if host == "" || host == "0.0.0.0" || host == "::" {

@@ -36,27 +36,29 @@ func (g *Game) staked(user string) int64 {
 	return n
 }
 
-// giftMax is the most from can send to now, or 0 and the reason.
-func (g *Game) giftMax(from *player, to string) (int64, string) {
-	refill := g.cfg.RefillAmount
-	prof, ok := g.store.Profile(to)
+// giftLimit is the most `from` can send `to` now, or 0 and the reason.
+// fromPending is part of from's balance promised to a bet not taken yet;
+// toStaked is what `to` has riding on a blackjack hand.
+func giftLimit(cfg *Config, store *Store, from string, fromPending int64, to string, toStaked int64) (int64, string) {
+	refill := cfg.RefillAmount
+	prof, ok := store.Profile(to)
 	switch {
-	case !g.cfg.ChipGifts:
+	case !cfg.ChipGifts:
 		return 0, "Chip gifts are turned off on this server."
 	case !ok:
 		return 0, "There's no player called " + to + "."
-	case strings.EqualFold(prof.Username, from.user):
+	case strings.EqualFold(prof.Username, from):
 		return 0, "You can't send chips to yourself."
 	case refill <= 0:
 		return 0, "Gifts need a refill amount set on the server."
 	}
-	have := prof.Balance + g.staked(prof.Username)
+	have := prof.Balance + toStaked // Balance includes chips at a poker table
 	if have >= refill {
 		return 0, fmt.Sprintf("%s has %s chips. You can only help someone with less than %s.", prof.Username, commas(have), commas(refill))
 	}
 	max, why := refill-have, fmt.Sprintf("Up to %s: that brings them to %s.", commas(refill-have), commas(refill))
-	if g.cfg.GiftRefillsPerDay > 0 {
-		left := int64(g.cfg.GiftRefillsPerDay*float64(refill)) - g.store.GiftedIn(prof.Username, g.cfg.RefillPeriod(time.Now()))
+	if cfg.GiftRefillsPerDay > 0 {
+		left := int64(cfg.GiftRefillsPerDay*float64(refill)) - store.GiftedIn(prof.Username, cfg.RefillPeriod(time.Now()))
 		if left <= 0 {
 			return 0, prof.Username + " has had all the gifts they can get today. Try again after the refill."
 		}
@@ -64,10 +66,7 @@ func (g *Game) giftMax(from *player, to string) (int64, string) {
 			max, why = left, fmt.Sprintf("Up to %s: the rest of what %s can be sent today.", commas(left), prof.Username)
 		}
 	}
-	mine := g.store.Balance(from.user)
-	if from.betPlaced && !from.inHand {
-		mine -= from.pendingBet
-	}
+	mine := store.Balance(from) - fromPending
 	if mine <= 0 {
 		return 0, "You don't have any chips to send."
 	}
@@ -75,6 +74,15 @@ func (g *Game) giftMax(from *player, to string) (int64, string) {
 		max, why = mine, "Up to "+commas(mine)+": that's all you've got off the table."
 	}
 	return max, why
+}
+
+// giftMax is giftLimit for a sender at this table (tests).
+func (g *Game) giftMax(from *player, to string) (int64, string) {
+	var pending int64
+	if from.betPlaced && !from.inHand {
+		pending = from.pendingBet
+	}
+	return giftLimit(g.cfg, g.store, from.user, pending, to, g.staked(to))
 }
 
 func (g *Game) onGift(from *player, to string, amount int64) {
