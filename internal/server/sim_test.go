@@ -26,6 +26,7 @@ func testServer(t *testing.T, mut func(*Config)) *Server {
 	cfg.DealDelayMS, cfg.DealerDelayMS = 1, 1
 	cfg.AllowSurrender = true
 	cfg.CardRevealMinSeconds, cfg.CardRevealMaxSeconds = 0.01, 0.05
+	revealSettle = 20 * time.Millisecond
 	if mut != nil {
 		mut(cfg)
 	}
