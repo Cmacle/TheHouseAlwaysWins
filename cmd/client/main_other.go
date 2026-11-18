@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !linux
 
 package main
 
@@ -8,6 +8,6 @@ import (
 )
 
 func main() {
-	fmt.Fprintln(os.Stderr, "The House Always Wins client currently runs on Windows only. Build with GOOS=windows.")
+	fmt.Fprintln(os.Stderr, "The House Always Wins client runs on Windows, Linux and Android.")
 	os.Exit(1)
 }

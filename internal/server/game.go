@@ -104,6 +104,8 @@ type Game struct {
 	lastStory  time.Time
 	forceSay   bool
 	sayLog     []proto.DealerLine
+	crashes    int       // crashes caught (see safely)
+	aborting   bool      // calling off a hand after a crash
 	handTalk   int       // lines this hand (he keeps it to a few)
 	betNudged  bool      // nagged a slow bettor this round
 	dared      bool      // dared someone to bet big this round
@@ -169,19 +171,19 @@ func (g *Game) Run(stop <-chan struct{}) {
 			g.stopTimer()
 			return
 		case ev := <-g.events:
-			g.handle(ev)
+			g.safely("handling a player action", func() { g.handle(ev) })
 		case <-tc:
 			fn := g.timerFn
 			g.timer, g.timerFn = nil, nil
 			if fn != nil {
-				fn()
+				g.safely("the table timer", fn)
 			}
 		case <-sc:
-			g.onSayTimer()
+			g.safely("dealer speech", g.onSayTimer)
 		case <-nudge.C:
-			g.nudge()
+			g.safely("dealer speech", g.nudge)
 		case <-refill.C:
-			g.checkRefill()
+			g.safely("the daily refill", g.checkRefill)
 		}
 	}
 }
@@ -1460,4 +1462,51 @@ func (g *Game) Summary() (phase string, seated int, names []string, hand int) {
 		}
 	})
 	return
+}
+
+// safely runs f; if it crashes, the crash is logged, the hand in progress is
+// called off with every bet returned, and the table carries on.
+func (g *Game) safely(what string, f func()) {
+	guard(g.log.Printf, what, func() {
+		g.crashes++
+		if g.crashes > 20 || g.aborting {
+			return // something's badly wrong; stop digging
+		}
+		g.aborting = true
+		defer func() { g.aborting = false }()
+		guard(g.log.Printf, "recovering the table", nil, g.abortHand)
+	}, f)
+}
+
+// abortHand calls off the current hand after a crash: bets that are on the
+// table go back to their owners and the next hand starts shortly.
+func (g *Game) abortHand() {
+	refund := g.phase == proto.PhaseDealing || g.phase == proto.PhasePlaying || g.phase == proto.PhaseDealer
+	for _, p := range g.seats {
+		if p == nil {
+			continue
+		}
+		hands := p.hands
+		p.hands = nil // first, so a second crash can't refund twice
+		if refund && p.inHand {
+			var back int64
+			for _, h := range hands {
+				back += h.Bet
+			}
+			if back > 0 {
+				g.store.Refund(p.user, back)
+			}
+		}
+	}
+	g.dealer = nil
+	g.sayQueue, g.story = nil, nil
+	g.eventAll(proto.Event{Kind: "info", Text: "The dealer fumbled the cards. That hand is off - all bets returned."})
+	_ = g.store.Save()
+	g.after(2*time.Second, g.endRound)
+	for _, p := range g.seats {
+		if p != nil && p.conn != nil {
+			g.sendProfile(p)
+		}
+	}
+	g.broadcast()
 }

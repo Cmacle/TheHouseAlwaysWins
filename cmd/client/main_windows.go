@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/client"
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/selfupdate"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/win32"
 )
 
 func main() {
+	selfupdate.Cleanup()
 	dir := "."
 	if exe, err := os.Executable(); err == nil {
 		dir = filepath.Dir(exe)

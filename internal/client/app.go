@@ -172,6 +172,7 @@ type App struct {
 	L           tableLayout
 	tableBG     *image.RGBA
 	kbAsk       bool // a text field was tapped: show the keyboard (again)
+	upd         updater
 	focusRect   image.Rectangle
 	sayLog      []logEntry // what the dealer said recently, newest last
 	logID       int        // id of the last line added to sayLog
@@ -250,7 +251,8 @@ func (a *App) Frame(in Input) *image.RGBA {
 		a.P.ToggleFullscreen()
 	}
 	a.focusOrder = a.focusOrder[:0]
-	a.blocked = false
+	upd := a.updateOpen()
+	a.blocked = upd
 	switch a.screen {
 	case scrLogin:
 		a.drawLogin()
@@ -260,6 +262,9 @@ func (a *App) Frame(in Input) *image.RGBA {
 	a.blocked = false
 	a.handleTab()
 	a.drawToasts()
+	if upd {
+		a.drawUpdate() // on top of everything
+	}
 	if ti, ok := a.P.(TextInputHost); ok {
 		on := a.focusID != "" && a.screen == scrLogin
 		// a tap on a text box asks again, in case the keyboard was closed
@@ -450,7 +455,9 @@ func decode(m proto.Msg, v any) bool { return json.Unmarshal(m.Data, v) == nil }
 func (a *App) handleMsg(m proto.Msg) {
 	switch m.Type {
 	case proto.SServerInfo:
-		decode(m, &a.serverInfo)
+		if decode(m, &a.serverInfo) {
+			a.checkForUpdate()
+		}
 	case proto.SAuthOK:
 		var ok proto.AuthOK
 		if !decode(m, &ok) {

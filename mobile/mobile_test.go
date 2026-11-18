@@ -11,6 +11,7 @@ func (f *fakeHost) PickImage()                {}
 func (f *fakeHost) ClipboardText() string     { return "" }
 func (f *fakeHost) ShowKeyboard(show bool)    { f.kb = append(f.kb, show) }
 func (f *fakeHost) Quit()                     {}
+func (f *fakeHost) InstallUpdate(string)      {}
 
 func TestBridge(t *testing.T) {
 	dir := t.TempDir()

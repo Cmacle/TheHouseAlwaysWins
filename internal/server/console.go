@@ -44,6 +44,9 @@ func (s *Server) RunConsole(r io.Reader, w io.Writer, reload func() error, quit 
   say <message>               message everyone at the table
   reload                      reload server.json (applies at the next hand; port changes need a restart)
   save                        write accounts to disk now
+  backup                      make a backup now
+  backups                     list backups (newest first)
+  restore <backup>            put a backup back (backs up first; restart after)
   quit                        save and shut down
 `)
 		case "players", "who":
@@ -130,6 +133,7 @@ func (s *Server) RunConsole(r io.Reader, w io.Writer, reload func() error, quit 
 				fmt.Fprintln(w, "  player is mid-hand, try again in a moment")
 				continue
 			}
+			s.backup("before-resetstats")
 			fmt.Fprintln(w, " ", okText(s.Store.ResetStats(args[0], s.cfg().RefillAmount)))
 			s.Game.Broadcast()
 			s.Game.notify.LeaderboardChanged()
@@ -142,6 +146,7 @@ func (s *Server) RunConsole(r io.Reader, w io.Writer, reload func() error, quit 
 			if !need(1, "delete <user>") {
 				continue
 			}
+			s.backup("before-delete")
 			s.Game.Kick(args[0], "Your account was deleted.")
 			fmt.Fprintln(w, " ", okText(s.Store.Delete(args[0])))
 			s.Game.notify.LeaderboardChanged()
@@ -164,6 +169,37 @@ func (s *Server) RunConsole(r io.Reader, w io.Writer, reload func() error, quit 
 			} else {
 				fmt.Fprintln(w, "  saved")
 			}
+		case "backup":
+			if name, err := s.Store.Backup("manual", s.configPath); err != nil {
+				fmt.Fprintln(w, "  backup failed:", err)
+			} else {
+				s.Store.PruneBackups(s.cfg().BackupKeep, s.cfg().BackupDays)
+				fmt.Fprintln(w, "  saved", name)
+			}
+		case "backups":
+			list := s.Store.Backups()
+			if len(list) == 0 {
+				fmt.Fprintln(w, "  no backups yet")
+			}
+			for i, n := range list {
+				if i == 30 {
+					fmt.Fprintf(w, "  ... and %d older\n", len(list)-30)
+					break
+				}
+				fmt.Fprintln(w, " ", n)
+			}
+			fmt.Fprintln(w, "  folder:", s.Store.backupDir())
+		case "restore":
+			if !need(1, "restore <backup file name>   (see 'backups')") {
+				continue
+			}
+			if err := s.Store.Restore(args[0], s.configPath); err != nil {
+				fmt.Fprintln(w, "  restore failed:", err)
+				continue
+			}
+			s.Log.Printf("restored backup %s; saving is paused until restart", args[0])
+			fmt.Fprintln(w, "  restored. Saving is paused so nothing overwrites it: type 'quit' and start the server again to load it.")
+			fmt.Fprintln(w, "  (the backup's config is in server.json.restored if you want it)")
 		case "quit", "exit", "stop":
 			quit()
 			return

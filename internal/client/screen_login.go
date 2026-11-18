@@ -35,7 +35,7 @@ func (a *App) serverAddr() (string, bool) {
 }
 
 // Version is shown on the login screen.
-var Version = "1.0.0"
+var Version = "dev"
 
 func (a *App) drawLogin() {
 	a.drawTableBG()

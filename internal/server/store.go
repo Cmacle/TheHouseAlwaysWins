@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -258,6 +257,10 @@ type Store struct {
 	topRich  string
 	topNet   string
 	unlocks  []Unlock
+	changes  int  // successful saves, to know when a backup is due
+	backedUp int  // changes at the last backup
+	frozen   bool // a backup was restored: stop saving until restart
+	logf     func(string, ...any)
 }
 
 var usernameRe = regexp.MustCompile(`^[A-Za-z0-9_]{3,16}$`)
@@ -267,27 +270,43 @@ func OpenStore(dir string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(dir, "avatars"), 0o755); err != nil {
 		return nil, err
 	}
-	s := &Store{dir: dir, accounts: map[string]*Account{}, online: map[string]bool{}}
-	b, err := os.ReadFile(filepath.Join(dir, "accounts.json"))
-	if err == nil {
-		var list []*Account
-		if err := json.Unmarshal(b, &list); err != nil {
-			return nil, fmt.Errorf("accounts.json: %w", err)
-		}
-		for _, a := range list {
-			s.accounts[strings.ToLower(a.Username)] = a
-		}
-		for _, a := range s.accounts {
-			s.touched(a) // backfill derived stats and unlocks for older saves
-		}
-		s.unlocks = nil
-	} else if !errors.Is(err, os.ErrNotExist) {
+	return OpenStoreLog(dir, func(string, ...any) {})
+}
+
+// OpenStoreLog is OpenStore with a logger for recovery messages. A damaged
+// accounts.json or house.json is replaced by the previous save's copy or the
+// newest good backup.
+func OpenStoreLog(dir string, logf func(string, ...any)) (*Store, error) {
+	if err := os.MkdirAll(filepath.Join(dir, "avatars"), 0o755); err != nil {
 		return nil, err
 	}
-	if b, err := os.ReadFile(filepath.Join(dir, "house.json")); err == nil {
-		_ = json.Unmarshal(b, &s.house)
-		s.house.Tier = banter.Tier(s.house.Net, s.house.Tier)
+	s := &Store{dir: dir, accounts: map[string]*Account{}, online: map[string]bool{}, logf: logf}
+	var list []*Account
+	if _, err := loadWithFallback(dir, "accounts.json", func(b []byte) error {
+		list = nil
+		return json.Unmarshal(b, &list)
+	}, logf); err != nil {
+		return nil, err
 	}
+	for _, a := range list {
+		if a != nil && a.Username != "" {
+			s.accounts[strings.ToLower(a.Username)] = a
+		}
+	}
+	for _, a := range s.accounts {
+		s.touched(a) // backfill derived stats and unlocks for older saves
+	}
+	s.unlocks = nil
+	var house proto.HouseStats
+	if found, err := loadWithFallback(dir, "house.json", func(b []byte) error {
+		house = proto.HouseStats{}
+		return json.Unmarshal(b, &house)
+	}, logf); err != nil {
+		logf("WARNING: %v; starting the house's stats fresh", err)
+	} else if found {
+		s.house = house
+	}
+	s.house.Tier = banter.Tier(s.house.Net, s.house.Tier)
 	return s, nil
 }
 
@@ -368,7 +387,7 @@ func (s *Store) Worst() string {
 // Save writes accounts to disk if anything changed.
 func (s *Store) Save() error {
 	s.mu.Lock()
-	if !s.dirty {
+	if !s.dirty || s.frozen {
 		s.mu.Unlock()
 		return nil
 	}
@@ -380,23 +399,25 @@ func (s *Store) Save() error {
 	s.dirty = false
 	house := s.house
 	s.mu.Unlock()
-	if hb, err := json.MarshalIndent(house, "", "  "); err == nil {
-		_ = writeAtomic(filepath.Join(s.dir, "house.json"), hb)
-	}
 	sort.Slice(list, func(i, j int) bool { return strings.ToLower(list[i].Username) < strings.ToLower(list[j].Username) })
 	b, err := json.MarshalIndent(list, "", "  ")
+	if err == nil {
+		err = writeFileSafe(filepath.Join(s.dir, "accounts.json"), b, true)
+	}
+	if err == nil {
+		var hb []byte
+		if hb, err = json.MarshalIndent(house, "", "  "); err == nil {
+			err = writeFileSafe(filepath.Join(s.dir, "house.json"), hb, true)
+		}
+	}
+	s.mu.Lock()
 	if err != nil {
-		return err
+		s.dirty = true // try again next time instead of forgetting the changes
+	} else {
+		s.changes++
 	}
-	return writeAtomic(filepath.Join(s.dir, "accounts.json"), b)
-}
-
-func writeAtomic(path string, b []byte) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	s.mu.Unlock()
+	return err
 }
 
 func hashPassword(pw string, salt []byte) string {
@@ -447,7 +468,7 @@ func (s *Store) Register(username, password string, avatar []byte, startBalance 
 		Created: time.Now(), LastSeen: time.Now(),
 	}
 	if avatarPNG != nil {
-		if err := os.WriteFile(s.avatarPath(key), avatarPNG, 0o644); err == nil {
+		if err := writeFileSafe(s.avatarPath(key), avatarPNG, false); err == nil {
 			a.AvatarVersion = avatarVersion(avatarPNG)
 		}
 	}
@@ -857,7 +878,7 @@ func (s *Store) SetAvatar(username string, data []byte) (string, error) {
 	if !ok {
 		return "", errors.New("no such account")
 	}
-	if err := os.WriteFile(s.avatarPath(key), png, 0o644); err != nil {
+	if err := writeFileSafe(s.avatarPath(key), png, false); err != nil {
 		return "", err
 	}
 	a.AvatarVersion = avatarVersion(png)
@@ -903,4 +924,14 @@ func (s *Store) WinStreak(username string) int {
 		return a.WinStreak
 	}
 	return 0
+}
+
+// Refund gives back chips taken for a wager that never settled.
+func (s *Store) Refund(username string, amount int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.accounts[strings.ToLower(username)]; ok && amount > 0 {
+		a.Balance += amount
+		s.dirty = true
+	}
 }

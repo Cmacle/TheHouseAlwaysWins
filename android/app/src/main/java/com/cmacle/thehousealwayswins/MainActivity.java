@@ -10,6 +10,7 @@ import android.media.SoundPool;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
@@ -109,6 +110,11 @@ public class MainActivity extends Activity implements Host {
     protected void onResume() {
         super.onResume();
         hideSystemUi();
+        if (pendingUpdate != null && (Build.VERSION.SDK_INT < 26 || getPackageManager().canRequestPackageInstalls())) {
+            String p = pendingUpdate;
+            pendingUpdate = null;
+            installUpdate(p);
+        }
         if (view != null) view.resume();
     }
 
@@ -175,6 +181,32 @@ public class MainActivity extends Activity implements Host {
     @Override
     public void quit() {
         runOnUiThread(this::finish);
+    }
+
+    private String pendingUpdate; // waiting for "install unknown apps" permission
+
+    @Override
+    public void installUpdate(final String path) {
+        runOnUiThread(() -> {
+            try {
+                if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+                    // Android asks once per app: send them to the switch
+                    pendingUpdate = path;
+                    Toast.makeText(this, "Allow this app to install updates, then come back.", Toast.LENGTH_LONG).show();
+                    startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:" + getPackageName())));
+                    return;
+                }
+                Uri uri = Uri.parse("content://" + getPackageName() + ".update/update.apk");
+                Intent i = new Intent(Intent.ACTION_VIEW);
+                i.setDataAndType(uri, "application/vnd.android.package-archive");
+                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+            } catch (Exception e) {
+                Log.e("house", "install update", e);
+                Toast.makeText(this, "Couldn't open the installer: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     @Override

@@ -7,6 +7,8 @@ package mobile
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -20,6 +22,8 @@ type Host interface {
 	ClipboardText() string
 	ShowKeyboard(show bool)
 	Quit()
+	// InstallUpdate opens the system installer for a downloaded APK.
+	InstallUpdate(path string)
 }
 
 // Key codes for Key().
@@ -34,16 +38,17 @@ const (
 )
 
 var (
-	mu       sync.Mutex
-	app      *client.App
-	assets   *client.Assets
-	host     Host
-	in       client.Input
-	hideNext bool
-	dragY    float64
-	dragLast float64
-	dragging bool
-	pending  []string // pictures picked while a frame was running
+	updateDir string
+	mu        sync.Mutex
+	app       *client.App
+	assets    *client.Assets
+	host      Host
+	in        client.Input
+	hideNext  bool
+	dragY     float64
+	dragLast  float64
+	dragging  bool
+	pending   []string // pictures picked while a frame was running
 )
 
 type platform struct{}
@@ -78,6 +83,19 @@ func (platform) SetTextInput(on bool) {
 }
 func (platform) IsTouch() bool { return true }
 
+func (platform) UpdateAsset() string { return "TheHouseAlwaysWins.apk" }
+func (platform) UpdateDir() string   { return updateDir }
+func (platform) InstallUpdate(path string) error {
+	// the installer reads it through the app's update provider, which only
+	// serves update.apk
+	final := filepath.Join(updateDir, "update.apk")
+	if err := os.Rename(path, final); err != nil {
+		return err
+	}
+	go host.InstallUpdate(final)
+	return nil
+}
+
 // Start loads settings from configDir and art from assetsDir (defaults are
 // exported there so they can be replaced) and creates the game.
 func Start(configDir, assetsDir string, h Host) error {
@@ -90,6 +108,7 @@ func Start(configDir, assetsDir string, h Host) error {
 	if app != nil {
 		return nil // activity recreated: keep the running game
 	}
+	updateDir = filepath.Join(configDir, "updates")
 	cfg := client.LoadConfig(configDir)
 	if assetsDir != "" {
 		cfg.AssetsDir = assetsDir

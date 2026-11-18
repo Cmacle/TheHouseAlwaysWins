@@ -7,6 +7,8 @@ optional web page and Discord.
 
 - **Headless server** (`HouseServer.exe`, or a Linux binary) built to run 24/7.
   With nobody connected the table stops and the process just waits.
+- **Linux client** (`TheHouseAlwaysWins-linux-amd64` / `-arm64`): the same game
+  on Linux desktops, as a single file with nothing to install.
 - **Android app** (`TheHouseAlwaysWins.apk`): the same game on your phone,
   held sideways or upright, with touch controls and the on-screen keyboard.
 - **Game client** (`TheHouseAlwaysWins.exe`): pixel art that fills the window
@@ -14,6 +16,10 @@ optional web page and Discord.
   switches to a vertical layout when the window is taller than it is wide, and
   scales smoothly while staying sharp. Every image, sound and colour can be replaced (see
   [Replacing the art](#replacing-the-art)).
+- **Auto-update:** when you connect to a server running a newer version, the
+  game offers to update itself (Windows, Linux and Android).
+- **Backups:** the server backs up its data and config automatically and
+  survives crashes and damaged files.
 - **Accounts** with a username, password and profile picture. Pictures are
   pixelated to 32x32.
 - **10+ players** at one table (up to 16). Anyone who connects mid-hand is dealt
@@ -71,6 +77,16 @@ on your router. Leave `listen_address` as `0.0.0.0`.
 
 The client creates `client.json` and an `assets` folder next to itself on first
 run.
+
+**Linux:** download `TheHouseAlwaysWins-linux-amd64` (or `-arm64` for ARM
+machines like a Raspberry Pi), make it runnable with
+`chmod +x TheHouseAlwaysWins-linux-amd64`, and run it. It's one file with
+nothing to install. It runs on X11 desktops, and on Wayland through XWayland
+(on by default in GNOME and KDE). Settings go next to the file, or in
+`~/.config/thehousealwayswins` if that folder isn't writable. Sound plays
+through `pw-play`, `paplay` or `aplay`, the picture picker uses `zenity` or
+`kdialog`, and pasting uses `wl-paste`, `xclip` or `xsel`. Most desktops have
+these already; without them the game still runs, just without that feature.
 
 **Android:** download `TheHouseAlwaysWins.apk` on your phone and open it. Your
 browser or file manager will ask to allow installing apps: say yes for that
@@ -292,6 +308,9 @@ command.
 | `max_players` | 10 | Seats at the table (1–16) |
 | `max_spectators` | 20 | People allowed to wait on the rail when seats are full |
 | `allow_registration` | true | Let new players create accounts |
+| `offer_client_updates` | true | Offer players with an older game the update when they connect |
+| `backup_interval_minutes` | 60 | How often to back up while things are changing (0 = only at start and stop) |
+| `backup_keep` / `backup_days` | 48 / 30 | Keep the newest 48 backups, plus one a day for 30 days |
 | `server_password` | "" | If set, new players must enter it to create an account (existing accounts log in normally) |
 | `refill_amount` | 1000 | Starting chips, and the daily top-up level |
 | `refill_time` | `00:00` | When the daily refill happens (24h) |
@@ -382,6 +401,45 @@ The server uses almost no CPU when the table is empty.
   install it as a service.
 - **Linux:** see `deploy/thehousealwayswins.service` for a systemd unit.
 
+### Updates
+
+When a player connects, the server tells them its version. If their game is
+older, they're offered the update: **UPDATE NOW** downloads it, checks it and
+installs it.
+
+- **Windows and Linux:** the game replaces itself and restarts, and the saved
+  login carries over. The folder the game is in has to be writable.
+- **Android:** the system installer opens. The first time, Android asks you to
+  allow the app to install updates. Turn that on and come back.
+
+Updates always come from this project's GitHub releases, never from the server
+itself, so a server can't push anything else to players. Every download is
+checked against the release's `SHA256SUMS.txt` and thrown away if it doesn't
+match. To update everyone, update the server: players are offered the matching
+version the next time they connect. Set `offer_client_updates` to `false` to
+turn the offers off.
+
+### Backups and crash safety
+
+- **Saves:** data is saved every 5 seconds. Each save is written to a temporary
+  file, flushed to disk and then swapped in, so a crash or power cut can't
+  leave a half-written file. The previous save is kept as `accounts.json.bak`.
+- **Backups:** zip files in `data/backups` hold the accounts, house stats,
+  avatars and `server.json`. One is made when the server starts, every
+  `backup_interval_minutes` (60) if anything changed, before `delete` and
+  `resetstats`, and at shutdown. The newest `backup_keep` (48) are kept, plus
+  one per day for `backup_days` (30) days.
+- **Damaged files:** if `accounts.json` or `house.json` won't load, the server
+  sets the bad file aside (`.corrupt-<time>`), loads the previous save or the
+  newest good backup, and says so in the log.
+- **Config typos:** if `server.json` won't load, it runs with the last config
+  that worked (`server.json.lastgood`) and tells you what's wrong.
+- **Crashes:** if something goes wrong mid-hand, the crash is caught and
+  logged, the hand is called off with every bet returned, and the table keeps
+  going. The server doesn't go down.
+- **Restoring:** type `backups` to list them and `restore <name>` to put one
+  back. The current data is backed up first, then restart the server.
+
 ### Server console commands
 
 Type these into the server window:
@@ -392,6 +450,7 @@ give <user> <amount>        add/remove chips without touching lifetime net
 refill <user|all>           immediate top-up (counts against net)
 resetstats <user> | setpassword <user> <pass> | delete <user> | kick <user>
 say <message> | reload | save | quit
+backup | backups | restore <backup>
 ```
 
 ## Client
@@ -446,6 +505,7 @@ go run ./tools/genassets               # regenerate the default pixel art + soun
 GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui" -o TheHouseAlwaysWins.exe ./cmd/client
 GOOS=windows GOARCH=amd64 go build -o HouseServer.exe ./cmd/server
 go build -o house-server ./cmd/server  # Linux/macOS server
+CGO_ENABLED=0 go build -o TheHouseAlwaysWins ./cmd/client  # Linux client (static)
 ```
 
 On Windows you can just run `scripts\build.bat`.
@@ -496,6 +556,8 @@ internal/server     game loop, accounts, refill, console, web leaderboard
 internal/discord    Discord REST + gateway (built-in websocket client)
 internal/client     renderer, UI, screens (platform independent)
 internal/win32      Windows window/input/sound layer (no cgo)
+internal/x11        the Linux window: an X11 client written in Go (no C libraries)
+internal/selfupdate swapping the desktop client for a new version
 mobile              bridge for the Android app (gomobile bind)
 android             the Android app (Java): drawing, touch, keyboard, sound
 tools/genassets     generates the default pixel art and sounds
@@ -503,7 +565,7 @@ tools/genassets     generates the default pixel art and sounds
 
 ## Notes
 
-- The game runs on Windows and Android. Only the platform layers
+- The game runs on Windows, Linux and Android. Only the platform layers
   (`internal/win32`, `mobile` + `android`) are OS-specific.
 - Insurance and even money aren't offered. The dealer peeks with an ace or a
   ten showing, so you never lose a double or split to a dealer blackjack.

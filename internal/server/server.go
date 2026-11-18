@@ -27,7 +27,7 @@ func New(cfg *Config, baseDir string, lg *log.Logger) (*Server, error) {
 	if !filepath.IsAbs(cfg.DataDir) {
 		cfg.DataDir = filepath.Join(baseDir, cfg.DataDir)
 	}
-	store, err := OpenStore(cfg.DataDir)
+	store, err := OpenStoreLog(cfg.DataDir, lg.Printf)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func Main(configPath string, interactive bool) error {
 		return err
 	}
 	baseDir := filepath.Dir(abs)
-	cfg, created, err := LoadConfig(abs)
+	cfg, created, cfgWarn, err := LoadConfigOrLastGood(abs)
 	if err != nil {
 		return err
 	}
@@ -111,6 +111,9 @@ func Main(configPath string, interactive bool) error {
 	} else {
 		lg.Printf("config: %s", abs)
 	}
+	if cfgWarn != "" {
+		lg.Print(cfgWarn)
+	}
 	if len(addedKeys) > 0 {
 		lg.Printf("added new settings to %s with default values: %s", filepath.Base(abs), strings.Join(addedKeys, ", "))
 	}
@@ -119,6 +122,8 @@ func Main(configPath string, interactive bool) error {
 	if err != nil {
 		return err
 	}
+	s.configPath = abs
+	s.backup("startup")
 	if err := s.Listen(); err != nil {
 		return err
 	}
@@ -131,18 +136,27 @@ func Main(configPath string, interactive bool) error {
 	lg.Printf("refill: below %d tops up daily at %s (%s); next at %s", cfg.RefillAmount, cfg.RefillTime, cfg.loc, cfg.NextRefill(time.Now()).Format("Mon Jan 2 15:04 MST"))
 	lg.Printf("table: %d seats, betting %s, play %s, other hands hidden: %v", cfg.MaxPlayers, cfg.BettingMode, cfg.PlayMode, cfg.HideOtherHands)
 
-	// periodic save
+	// save every few seconds; back up every backup_interval_minutes
 	go func() {
 		t := time.NewTicker(5 * time.Second)
 		defer t.Stop()
+		lastBackup := time.Now()
 		for {
 			select {
 			case <-stop:
 				return
 			case <-t.C:
-				if err := s.Store.Save(); err != nil {
-					lg.Printf("save failed: %v", err)
-				}
+				guard(lg.Printf, "saving", nil, func() {
+					if err := s.Store.Save(); err != nil {
+						lg.Printf("save failed (will retry): %v", err)
+					}
+					if m := s.cfg().BackupIntervalMinutes; m > 0 && time.Since(lastBackup) >= time.Duration(m)*time.Minute {
+						lastBackup = time.Now()
+						if s.Store.changedSinceBackup() {
+							s.backup("auto")
+						}
+					}
+				})
 			}
 		}
 	}()
@@ -176,6 +190,21 @@ func Main(configPath string, interactive bool) error {
 	if err := s.Store.Save(); err != nil {
 		lg.Printf("save failed: %v", err)
 	}
+	s.backup("shutdown")
 	lg.Printf("bye")
 	return nil
+}
+
+// backup makes a backup and prunes old ones, logging what happened.
+func (s *Server) backup(label string) {
+	c := s.cfg()
+	name, err := s.Store.Backup(label, s.configPath)
+	if err != nil {
+		s.Log.Printf("backup failed: %v", err)
+		return
+	}
+	removed := s.Store.PruneBackups(c.BackupKeep, c.BackupDays)
+	if label != "auto" || removed > 0 {
+		s.Log.Printf("backup saved: %s", name)
+	}
 }
