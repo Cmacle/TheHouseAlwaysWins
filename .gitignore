@@ -1,4 +1,5 @@
 # build output
+*.syso
 /dist/
 *.exe
 /house-server
