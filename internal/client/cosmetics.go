@@ -37,7 +37,7 @@ func (a *App) frameSprite(id string) *image.RGBA {
 	if !ok || it.Kind != cosmetics.Frame {
 		it, _ = cosmetics.Get("frame_wood")
 	}
-	s := a.A.Theme.FrameSize
+	s := a.frameCell()
 	r := image.Rect(it.Sprite*s, 0, it.Sprite*s+s, s)
 	if !r.In(a.A.Frames.Rect) {
 		return nil
@@ -69,31 +69,84 @@ func hsv(h float64) color.RGBA {
 	return color.RGBA{255, 0, q, 255}
 }
 
-// drawFrame draws an avatar frame around the 32x32 box at (x, y).
+// frameCell is the size of one frame in frames.png (square cells in a row).
+func (a *App) frameCell() int {
+	if a.A.Frames != nil && a.A.Frames.Rect.Dy() > 0 {
+		return a.A.Frames.Rect.Dy()
+	}
+	return a.A.Theme.FrameSize
+}
+
+// drawFrame draws an avatar frame around the 32x32 box at (x, y). The rarest
+// frames move: flames flicker, gems sparkle, the rainbow runs round and a
+// gleam sweeps over the finish line and the vault.
 func (a *App) drawFrame(id string, x, y int) {
-	s := a.A.Theme.FrameSize
+	s := a.frameCell()
 	pad := (s - 32) / 2
 	spr := a.frameSprite(id)
 	if spr == nil {
 		strokeRect(a.fb, image.Rect(x-2, y-2, x+34, y+34), a.A.C("shadow"))
 		return
 	}
-	blit(a.fb, spr, x-pad, y-pad)
-	if id == "frame_rainbow" {
-		// animate: recolour the visible ring by perimeter angle
-		off := float64(a.frame) / 90
-		for yy := 0; yy < s; yy++ {
-			for xx := 0; xx < s; xx++ {
-				if spr.Pix[spr.PixOffset(spr.Rect.Min.X+xx, spr.Rect.Min.Y+yy)+3] == 0 {
-					continue
-				}
-				ang := (math.Atan2(float64(yy)-float64(s)/2, float64(xx)-float64(s)/2) + math.Pi) / (2 * math.Pi)
-				c := hsv(ang + off)
-				px, py := x-pad+xx, y-pad+yy
-				if image.Pt(px, py).In(a.fb.Rect) {
-					o := a.fb.PixOffset(px, py)
-					a.fb.Pix[o], a.fb.Pix[o+1], a.fb.Pix[o+2], a.fb.Pix[o+3] = c.R, c.G, c.B, 255
-				}
+	var anim func(xx, yy int, c color.RGBA) (color.RGBA, bool)
+	t := float64(a.frame)
+	switch id {
+	case "frame_rainbow":
+		off := t / 90
+		anim = func(xx, yy int, c color.RGBA) (color.RGBA, bool) {
+			ang := (math.Atan2(float64(yy)-float64(s)/2, float64(xx)-float64(s)/2) + math.Pi) / (2 * math.Pi)
+			return hsv(ang + off), true
+		}
+	case "frame_fire":
+		anim = func(xx, yy int, c color.RGBA) (color.RGBA, bool) {
+			d := max(pad-xx, xx-(pad+31), pad-yy, yy-(pad+31), 0)
+			if d <= 3 {
+				return c, true
+			}
+			// flame tips come and go
+			n := math.Sin(float64(xx)*1.7+t*0.35) + math.Sin(float64(yy)*1.3-t*0.27)
+			if n < -0.9+float64(d-3)*0.35 {
+				return c, false
+			}
+			return c, true
+		}
+	case "frame_diamond", "frame_marathon", "frame_vault":
+		period := 140.0
+		if id == "frame_diamond" {
+			period = 90
+		}
+		anim = func(xx, yy int, c color.RGBA) (color.RGBA, bool) {
+			g := math.Mod(float64(xx+yy)-t*1.2, period)
+			if g < 0 {
+				g += period
+			}
+			if g < 3 {
+				return color.RGBA{uint8((int(c.R) + 255*2) / 3), uint8((int(c.G) + 255*2) / 3), uint8((int(c.B) + 255*2) / 3), 255}, true
+			}
+			if id == "frame_diamond" && (xx*7+yy*13+int(t/8))%97 == 0 {
+				return color.RGBA{255, 255, 255, 255}, true // a sparkle
+			}
+			return c, true
+		}
+	}
+	if anim == nil {
+		blit(a.fb, spr, x-pad, y-pad)
+		return
+	}
+	for yy := 0; yy < s; yy++ {
+		for xx := 0; xx < s; xx++ {
+			o := spr.PixOffset(spr.Rect.Min.X+xx, spr.Rect.Min.Y+yy)
+			if spr.Pix[o+3] == 0 {
+				continue
+			}
+			c, ok := anim(xx, yy, color.RGBA{spr.Pix[o], spr.Pix[o+1], spr.Pix[o+2], spr.Pix[o+3]})
+			if !ok {
+				continue
+			}
+			px, py := x-pad+xx, y-pad+yy
+			if image.Pt(px, py).In(a.fb.Rect) {
+				q := a.fb.PixOffset(px, py)
+				a.fb.Pix[q], a.fb.Pix[q+1], a.fb.Pix[q+2], a.fb.Pix[q+3] = c.R, c.G, c.B, 255
 			}
 		}
 	}
@@ -174,7 +227,7 @@ func statsOf(p proto.Profile) (cosmetics.Stats, map[string]bool) {
 		Wagered: p.Wagered, Peak: p.PeakBalance, Net: p.Net, LowestNet: p.LowestNet, BiggestWin: p.BiggestWin,
 		Hands: p.HandsPlayed, Blackjacks: p.Blackjacks, BestWinStreak: p.BestWinStreak, WorstLoseStreak: p.WorstLoseStreak,
 		Busts: p.Busts, DoublesWon: p.DoublesWon, Splits: p.Splits, Refills: p.RefillCount,
-		RankRich: p.RankRich, RankNet: p.RankNet, RankHands: p.RankHands, RankBet: p.RankBet,
+		RankRich: p.RankRich, RankNet: p.RankNet, RankHands: p.RankHands, RankBet: p.RankBet, RankPeak: p.RankPeak,
 		PkHands: p.PokerHands, PkFlush: p.PokerFlushes, PkFullHouse: p.PokerFullHouses, PkQuads: p.PokerQuads,
 		PkStrFlush: p.PokerStrFlushes, PkRoyal: p.PokerRoyals, PkBluffs: p.PokerBluffs, PkBeatDale: p.PokerBeatDale,
 		PkBigPot: p.PokerBiggestPot,
@@ -321,7 +374,8 @@ func (a *App) drawWardrobe() {
 					a.drawFrame(it.ID, ax, ay)
 					blit(a.fb, a.avatarImg(a.username, a.profile.AvatarVersion, 32), ax, ay)
 				} else if spr := a.frameSprite(it.ID); spr != nil {
-					silhouette(a.fb, spr, ax-2, ay-2, color.RGBA{70, 62, 58, 255})
+					pad := (a.frameCell() - 32) / 2
+					silhouette(a.fb, spr, ax-pad, ay-pad, color.RGBA{70, 62, 58, 255})
 				}
 			}
 			if !unlocked {
@@ -493,6 +547,8 @@ func recordUnit(metric string, v int64) string {
 		return commas(v) + " hands"
 	case cosmetics.MRankBet:
 		return commas(v) + " chip bet"
+	case cosmetics.MRankPeak:
+		return commas(v) + " chips at once"
 	}
 	return commas(v)
 }
@@ -500,7 +556,7 @@ func recordUnit(metric string, v int64) string {
 // recordLine says who holds a record-based item ("Held by Lou: 1,204
 // hands"). ok is false for other items.
 func (a *App) recordLine(it *cosmetics.Item) (string, bool) {
-	if it.Metric != cosmetics.MRankHands && it.Metric != cosmetics.MRankBet {
+	if it.Metric != cosmetics.MRankHands && it.Metric != cosmetics.MRankBet && it.Metric != cosmetics.MRankPeak {
 		return "", false
 	}
 	for _, r := range a.records {
@@ -525,6 +581,8 @@ func (a *App) recordMine(it *cosmetics.Item) (string, bool) {
 		return "You: " + recordUnit(it.Metric, int64(a.profile.HandsPlayed+a.profile.PokerHands)), true
 	case cosmetics.MRankBet:
 		return "You: " + recordUnit(it.Metric, a.profile.BiggestBet), true
+	case cosmetics.MRankPeak:
+		return "You: " + recordUnit(it.Metric, a.profile.PeakBalance), true
 	}
 	return "", false
 }

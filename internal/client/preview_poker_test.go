@@ -221,3 +221,34 @@ func TestPreviewPokerActions(t *testing.T) {
 	frame()
 	save(t, dir, "48_poker_actions.png", a.fb)
 }
+
+func TestPreviewPokerShowdownReveal(t *testing.T) {
+	a, frame, dir := pokerPreviewApp(t)
+	a.onJoined(proto.Joined{ID: "holdem", Game: proto.GameHoldem, Name: "Hold'em"})
+	base := pokerPreviewState()
+	base.Actions, base.Active, base.Deadline = nil, -1, 0
+	base.Board = append(base.Board, card(9, 0))
+	a.onPoker(base)
+	for k := range a.cardSeen {
+		a.cardSeen[k] = time.Now().Add(-time.Hour)
+	}
+	s := pokerPreviewState()
+	s.Phase, s.Actions, s.Active, s.Deadline = "shows", nil, -1, 0
+	s.Board = base.Board
+	s.Message = "Deb shows..."
+	s.Reveal = &proto.PokerReveal{Hand: true, Seat: 4, Count: 2, Until: time.Now().Add(1200 * time.Millisecond).UnixMilli()}
+	a.onPoker(s)
+	a.pkRev.start = time.Now().Add(-time.Second)
+	frame()
+	save(t, dir, "49_poker_show_wait.png", a.fb)
+	s2 := *s
+	s2.Seats = append([]proto.PokerSeat{}, s.Seats...)
+	s2.Seats[4].Cards = []bj.Card{card(7, 0), card(7, 2)}
+	s2.Seats[4].HandName = "Three of a kind, Sevens"
+	s2.Message = "Deb: Three of a kind, Sevens"
+	s2.Reveal = &proto.PokerReveal{Hand: true, Seat: 4, Count: 2, Until: s.Reveal.Until, Shown: true}
+	a.onPoker(&s2)
+	a.pkRev.flippedAt = time.Now().Add(-700 * time.Millisecond)
+	frame()
+	save(t, dir, "49_poker_show_flipped.png", a.fb)
+}

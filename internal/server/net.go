@@ -213,8 +213,9 @@ func (c *conn) handle(m proto.Msg) bool {
 		var req proto.LeaderboardReq
 		_ = decode(m, &req)
 		by := SortNet
-		if req.Sort == SortBalance {
-			by = SortBalance
+		switch req.Sort {
+		case SortBalance, SortPeak:
+			by = req.Sort
 		}
 		c.send(proto.SLeaderboard, proto.Leaderboard{Sort: req.Sort, Entries: s.Store.Leaderboard(100, by), House: s.Store.House()})
 		return true

@@ -108,6 +108,7 @@ type Game struct {
 	// tops up its own players whose hand was running when it happened
 	lobbyRefills bool
 	lastBet      string
+	lastPeak     string
 	banter       *banter.Picker
 	speech       speech
 	sayQueue     []banter.Page // pages of the current line still to show
@@ -141,6 +142,7 @@ func NewGame(cfg *Config, store *Store, n Notifier, lg *log.Logger) *Game {
 		lastRich:  rich,
 		lastHands: store.TopHands(),
 		lastBet:   topBetName(store),
+		lastPeak:  topPeakName(store),
 		lastStory: time.Now(),
 		banter:    banter.NewPicker(),
 		cfg:       cfg, store: store, notify: n, log: lg,
@@ -511,6 +513,13 @@ func (g *Game) processUnlocks() {
 		if top != "" {
 			g.eventAll(proto.Event{Kind: "crown", Seat: -1, Text: fmt.Sprintf("%s set the record with a %s chip bet and takes the Chip Tower!", top, commas(amt))})
 			g.log.Printf("%s holds the biggest bet (%d)", top, amt)
+		}
+	}
+	if top, amt := g.store.TopPeak(); top != g.lastPeak {
+		g.lastPeak = top
+		if top != "" {
+			g.eventAll(proto.Event{Kind: "crown", Seat: -1, Text: fmt.Sprintf("%s has held %s chips at once, a new record, and takes the Moneybags!", top, commas(amt))})
+			g.log.Printf("%s holds the peak record (%d)", top, amt)
 		}
 	}
 	if top := g.store.TopHands(); top != g.lastHands {
@@ -1606,7 +1615,8 @@ func (g *Game) abortHand() {
 	g.broadcast()
 }
 
-func topBetName(s *Store) string { n, _ := s.TopBet(); return n }
+func topBetName(s *Store) string  { n, _ := s.TopBet(); return n }
+func topPeakName(s *Store) string { n, _ := s.TopPeak(); return n }
 
 // updateInfo refreshes the table's line in the lobby.
 func (g *Game) updateInfo() {

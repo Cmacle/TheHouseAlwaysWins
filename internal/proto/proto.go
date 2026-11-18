@@ -169,6 +169,7 @@ type Profile struct {
 	RankNet         bool     `json:"rank_net,omitempty"`   // currently #1 lifetime
 	RankHands       bool     `json:"rank_hands,omitempty"` // currently played the most hands
 	RankBet         bool     `json:"rank_bet,omitempty"`   // holds the biggest-bet record
+	RankPeak        bool     `json:"rank_peak,omitempty"`  // holds the most-chips-ever record
 	BiggestBet      int64    `json:"biggest_bet,omitempty"`
 	BeggarRolls     int64    `json:"beggar_rolls,omitempty"`
 	BeggarWins      int64    `json:"beggar_wins,omitempty"`
@@ -384,6 +385,8 @@ type PokerReveal struct {
 	Count int   `json:"count"`
 	Until int64 `json:"until"` // unix ms, server clock
 	Shown bool  `json:"shown,omitempty"`
+	Hand  bool  `json:"hand,omitempty"` // a player showing their hole cards at the showdown
+	Seat  int   `json:"seat,omitempty"` // ...this player
 }
 
 // PokerState is a poker table as seen by one client.

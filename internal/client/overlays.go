@@ -33,14 +33,19 @@ func (a *App) drawLeaderboard() {
 		return
 	}
 	// tabs
-	tabs := []struct{ sort, label string }{{"balance", "RICHEST NOW"}, {"net", "LIFETIME GAIN"}, {"house", "THE HOUSE"}}
-	tx := r.Min.X + r.Dx()/2 - 158
+	tabs := []struct{ sort, label string }{{"balance", "RICHEST NOW"}, {"net", "LIFETIME GAIN"}, {"peak", "PEAK HOLDINGS"}, {"house", "THE HOUSE"}}
+	tw := min(104, (r.Dx()-28-6*(len(tabs)-1))/len(tabs))
+	tx := r.Min.X + r.Dx()/2 - (tw*len(tabs)+6*(len(tabs)-1))/2
 	for _, t := range tabs {
 		style := styleRed
 		if a.lbSort == t.sort {
 			style = styleGold
 		}
-		if a.button("lbt_"+t.sort, image.Rect(tx, r.Min.Y+32, tx+100, r.Min.Y+48), t.label, btn{enabled: true, style: style}) && a.lbSort != t.sort {
+		label := t.label
+		if a.A.Font.Width(label)+8 > tw {
+			label = strings.Fields(label)[0]
+		}
+		if a.button("lbt_"+t.sort, image.Rect(tx, r.Min.Y+32, tx+tw, r.Min.Y+48), label, btn{enabled: true, style: style}) && a.lbSort != t.sort {
 			a.lbSort = t.sort
 			if t.sort != "house" {
 				a.leaderboard = nil
@@ -48,10 +53,10 @@ func (a *App) drawLeaderboard() {
 			a.lbScroll = 0
 			a.requestLeaderboard()
 		}
-		tx += 108
+		tx += tw + 6
 	}
 	if a.in.key(KeyLeft) || a.in.key(KeyRight) {
-		order := []string{"balance", "net", "house"}
+		order := []string{"balance", "net", "peak", "house"}
 		i := 0
 		for k, v := range order {
 			if v == a.lbSort {
@@ -78,6 +83,7 @@ func (a *App) drawLeaderboard() {
 		return
 	}
 	rich := a.lbSort == "balance"
+	peak := a.lbSort == "peak"
 	x0 := r.Min.X + 14
 	right := r.Max.X - 18
 	narrow := r.Dx() < 440
@@ -89,6 +95,9 @@ func (a *App) drawLeaderboard() {
 		{x0 + 16, "#", alignRight}, {x0 + 48, "PLAYER", alignLeft}, {right - 128, "CHIPS NOW", alignRight},
 		{right - 48, "LIFETIME", alignRight}, {right, "HANDS", alignRight},
 	}
+	if peak {
+		cols[2].label = "PEAK"
+	}
 	if narrow { // no room for hands played
 		cols[2].x, cols[3].x, cols[4].label = right-72, right, ""
 	}
@@ -96,7 +105,7 @@ func (a *App) drawLeaderboard() {
 	hy := r.Min.Y + 56
 	for i, c := range cols {
 		col := a.A.C("text_dim")
-		if (i == 2 && rich) || (i == 3 && !rich) {
+		if (i == 2 && (rich || peak)) || (i == 3 && !rich && !peak) {
 			col = a.A.C("gold")
 		}
 		a.text(c.x, hy, c.label, col, c.al)
@@ -174,10 +183,14 @@ func (a *App) drawLeaderboard() {
 			nc = a.A.C("lose")
 		}
 		bc := a.A.C("text")
-		if rich {
+		if rich || peak {
 			bc = a.A.C("gold")
 		}
-		a.text(cols[2].x, ty, commas(p.Balance), bc, alignRight)
+		if peak {
+			a.text(cols[2].x, ty, commas(p.PeakBalance), bc, alignRight)
+		} else {
+			a.text(cols[2].x, ty, commas(p.Balance), bc, alignRight)
+		}
 		a.text(cols[3].x, ty, signed(p.Net), nc, alignRight)
 		if !narrow {
 			a.text(cols[4].x, ty, fmt.Sprint(p.HandsPlayed), a.A.C("text"), alignRight)
@@ -195,6 +208,9 @@ func (a *App) drawLeaderboard() {
 	}
 	if !rich {
 		foot = "Lifetime = won minus lost, minus daily refills."
+	}
+	if peak {
+		foot = "Most chips held at once, ever. The record holder wears the Moneybags."
 	}
 	if maxScroll > 0 {
 		foot += "  Scroll for more."

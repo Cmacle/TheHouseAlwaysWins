@@ -115,8 +115,9 @@ func (s *Server) StartHTTP() {
 	mux.HandleFunc("/leaderboard.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		by := SortNet
-		if r.URL.Query().Get("sort") == SortBalance {
-			by = SortBalance
+		switch q := r.URL.Query().Get("sort"); q {
+		case SortBalance, SortPeak:
+			by = q
 		}
 		_ = json.NewEncoder(w).Encode(s.Store.Leaderboard(100, by))
 	})

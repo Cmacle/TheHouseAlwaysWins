@@ -134,9 +134,11 @@ func pokerSeat(ps *proto.PokerState, i int) *proto.PokerSeat {
 	return &ps.Seats[i]
 }
 
-// pokerSeatPos is where player seat i (1..n-1) sits.
+// pokerSeatPos is where player seat i (1..n-1) sits. Play goes up the seat
+// numbers after Dale, so seat 1 is on the right: from Dale at the top the
+// action goes clockwise, down the right side and round to the left.
 func (a *App) pokerSeatPos(i, n int) (x, cy int) {
-	return a.seatPos(i-1, n-1)
+	return a.seatPos(n-1-i, n-1)
 }
 
 func (a *App) pokerCardTop(cy int) int {
@@ -169,6 +171,9 @@ func (a *App) drawPoker() {
 		d := ps.Seats[0]
 		x0 := ScreenW/2 - (cw+14)/2
 		for i, c := range d.Cards {
+			if a.pkRevealHidesHand(0, i, x0+i*14, L.cardsY) {
+				continue
+			}
 			a.drawCardAt(c, fmt.Sprintf("ps0_%d", i), x0+i*14, L.cardsY, &fly)
 		}
 		lx := ScreenW/2 - 40
@@ -194,7 +199,7 @@ func (a *App) drawPoker() {
 			a.drawSeatBet(dpx+pileChip+14, dBottom, d.Bet, false)
 		}
 		a.pkGeo[0] = pkGeo{x: ScreenW / 2, cy: L.cardsY + ch/2, pile: image.Pt(dpx+6, dBottom-8),
-			bet: image.Pt(dpx+pileChip+20, dBottom-6), cards: image.Pt(x0, L.cardsY), labelBottom: L.cardsY + 44, labelX: lx - 30}
+			bet: image.Pt(dpx+pileChip+20, dBottom-6), cards: image.Pt(x0, L.cardsY), labelBottom: L.cardsY + ch/2 + 8}
 	}
 
 	// the pot and the board
@@ -306,6 +311,9 @@ func (a *App) drawPoker() {
 		a.pkGeo[i] = pkGeo{x: x, cy: cy, pile: image.Pt(px+pileChip/2, ar.Max.Y-8), bet: image.Pt(betX, ar.Min.Y-10),
 			cards: image.Pt(cx0, cardTop), labelBottom: cardTop - 2}
 		for ci, c := range sv.Cards {
+			if a.pkRevealHidesHand(i, ci, cx0+ci*(a.A.Theme.CardFanStep+4), cardTop) {
+				continue
+			}
 			a.drawCardAt(c, fmt.Sprintf("ps%d_%d", i, ci), cx0+ci*(a.A.Theme.CardFanStep+4), cardTop, &fly)
 		}
 		if sv.HandName != "" && len(sv.Cards) > 0 {
@@ -346,7 +354,7 @@ func (a *App) drawPoker() {
 	for _, f := range fly {
 		blit(a.fb, f.img, f.x, f.y)
 	}
-	a.drawPokerFX(image.Pt(ScreenW/2, boardY+ch/2))
+	a.drawPokerFX(ps, image.Pt(ScreenW/2, boardY+ch/2))
 
 	a.drawSpeech(st)
 	a.drawLogButton(st)
@@ -388,9 +396,7 @@ func (a *App) pokerSeatLine(ps *proto.PokerState, s proto.PokerSeat) (string, co
 	case s.Folded:
 		return "folded", a.A.C("text_dim")
 	case s.AllIn:
-		return "ALL IN", a.A.C("lose")
-	case s.Action != "":
-		return strings.ToUpper(s.Action), a.A.C("highlight")
+		return "all in", a.A.C("lose")
 	case s.Stack == 0 && !s.InHand:
 		return "out of chips", a.A.C("lose")
 	case !s.InHand && ps.Phase != "waiting" && ps.Phase != "showdown" && ps.Phase != "ready":
@@ -471,6 +477,12 @@ func (a *App) drawPokerHUD(ps *proto.PokerState) {
 	// right: phase, timer, buttons
 	rx0, rx1 := L.rx0, L.rx1
 	phase := strings.ToUpper(ps.Phase)
+	switch ps.Phase {
+	case "shows":
+		phase = "SHOWDOWN"
+	case "ready":
+		phase = "DEAL IN"
+	}
 	pc := a.A.C("gold")
 	if len(ps.Actions) > 0 {
 		phase = "YOUR MOVE"

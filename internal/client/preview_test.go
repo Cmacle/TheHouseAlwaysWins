@@ -75,8 +75,8 @@ func baseState(n int) *proto.TableState {
 		}
 		st.Seats = append(st.Seats, sv)
 	}
-	looks := [][3]string{{"crown", "frame_gold", "t_owns_house"}, {}, {"party_hat", "frame_felt", "t_regular"}, {"wizard", "frame_rainbow", "t_high_roller"},
-		{"cowboy", "frame_silver", "t_lucky"}, {}, {"tinfoil", "frame_bone", "t_down_bad"}, {"laurel", "frame_diamond", "t_goat"}, {}, {"flame", "frame_fire", "t_on_fire"}}
+	looks := [][3]string{{"crown", "frame_gold", "t_owns_house"}, {"moneybag", "frame_vault", "t_high_water"}, {"party_hat", "frame_felt", "t_regular"}, {"wizard", "frame_rainbow", "t_high_roller"},
+		{"cowboy", "frame_silver", "t_lucky"}, {"nightcap", "frame_marathon", "t_furniture"}, {"tinfoil", "frame_bone", "t_down_bad"}, {"laurel", "frame_diamond", "t_goat"}, {"", "frame_ice", "t_rookie"}, {"flame", "frame_fire", "t_on_fire"}}
 	for i := range st.Seats {
 		if i < len(looks) && st.Seats[i].Username != "" {
 			st.Seats[i].Hat, st.Seats[i].Frame, st.Seats[i].Title = looks[i][0], looks[i][1], looks[i][2]
@@ -241,12 +241,15 @@ func TestPreview(t *testing.T) {
 	for i, n := range names {
 		hats := []string{"crown", "wizard", "party_hat", "cowboy", "", "tinfoil", "flame", "", "viking", "dunce", "halo", ""}
 		titles := []string{"t_owns_house", "t_high_roller", "t_regular", "t_lucky", "t_rookie", "t_down_bad", "t_on_fire", "t_rookie", "t_shark", "t_rock_bottom", "t_legend", "t_rookie"}
-		a.leaderboard = append(a.leaderboard, proto.Profile{Username: n, Net: int64(4200 - i*900), Balance: int64(9000 - i*633), HandsPlayed: 300 - i*20, AvatarVersion: "v1", Online: i%3 == 0, Hat: hats[i], Title: titles[i]})
+		a.leaderboard = append(a.leaderboard, proto.Profile{Username: n, Net: int64(4200 - i*900), Balance: int64(9000 - i*633), HandsPlayed: 300 - i*20, PeakBalance: int64(15000 - i*1100), AvatarVersion: "v1", Online: i%3 == 0, Hat: hats[i], Title: titles[i]})
 	}
 	a.overlay = ovLeaderboard
 	a.lbSort = "balance"
 	a.lbAt = time.Now()
 	save(t, dir, "06_leaderboard.png", frame())
+	a.lbSort = "peak"
+	save(t, dir, "06p_leaderboard_peak.png", frame())
+	a.lbSort = "balance"
 	a.house = proto.HouseStats{Tier: 1, HandsDealt: 1843, PlayerHands: 7210, Net: 48210, Won: 212400, Lost: 164190, RoundsWon: 1011, RoundsLost: 702, DealerBlackjacks: 88, DealerBusts: 512, PlayerBusts: 1290, BiggestWin: 6200, BiggestLoss: 4800}
 	a.lbSort = "house"
 	a.st.HouseTier = 1

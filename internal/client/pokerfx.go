@@ -120,8 +120,25 @@ func (a *App) startActionFX(seat int, s proto.PokerSeat, added int64, hadCards i
 	a.pkFX = append(out, fx)
 }
 
-// drawPokerFX draws the running animations.
-func (a *App) drawPokerFX(muck image.Point) {
+// drawPokerFX draws the running animations, and each player's last action
+// this betting round as a badge over their seat.
+func (a *App) drawPokerFX(ps *proto.PokerState, muck image.Point) {
+	busy := map[int]bool{}
+	for _, f := range a.pkFX {
+		if f.kind != fxWin && a.now.Sub(f.start).Seconds() <= fxLabelSecs {
+			busy[f.seat] = true
+		}
+	}
+	if ps.Phase != "showdown" && ps.Phase != "shows" && ps.Phase != "ready" && ps.Phase != "waiting" {
+		for i, s := range ps.Seats {
+			g, ok := a.pkGeo[i]
+			if !ok || busy[i] || s.Action == "" || s.Action == "left" {
+				continue
+			}
+			label, col := actionLabel(a, s)
+			a.badge(label, col, g)
+		}
+	}
 	if len(a.pkFX) == 0 {
 		return
 	}
@@ -237,4 +254,36 @@ func (a *App) fxKnock(g pkGeo, t float64) {
 			fillRect(a.fb, image.Rect(px, py, px+1, py+1), c)
 		}
 	}
+}
+
+// actionLabel is how a seat's last action reads on its badge.
+func actionLabel(a *App, s proto.PokerSeat) (string, color.RGBA) {
+	act := strings.ToLower(s.Action)
+	switch {
+	case act == "fold":
+		return "FOLD", color.RGBA{190, 190, 190, 255}
+	case act == "check":
+		return "CHECK", a.A.C("text")
+	case act == "all in" || s.AllIn:
+		return "ALL IN", a.A.C("lose")
+	case act == "call":
+		return "CALL", a.A.C("highlight")
+	case strings.HasPrefix(act, "bet") || strings.HasPrefix(act, "raise"):
+		return strings.ToUpper(s.Action), a.A.C("gold")
+	}
+	return strings.ToUpper(s.Action), a.A.C("highlight")
+}
+
+// badge is the small, steady form of the action popup.
+func (a *App) badge(label string, col color.RGBA, g pkGeo) {
+	w := a.A.Font.Width(label) + 8
+	x := g.x
+	if g.labelX != 0 {
+		x = g.labelX
+	}
+	x = min(max(x, w/2+2), ScreenW-w/2-2)
+	r := image.Rect(x-w/2, g.labelBottom-12, x+w/2, g.labelBottom-1)
+	fillRect(a.fb, r, color.RGBA{0, 0, 0, 160})
+	strokeRect(a.fb, r, col)
+	a.text(x, r.Min.Y+2, label, col, alignCenter)
 }

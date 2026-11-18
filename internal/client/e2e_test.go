@@ -44,8 +44,11 @@ func startServerS(t *testing.T, port int, mut func(*server.Config)) *server.Serv
 	return s
 }
 
+// pumpWait is how long pump waits; a full poker hand with reveals is slower.
+var pumpWait = 15 * time.Second
+
 func pump(t *testing.T, apps []*App, inputs map[*App]Input, until func() bool, what string) {
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(pumpWait)
 	for first := true; first || !until(); first = false {
 		if time.Now().After(deadline) {
 			t.Fatalf("timed out waiting for %s", what)
@@ -171,6 +174,8 @@ func TestServerPassword(t *testing.T) {
 
 func TestPokerEndToEnd(t *testing.T) {
 	s := startServerS(t, 39519, func(c *server.Config) { c.CardRevealMinSeconds, c.CardRevealMaxSeconds = 0.2, 0.3 })
+	pumpWait = 40 * time.Second
+	defer func() { pumpWait = 15 * time.Second }()
 	var out strings.Builder
 	for _, kv := range []string{"between_seconds 1", "dale_think_ms 50", "action_seconds 5"} {
 		s.Exec("table set holdem "+kv, &out)

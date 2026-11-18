@@ -4,7 +4,6 @@ package main
 
 import (
 	"image/color"
-	"math"
 )
 
 // Hat sprites: each cell is 32x20. The bottom 6 rows overlap the top of the
@@ -476,6 +475,30 @@ var hatSprites = []sprite{
 		"...kWWWWWWWWWWWWWWWWk.",
 		"....kkkkkkkkkkkkkkkk..",
 	}, map[rune]string{'w': "f4efe0", 'W': "d8d0b8", 'r': "e0283c", 'g': "f2c14e"}},
+	// 34 the moneybags (most chips ever held): a stuffed sack, tied with
+	// gold cord, a bill sticking out and coins spilling off the brim
+	{[]string{
+		"..........kk...kk.......",
+		".........kGgk.kgGk......",
+		"..........kgkkgk........",
+		"......kkk..kyyk..kk.....",
+		".....knnnk.kyyk.kGgk....",
+		".....knNnkkyyyykkk......",
+		"......kkkbbbbbbbbk......",
+		".....kbbbbBbbbbbbbk.....",
+		"....kbbBbbbbkkkbbbbk....",
+		"...kbbbbbbbkgggkbbbbk...",
+		"...kbbbbbbkgkbbbbbbbk...",
+		"..kbbbbBbbbkgggkbbbbbk..",
+		"..kbbbbbbbbbbbkgkbbbbk..",
+		"..kbbbBbbbbkgggkbbBbbk..",
+		"..kbbbbbbbbbbkbbbbbbbk..",
+		"...kbbbbbbbbbbbbbbbbk...",
+		".kk.kkbbbbbbbbbbbbkk.kk.",
+		"kGgk..kkkkkkkkkkkk..kGgk",
+		".kk..................kk.",
+	}, map[rune]string{'b': "a07a48", 'B': "c8a06a", 'y': "f2c14e", 'g': "f2c14e", 'G': "fff2b8",
+		'n': "3f9a52", 'N': "8fe0a0"}},
 }
 
 func genHats() {
@@ -512,192 +535,4 @@ func genHats() {
 		}
 	}
 	save("hats.png", img)
-}
-
-// Frames: 36x36 cells, a 2px ring around the 32x32 avatar.
-const frameS = 36
-
-func genFrames() {
-	type style func(x, y, d int, t float64) (color.NRGBA, bool)
-	ring := func(x, y int) (int, bool) {
-		d := x
-		if y < d {
-			d = y
-		}
-		if frameS-1-x < d {
-			d = frameS - 1 - x
-		}
-		if frameS-1-y < d {
-			d = frameS - 1 - y
-		}
-		return d, d < 2
-	}
-	corner := func(x, y int) bool {
-		return (x < 4 || x > frameS-5) && (y < 4 || y > frameS-5)
-	}
-	per := func(x, y int) float64 { // 0..1 around the perimeter
-		return (math.Atan2(float64(y)-17.5, float64(x)-17.5) + math.Pi) / (2 * math.Pi)
-	}
-	hsv := func(h float64) color.NRGBA {
-		h = math.Mod(h, 1) * 6
-		i := int(h)
-		f := h - float64(i)
-		q, t := uint8(255*(1-f)), uint8(255*f)
-		switch i {
-		case 0:
-			return color.NRGBA{255, t, 0, 255}
-		case 1:
-			return color.NRGBA{q, 255, 0, 255}
-		case 2:
-			return color.NRGBA{0, 255, t, 255}
-		case 3:
-			return color.NRGBA{0, q, 255, 255}
-		case 4:
-			return color.NRGBA{t, 0, 255, 255}
-		}
-		return color.NRGBA{255, 0, q, 255}
-	}
-	styles := []style{
-		// 0 wood
-		func(x, y, d int, t float64) (color.NRGBA, bool) {
-			if d == 0 {
-				return hex("2b170b"), true
-			}
-			if (x+y*3)%7 == 0 {
-				return hex("8a5a30"), true
-			}
-			return hex("6b4220"), true
-		},
-		// 1 felt
-		func(x, y, d int, t float64) (color.NRGBA, bool) {
-			if d == 0 {
-				return hex("0e3f24"), true
-			}
-			if corner(x, y) {
-				return hex("f2c14e"), true
-			}
-			return hex("1f7d48"), true
-		},
-		// 2 silver
-		func(x, y, d int, t float64) (color.NRGBA, bool) {
-			if d == 0 {
-				return hex("5a5f6b"), true
-			}
-			if (x+y)%9 < 2 {
-				return hex("ffffff"), true
-			}
-			return hex("c4c9d4"), true
-		},
-		// 3 gold with studs
-		func(x, y, d int, t float64) (color.NRGBA, bool) {
-			if corner(x, y) {
-				return hex("fff2b8"), true
-			}
-			if d == 0 {
-				return hex("8a5a12"), true
-			}
-			if (x+y)%8 < 2 {
-				return hex("ffe9a3"), true
-			}
-			return hex("f2c14e"), true
-		},
-		// 4 ruby
-		func(x, y, d int, t float64) (color.NRGBA, bool) {
-			if corner(x, y) {
-				if (x+y)%2 == 0 {
-					return hex("ff6b7d"), true
-				}
-				return hex("e0283c"), true
-			}
-			if d == 0 {
-				return hex("4a0a14"), true
-			}
-			return hex("9c1f33"), true
-		},
-		// 5 ice
-		func(x, y, d int, t float64) (color.NRGBA, bool) {
-			if d == 0 {
-				return hex("4a8fc2"), true
-			}
-			if (x*7+y*3)%11 < 3 {
-				return hex("ffffff"), true
-			}
-			return hex("a9e4ff"), true
-		},
-		// 6 bone
-		func(x, y, d int, t float64) (color.NRGBA, bool) {
-			if corner(x, y) {
-				if (x == 1 || x == frameS-2) && (y == 1 || y == frameS-2) {
-					return hex("15151a"), true
-				}
-				return hex("f0e6c8"), true
-			}
-			if d == 0 {
-				return hex("6a604c"), true
-			}
-			if (x+y)%6 == 0 {
-				return hex("b8ad90"), true
-			}
-			return hex("e6dcbc"), true
-		},
-		// 7 inferno
-		func(x, y, d int, t float64) (color.NRGBA, bool) {
-			v := (x*13 + y*7) % 5
-			switch {
-			case d == 0 && v < 2:
-				return hex("c8203a"), true
-			case d == 0:
-				return hex("ff7a1a"), true
-			case v == 0:
-				return hex("fff6c8"), true
-			}
-			return hex("ffd23f"), true
-		},
-		// 8 diamond
-		func(x, y, d int, t float64) (color.NRGBA, bool) {
-			if (x+y)%4 == 0 {
-				return hex("ffffff"), true
-			}
-			if (x/2+y/2)%2 == 0 {
-				return hex("7fe9ff"), true
-			}
-			return hex("3fb6d8"), true
-		},
-		// 9 rainbow (animated in the client)
-		func(x, y, d int, t float64) (color.NRGBA, bool) {
-			c := hsv(t)
-			if d == 0 {
-				c = shadeC(c, 0.7)
-			}
-			return c, true
-		},
-		// 10 marathon: a chequered finish-line flag with gold corners
-		func(x, y, d int, t float64) (color.NRGBA, bool) {
-			if corner(x, y) {
-				if d == 0 {
-					return hex("8a5a12"), true
-				}
-				return hex("f2c14e"), true
-			}
-			if (x/2+y/2)%2 == 0 {
-				return hex("f4f4f0"), true
-			}
-			return hex("1a1a22"), true
-		},
-	}
-	img := newImg(frameS*len(styles), frameS)
-	for i, st := range styles {
-		for y := 0; y < frameS; y++ {
-			for x := 0; x < frameS; x++ {
-				d, on := ring(x, y)
-				if !on {
-					continue
-				}
-				if c, ok := st(x, y, d, per(x, y)); ok {
-					set(img, i*frameS+x, y, c)
-				}
-			}
-		}
-	}
-	save("frames.png", img)
 }

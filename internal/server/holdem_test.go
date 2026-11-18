@@ -110,6 +110,15 @@ func play(t *testing.T, tb *Holdem, conns []*conn, hands int, rng *rand.Rand, ch
 					tb.onAct(p, "in", 0)
 				}
 			}
+			// the table waits for someone, so someone always does
+			if tb.queued == nil {
+				for _, p := range tb.humans() {
+					if tb.playing(p) {
+						tb.onAct(p, "in", 0)
+						break
+					}
+				}
+			}
 		}
 		fn := tb.queued
 		if fn == nil {
@@ -127,7 +136,7 @@ func play(t *testing.T, tb *Holdem, conns []*conn, hands int, rng *rand.Rand, ch
 				if tb.queued == nil {
 					tb.maybeStart()
 				}
-				if tb.queued == nil {
+				if tb.queued == nil && tb.phase != pkReady {
 					for _, p := range tb.humans() {
 						t.Logf("%s seat %d stack %d bal %d sitout %v leaving %v conn %v", p.user, p.seat, p.stack, tb.store.Balance(p.user), p.sitOut, p.leaving, p.conn != nil)
 					}
@@ -336,6 +345,9 @@ func TestHoldemHiddenCards(t *testing.T) {
 	hc := defaultHoldem()
 	hc.DaleThinkMS = 0
 	tb, _, conns := pokerTable(t, 2, hc)
+	for _, p := range tb.humans() {
+		tb.onAct(p, "in", 0)
+	}
 	for (tb.phase == pkWaiting || tb.phase == pkReady) && tb.queued != nil {
 		for _, p := range tb.humans() {
 			tb.onAct(p, "in", 0)
@@ -476,5 +488,133 @@ func TestBeggarTable(t *testing.T) {
 	b.DoWait(func() {})
 	if p, _ := s.Store.Profile("poorguy"); p.Balance != 30 || p.BeggarRolls != 2 {
 		t.Fatalf("after a losing roll: %d chips, %d rolls", p.Balance, p.BeggarRolls)
+	}
+}
+
+// With nobody dealt in, the table waits with no clock; the first one in
+// starts it.
+func TestHoldemIdlesUntilDealIn(t *testing.T) {
+	tb, _, _ := pokerTable(t, 2, defaultHoldem())
+	if tb.phase != pkReady || tb.queued != nil || tb.deadline != (time.Time{}) {
+		t.Fatalf("phase %s, timer %v, deadline %v", tb.phase, tb.queued != nil, tb.deadline)
+	}
+	tb.onAct(tb.byUser["player0"], "in", 0)
+	if tb.queued == nil || tb.deadline == (time.Time{}) {
+		t.Fatal("the first deal-in should start the clock")
+	}
+}
+
+func TestHoldemButton(t *testing.T) {
+	for _, rotate := range []bool{false, true} {
+		hc := defaultHoldem()
+		hc.RotateButton = rotate
+		tb, _, _ := pokerTable(t, 2, hc)
+		seen := map[int]bool{}
+		for hand := 0; hand < 6; hand++ {
+			for steps := 0; tb.phase != pkReady; steps++ {
+				if steps > 1000 {
+					t.Fatalf("stuck in %s", tb.phase)
+				}
+				if x := tb.active; x > 0 {
+					tb.onAct(tb.seats[x], "fold", 0)
+					continue
+				}
+				fn := tb.queued
+				tb.queued = nil
+				fn()
+			}
+			for _, p := range tb.humans() {
+				tb.onAct(p, "in", 0)
+			}
+			fn := tb.queued
+			tb.queued = nil
+			fn()
+			seen[tb.button] = true
+		}
+		if !rotate && (len(seen) != 1 || !seen[0]) {
+			t.Fatalf("Dale should keep the button: %v", seen)
+		}
+		if rotate && len(seen) != 3 {
+			t.Fatalf("the button should go round all three: %v", seen)
+		}
+	}
+}
+
+// At the showdown hands come out one at a time, and only then is the pot paid.
+func TestHoldemShowdownReveal(t *testing.T) {
+	hc := defaultHoldem()
+	hc.DaleThinkMS = 0
+	tb, _, conns := pokerTable(t, 2, hc)
+	tb.cfg.CardReveal = true
+	tb.revealTest = true
+	for _, p := range tb.humans() {
+		tb.onAct(p, "in", 0)
+	}
+	for steps := 0; tb.phase != pkShows; steps++ {
+		if steps > 2000 {
+			t.Fatalf("never reached the showdown (phase %s)", tb.phase)
+		}
+		if x := tb.active; x > 0 {
+			p := tb.seats[x]
+			act := "check"
+			if tb.curBet > p.bet {
+				act = "call"
+			}
+			tb.onAct(p, act, 0)
+			continue
+		}
+		if tb.phase == pkShowdown || tb.phase == pkReady {
+			// Dale folded: try again
+			for _, p := range tb.humans() {
+				tb.onAct(p, "in", 0)
+			}
+		}
+		fn := tb.queued
+		if fn == nil {
+			t.Fatalf("stuck in %s", tb.phase)
+		}
+		tb.queued = nil
+		fn()
+	}
+	var order []int
+	for tb.phase == pkShows {
+		r := tb.reveal
+		if r == nil || !r.hand {
+			t.Fatal("no hand reveal during the showdown")
+		}
+		if !r.shown {
+			order = append(order, r.seat)
+			// the hand stays hidden from the others until it flips
+			other := conns[0]
+			if tb.byUser["player0"].seat == r.seat {
+				other = conns[1]
+			}
+			_ = other
+			for _, v := range tb.humans() {
+				if v.seat != r.seat {
+					if c := tb.view(v).Seats[r.seat].Cards; len(c) > 0 && c[0].Rank != 0 {
+						t.Fatal("hand visible before its reveal")
+					}
+				}
+			}
+			for _, p := range tb.seats {
+				if p != nil && p.won > 0 {
+					t.Fatal("paid before every hand was shown")
+				}
+			}
+		}
+		fn := tb.queued
+		tb.queued = nil
+		fn()
+	}
+	if len(order) < 2 || tb.phase != pkShowdown {
+		t.Fatalf("revealed %v, phase %s", order, tb.phase)
+	}
+	seen := map[int]bool{}
+	for _, s := range order {
+		if seen[s] {
+			t.Fatalf("seat %d shown twice: %v", s, order)
+		}
+		seen[s] = true
 	}
 }
