@@ -161,6 +161,8 @@ type Profile struct {
 	RankRich        bool     `json:"rank_rich,omitempty"`  // currently #1 richest
 	RankNet         bool     `json:"rank_net,omitempty"`   // currently #1 lifetime
 	RankHands       bool     `json:"rank_hands,omitempty"` // currently played the most hands
+	RankBet         bool     `json:"rank_bet,omitempty"`   // holds the biggest-bet record
+	BiggestBet      int64    `json:"biggest_bet,omitempty"`
 	Admin           bool     `json:"admin,omitempty"`
 	GiftsIn         int64    `json:"gifts_in,omitempty"`
 	GiftsOut        int64    `json:"gifts_out,omitempty"`

@@ -335,7 +335,7 @@ up by whole pixels, so draw at 1x.
                         pirate, dunce, viking, halo, devil horns, wizard,
                         unicorn, grad cap, golden top hat, tiara, hair on
                         fire, space helmet, crown, laurel wreath,
-                        nightcap
+                        nightcap, chip tower
   frames.png            avatar frames in one row, frame_size square (36x36),
                         a ring around the 32x32 picture. Order: plain, felt,
                         silver, gold, ruby, frozen, bone, inferno, diamond,

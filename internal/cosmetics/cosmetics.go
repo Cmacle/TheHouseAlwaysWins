@@ -57,6 +57,7 @@ const (
 	MRankRich   = "rank_rich"  // currently #1 richest (unique)
 	MRankNet    = "rank_net"   // currently #1 lifetime (unique)
 	MRankHands  = "rank_hands" // currently played the most hands, all games (unique)
+	MRankBet    = "rank_bet"   // holds the record for the biggest single bet (unique)
 	MFree       = "free"       // everyone has it
 )
 
@@ -76,7 +77,7 @@ type Item struct {
 type Stats struct {
 	Wagered, Peak, Net, LowestNet, BiggestWin                                             int64
 	Hands, Blackjacks, BestWinStreak, WorstLoseStreak, Busts, DoublesWon, Splits, Refills int
-	RankRich, RankNet, RankHands                                                          bool
+	RankRich, RankNet, RankHands, RankBet                                                 bool
 }
 
 // Catalog lists every cosmetic, in display order.
@@ -106,6 +107,7 @@ var Catalog = []Item{
 	{ID: "space", Kind: Hat, Name: "Space Helmet", Desc: "$2.5 million wagered. To the moon.", Tier: Legendary, Metric: MWagered, Goal: 2_500_000, Sprite: 21},
 	{ID: "crown", Kind: Hat, Name: "The Crown", Desc: "Worn by whoever has the most chips right now.", Tier: Unique, Metric: MRankRich, Sprite: 22},
 	{ID: "laurel", Kind: Hat, Name: "Laurel Wreath", Desc: "Worn by the #1 lifetime earner.", Tier: Unique, Metric: MRankNet, Sprite: 23},
+	{ID: "chip_tower", Kind: Hat, Name: "The Chip Tower", Desc: "Worn by whoever has made the biggest single bet. Don't sneeze.", Tier: Unique, Metric: MRankBet, Sprite: 25},
 	{ID: "nightcap", Kind: Hat, Name: "The Nightcap", Desc: "Worn by whoever has played the most hands. Do you ever sleep?", Tier: Unique, Metric: MRankHands, Sprite: 24},
 
 	// ------------------------------------------------ frames
@@ -146,6 +148,7 @@ var Catalog = []Item{
 	{ID: "t_legend", Kind: Title, Name: "Living Legend", Desc: "Be up $50,000 lifetime.", Tier: Legendary, Metric: MNetUp, Goal: 50_000},
 	{ID: "t_owns_house", Kind: Title, Name: "Owns The House", Desc: "Have the most chips right now.", Tier: Unique, Metric: MRankRich},
 	{ID: "t_goat", Kind: Title, Name: "The G.O.A.T.", Desc: "Be #1 on the lifetime leaderboard.", Tier: Unique, Metric: MRankNet},
+	{ID: "t_bet_the_farm", Kind: Title, Name: "Bet The Farm", Desc: "Make the biggest bet anyone has made.", Tier: Unique, Metric: MRankBet},
 	{ID: "t_furniture", Kind: Title, Name: "Part Of The Furniture", Desc: "Play more hands than anyone.", Tier: Unique, Metric: MRankHands},
 }
 
@@ -174,7 +177,7 @@ func OfKind(kind string) []*Item {
 // Dynamic reports whether an item is held only while a condition stays true
 // (the #1 spots). Everything else is unlocked permanently.
 func (it *Item) Dynamic() bool {
-	return it.Metric == MRankRich || it.Metric == MRankNet || it.Metric == MRankHands
+	return it.Metric == MRankRich || it.Metric == MRankNet || it.Metric == MRankHands || it.Metric == MRankBet
 }
 
 // Progress returns how far a player is toward an item.
@@ -229,6 +232,11 @@ func (it *Item) Progress(s Stats) (cur, goal int64) {
 			return 1, 1
 		}
 		return 0, 1
+	case MRankBet:
+		if s.RankBet {
+			return 1, 1
+		}
+		return 0, 1
 	case MFree:
 		return 1, 1
 	}
@@ -279,6 +287,8 @@ func (it *Item) Requirement() string {
 		return "Be #1 on the Lifetime leaderboard"
 	case MRankHands:
 		return "Play more hands than anyone (all games)"
+	case MRankBet:
+		return "Make the biggest single bet (all games)"
 	case MFree:
 		return "Free for everyone"
 	}

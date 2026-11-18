@@ -49,12 +49,14 @@ optional web page and Discord.
   client, on an optional web page and in Discord (a live-updating message,
   `/leaderboard`, `/stats`, `/table`, plus refill, big-win, unlock and new-crown
   announcements).
-- **Unlockables**: 25 hats, 11 avatar frames and 25 titles, earned by total
+- **Unlockables**: 26 hats, 11 avatar frames and 26 titles, earned by total
   money bet, chips held at once, lifetime up or down, streaks, blackjacks and
   more. Harder goals have flashier rewards. **Whoever has the most chips right
   now automatically wears The Crown**, the #1 lifetime earner gets the golden
   Laurel Wreath, and whoever has played the most hands wears **The Nightcap**
-  (and can use the Marathon Frame and the title Part Of The Furniture).
+  (and can use the Marathon Frame and the title Part Of The Furniture). The
+  biggest single bet ever made earns **The Chip Tower** and the title Bet The
+  Farm, until someone beats it.
 - **A dealer with a mouth on him** (optional): he calls out players by name in
   a speech bubble. Busting, standing scared, splitting tens, big losses, losing
   streaks, going broke and lifetime scores all get roasted. A **vulgar mode**
@@ -175,6 +177,7 @@ Taking the crown is announced to everyone.
 | The Crown | Unique | Be #1 on the Richest leaderboard |
 | Laurel Wreath | Unique | Be #1 on the Lifetime leaderboard |
 | The Nightcap | Unique | Play more hands than anyone (all games) |
+| The Chip Tower | Unique | Make the biggest single bet (all games); kept until beaten |
 
 **Frames**
 
@@ -221,6 +224,7 @@ Taking the crown is announced to everyone.
 | Owns The House | Unique | Be #1 on the Richest leaderboard |
 | The G.O.A.T. | Unique | Be #1 on the Lifetime leaderboard |
 | Part Of The Furniture | Unique | Play more hands than anyone (all games) |
+| Bet The Farm | Unique | Make the biggest single bet (all games); kept until beaten |
 
 ## The dealer
 
