@@ -300,7 +300,7 @@ func (a *App) drawHelp() {
 		fmt.Sprintf("Daily refill: below %s chips, you're topped back up -", commas(s.RefillAmount)),
 		"but the refill counts against your lifetime total.",
 		"Unlock hats, frames and titles by playing (PROFILE > WARDROBE).",
-		"Whoever has the most chips wears the crown!",
+		"Most chips wears the crown; most hands played wears the nightcap!",
 	)
 	if s.ChipGifts {
 		lines = append(lines, fmt.Sprintf("Friend broke? Click them to send chips (up to %s).", commas(s.RefillAmount)))

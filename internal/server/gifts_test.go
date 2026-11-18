@@ -204,3 +204,40 @@ func TestRevealKeepsSeatMessage(t *testing.T) {
 		t.Fatalf("during a reveal: message %q, actions %v", st.Message, st.Actions)
 	}
 }
+
+// Whoever has played the most hands (all games) wears the Nightcap and may
+// use the Marathon Frame and the Part Of The Furniture title.
+func TestMostHandsCosmetics(t *testing.T) {
+	g, _, _ := giftGame(t)
+	s := g.store
+	s.mu.Lock()
+	s.accounts["alice"].HandsPlayed = 40
+	s.accounts["bob"].HandsPlayed = 30
+	s.accounts["bob"].PokerHands = 15 // 45 in all: bob leads
+	s.touched(s.accounts["alice"])
+	s.mu.Unlock()
+	if s.TopHands() != "bob" {
+		t.Fatalf("top hands %q, want bob", s.TopHands())
+	}
+	p, _ := s.Profile("bob")
+	if p.Hat != "nightcap" || !p.RankHands {
+		t.Fatalf("bob shows hat %q rank %v", p.Hat, p.RankHands)
+	}
+	if err := s.Equip("bob", "title", "t_furniture"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Equip("bob", "frame", "frame_marathon"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Equip("alice", "title", "t_furniture"); err == nil {
+		t.Fatal("alice could wear the title without the most hands")
+	}
+	// a tie means nobody holds it
+	s.mu.Lock()
+	s.accounts["alice"].HandsPlayed = 45
+	s.touched(s.accounts["alice"])
+	s.mu.Unlock()
+	if s.TopHands() != "" {
+		t.Fatalf("tie: top hands %q", s.TopHands())
+	}
+}

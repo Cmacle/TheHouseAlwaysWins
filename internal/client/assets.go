@@ -334,11 +334,13 @@ up by whole pixels, so draw at 1x.
                         cowboy, tin foil, sombrero, cone, top hat, fez,
                         pirate, dunce, viking, halo, devil horns, wizard,
                         unicorn, grad cap, golden top hat, tiara, hair on
-                        fire, space helmet, crown, laurel wreath
+                        fire, space helmet, crown, laurel wreath,
+                        nightcap
   frames.png            avatar frames in one row, frame_size square (36x36),
                         a ring around the 32x32 picture. Order: plain, felt,
                         silver, gold, ruby, frozen, bone, inferno, diamond,
-                        rainbow (the rainbow one is animated in-game)
+                        rainbow (the rainbow one is animated in-game),
+                        marathon
   checkbox.png          two boxes side by side: unchecked, checked
   arrow.png             marker shown above the hand whose turn it is
 

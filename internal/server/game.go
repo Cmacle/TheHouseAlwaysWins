@@ -99,6 +99,7 @@ type Game struct {
 	message    string
 	lastPeriod string
 	lastRich   string
+	lastHands  string
 	banter     *banter.Picker
 	speech     speech
 	sayQueue   []banter.Page // pages of the current line still to show
@@ -130,6 +131,7 @@ func NewGame(cfg *Config, store *Store, n Notifier, lg *log.Logger) *Game {
 	rich, _ := store.Tops()
 	return &Game{
 		lastRich:  rich,
+		lastHands: store.TopHands(),
 		lastStory: time.Now(),
 		banter:    banter.NewPicker(),
 		cfg:       cfg, store: store, notify: n, log: lg,
@@ -501,6 +503,13 @@ func (g *Game) processUnlocks() {
 		}
 		g.notify.Unlocked(u.User, u.Item)
 		g.log.Printf("%s unlocked %s", u.User, u.Item.Name)
+	}
+	if top := g.store.TopHands(); top != g.lastHands {
+		g.lastHands = top
+		if top != "" {
+			g.eventAll(proto.Event{Kind: "crown", Seat: -1, Text: top + " has played the most hands and takes the Nightcap!"})
+			g.log.Printf("%s takes the nightcap", top)
+		}
 	}
 	rich, _ := g.store.Tops()
 	if rich != g.lastRich {
