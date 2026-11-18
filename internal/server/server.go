@@ -36,8 +36,12 @@ func New(cfg *Config, baseDir string, lg *log.Logger) (*Server, error) {
 	}
 	s := &Server{Store: store, Log: lg}
 	s.cfgp.Store(cfg)
-	s.Game = NewGame(cfg, store, nil, lg)
-	s.Game.exec = s.Exec
+	s.Lobby = newLobby(s)
+	s.Lobby.build()
+	s.Game = s.Lobby.firstGame()
+	if n := store.ReturnTableStacks(); n > 0 {
+		lg.Printf("returned poker chips left on a table to %d player(s)", n)
+	}
 	return s, nil
 }
 
@@ -54,7 +58,8 @@ func (d discordData) Leaderboard(n int, rich bool) []proto.Profile {
 func (d discordData) Profile(name string) (proto.Profile, bool) { return d.s.Store.Profile(name) }
 func (d discordData) House() proto.HouseStats                   { return d.s.Store.House() }
 func (d discordData) TableSummary() string {
-	phase, seated, names, hand := d.s.Game.Summary()
+	seated, names, tables := d.s.Lobby.Summary()
+	phase, hand := strings.Join(tables, "; "), 0
 	if seated == 0 {
 		return "The table is empty. The dealer is shuffling chips out of boredom."
 	}
@@ -80,7 +85,8 @@ func (s *Server) EnableDiscord(stop <-chan struct{}) {
 		AnnounceRefills:      dc.AnnounceRefills,
 		StateFile:            filepath.Join(s.cfg().DataDir, "discord_state.json"),
 	}, discordData{s}, s.Log)
-	s.Game.notify = bot
+	s.notify = bot
+	s.Lobby.setNotifier(bot)
 	bot.Start(stop)
 }
 
@@ -145,7 +151,8 @@ func Main(configPath string, opt Options) error {
 	stop := make(chan struct{})
 	s.EnableDiscord(stop)
 	gameDone := make(chan struct{})
-	go func() { s.Game.Run(stop); close(gameDone) }()
+	s.Lobby.start(stop)
+	go func() { s.Lobby.wait(); close(gameDone) }()
 	go s.Serve()
 	s.StartHTTP()
 	lg.Printf("refill: below %d tops up daily at %s (%s); next at %s", cfg.RefillAmount, cfg.RefillTime, cfg.loc, cfg.NextRefill(time.Now()).Format("Mon Jan 2 15:04 MST"))
@@ -186,7 +193,7 @@ func Main(configPath string, opt Options) error {
 			nc.DataDir = filepath.Join(baseDir, nc.DataDir)
 		}
 		s.cfgp.Store(nc)
-		s.Game.Reload(nc)
+		s.Lobby.Reload(nc)
 		return nil
 	}
 	s.quitFn = func() {
@@ -248,4 +255,12 @@ func (s *Server) backup(label string) {
 	if label != "auto" || removed > 0 {
 		s.Log.Printf("backup saved: %s", name)
 	}
+}
+
+// notifier is the Discord bot, or nothing.
+func (s *Server) notifier() Notifier {
+	if s.notify == nil {
+		return nopNotifier{}
+	}
+	return s.notify
 }

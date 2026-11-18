@@ -1278,3 +1278,14 @@ func (s *Store) RecordPokerHouse(delta int64) (proto.HouseStats, int) {
 	s.dirty = true
 	return *h, prev
 }
+
+// SetTableStack sets what a player has at a poker table (after a hand is
+// called off).
+func (s *Store) SetTableStack(username string, stack int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.accounts[strings.ToLower(username)]; ok {
+		a.TableStack = stack
+		s.dirty = true
+	}
+}

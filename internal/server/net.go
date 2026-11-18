@@ -24,6 +24,8 @@ type Server struct {
 	Game  *Game
 	Log   *log.Logger
 
+	Lobby      *Lobby
+	notify     Notifier
 	ln         net.Listener
 	configPath string
 	// set by Main: reload server.json, shut down
@@ -40,9 +42,10 @@ type conn struct {
 	closed chan struct{}
 	once   sync.Once
 
-	user  string
-	token string
-	fails int
+	user    string
+	token   string
+	lobbyOK bool // the game knows about the lobby (newer than 1.8)
+	fails   int
 }
 
 func (s *Server) cfg() *Config { return s.cfgp.Load() }
@@ -164,7 +167,7 @@ func (c *conn) reader() {
 	defer func() {
 		c.close()
 		if c.user != "" {
-			s.Game.events <- event{kind: evLeave, c: c}
+			s.Lobby.disconnect(c)
 		}
 	}()
 	c.send(proto.SServerInfo, proto.ServerInfo{
@@ -204,6 +207,7 @@ func (c *conn) handle(m proto.Msg) bool {
 			time.Sleep(300 * time.Millisecond)
 			return false
 		}
+		c.lobbyOK = h.Lobby
 		return true
 	case proto.CLeaderboard:
 		var req proto.LeaderboardReq
@@ -252,7 +256,7 @@ func (c *conn) handle(m proto.Msg) bool {
 			}
 			s.Log.Printf("new account: %s", prof.Username)
 			c.authed(prof, tok)
-			s.Game.notify.LeaderboardChanged()
+			s.notifier().LeaderboardChanged()
 		case proto.CLogin:
 			var l proto.Login
 			if decode(m, &l) != nil {
@@ -272,8 +276,25 @@ func (c *conn) handle(m proto.Msg) bool {
 	}
 
 	switch m.Type {
-	case proto.CBet, proto.CAction, proto.CSitOut, proto.CGift, proto.CGiftInfo, proto.CChat:
-		s.Game.events <- event{kind: evMsg, c: c, msg: m}
+	case proto.CBet, proto.CAction, proto.CSitOut, proto.CChat, proto.CPoker:
+		s.Lobby.route(c, m)
+	case proto.CGiftInfo:
+		var gi proto.GiftInfo
+		if decode(m, &gi) == nil {
+			go s.Lobby.giftInfo(c, gi.To)
+		}
+	case proto.CGift:
+		var gf proto.Gift
+		if decode(m, &gf) == nil {
+			go s.Lobby.gift(c, gf.To, gf.Amount)
+		}
+	case proto.CJoinTable:
+		var j proto.JoinTable
+		if decode(m, &j) == nil {
+			s.Lobby.join(c, j.ID, j.BuyIn)
+		}
+	case proto.CLeaveTable:
+		s.Lobby.leaveTable(c)
 	case proto.CAvatarSet:
 		var a proto.AvatarSet
 		if decode(m, &a) != nil {
@@ -286,7 +307,7 @@ func (c *conn) handle(m proto.Msg) bool {
 		if p, ok := s.Store.Profile(c.user); ok {
 			c.send(proto.SProfile, p)
 		}
-		s.Game.Broadcast()
+		s.Lobby.Broadcast()
 	case proto.CEquip:
 		var e proto.Equip
 		if decode(m, &e) != nil {
@@ -299,26 +320,47 @@ func (c *conn) handle(m proto.Msg) bool {
 		if p, ok := s.Store.Profile(c.user); ok {
 			c.send(proto.SProfile, p)
 		}
-		s.Game.Broadcast()
+		s.Lobby.Broadcast()
 	case proto.CSettings, proto.CSetSetting:
 		if !s.Store.IsAdmin(c.user) {
 			c.send(proto.SError, proto.ErrorMsg{Message: "Only admins can change server settings."})
 			return true
 		}
 		var res proto.SettingsList
+		var tableID string
 		if m.Type == proto.CSetSetting {
 			var ss proto.SetSetting
 			if decode(m, &ss) != nil {
 				return true
 			}
-			if err := s.SetSetting(ss.Key, ss.Value); err != nil {
+			tableID = ss.Table
+			var err error
+			if ss.Table != "" {
+				err = s.Lobby.SetTableSetting(ss.Table, ss.Key, ss.Value)
+			} else {
+				err = s.SetSetting(ss.Key, ss.Value)
+			}
+			if err != nil {
 				res.Error = err.Error()
 			} else {
 				res.Changed = ss.Key
-				s.Log.Printf("admin %s set %s", c.user, ss.Key)
+				s.Log.Printf("admin %s set %s %s", c.user, ss.Table, ss.Key)
 			}
+		} else {
+			var rq proto.SettingsReq
+			_ = decode(m, &rq)
+			tableID = rq.Table
 		}
-		res.Settings = s.SettingInfos(true)
+		res.Table = tableID
+		if tableID != "" {
+			list, err := s.Lobby.TableSettings(tableID)
+			if err != nil {
+				res.Error = err.Error()
+			}
+			res.Settings = list
+		} else {
+			res.Settings = s.SettingInfos(true)
+		}
 		c.send(proto.SSettings, res)
 	case proto.CLogout:
 		s.Store.RevokeToken(c.user, c.token)
@@ -336,5 +378,5 @@ func (c *conn) handle(m proto.Msg) bool {
 func (c *conn) authed(prof *proto.Profile, tok string) {
 	c.user, c.token = prof.Username, tok
 	c.send(proto.SAuthOK, proto.AuthOK{Username: prof.Username, Token: tok, Profile: *prof})
-	c.srv.Game.events <- event{kind: evJoin, c: c, user: prof.Username}
+	c.srv.Lobby.authed(c)
 }

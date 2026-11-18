@@ -60,11 +60,12 @@ const (
 )
 
 type event struct {
-	kind evKind
-	c    *conn
-	user string
-	msg  proto.Msg
-	fn   func()
+	kind  evKind
+	c     *conn
+	user  string
+	buyIn int64 // poker: chips to sit down with
+	msg   proto.Msg
+	fn    func()
 }
 
 // Game is the table state machine. All state is owned by the Run goroutine;
@@ -100,27 +101,33 @@ type Game struct {
 	lastPeriod string
 	lastRich   string
 	lastHands  string
-	lastBet    string
-	banter     *banter.Picker
-	speech     speech
-	sayQueue   []banter.Page // pages of the current line still to show
-	sayPrio    int
-	sayTimer   *time.Timer
-	story      *storyRun
-	lastStory  time.Time
-	forceSay   bool
-	sayLog     []proto.DealerLine
-	crashes    int  // crashes caught (see safely)
-	aborting   bool // calling off a hand after a crash
-	reveal     *revealing
-	exec       func(line string, w io.Writer) // run a server command (admins)
-	holdBust   bool                           // a card reveal is coming: don't announce a bust yet
-	handTalk   int                            // lines this hand (he keeps it to a few)
-	betNudged  bool                           // nagged a slow bettor this round
-	dared      bool                           // dared someone to bet big this round
-	bettingAt  time.Time                      // when betting opened
-	turnNudged string                         // whose turn he last nagged (seat:hand)
-	idleLogged bool
+	tableID    string // in the lobby
+	tableName  string
+	info       atomicInfo
+	// the lobby runs the daily refill for every table; this table only
+	// tops up its own players whose hand was running when it happened
+	lobbyRefills bool
+	lastBet      string
+	banter       *banter.Picker
+	speech       speech
+	sayQueue     []banter.Page // pages of the current line still to show
+	sayPrio      int
+	sayTimer     *time.Timer
+	story        *storyRun
+	lastStory    time.Time
+	forceSay     bool
+	sayLog       []proto.DealerLine
+	crashes      int  // crashes caught (see safely)
+	aborting     bool // calling off a hand after a crash
+	reveal       *revealing
+	exec         func(line string, w io.Writer) // run a server command (admins)
+	holdBust     bool                           // a card reveal is coming: don't announce a bust yet
+	handTalk     int                            // lines this hand (he keeps it to a few)
+	betNudged    bool                           // nagged a slow bettor this round
+	dared        bool                           // dared someone to bet big this round
+	bettingAt    time.Time                      // when betting opened
+	turnNudged   string                         // whose turn he last nagged (seat:hand)
+	idleLogged   bool
 }
 
 // NewGame creates the table.
@@ -276,7 +283,9 @@ func (g *Game) join(c *conn, user string) {
 		}
 	}
 	g.conns[c] = p
-	g.store.SetOnline(user, true)
+	if !g.lobbyRefills {
+		g.store.SetOnline(user, true)
+	}
 	g.idleLogged = false
 	g.log.Printf("%s joined (seat %d)", user, p.seat)
 	if p.seat < 0 {
@@ -335,8 +344,10 @@ func (g *Game) leave(c *conn) {
 		return
 	}
 	p.conn = nil
-	g.store.SetOnline(p.user, false)
-	g.log.Printf("%s disconnected", p.user)
+	if !g.lobbyRefills {
+		g.store.SetOnline(p.user, false)
+	}
+	g.log.Printf("%s left the table", p.user)
 	g.reactToLeave(p)
 	if p.inHand {
 		p.leaving = true
@@ -440,17 +451,6 @@ func (g *Game) onMessage(p *player, m proto.Msg) {
 		var a proto.Action
 		if decode(m, &a) == nil {
 			g.onAction(p, strings.ToLower(a.Action))
-		}
-	case proto.CGiftInfo:
-		var gi proto.GiftInfo
-		if decode(m, &gi) == nil && p.conn != nil {
-			max, why := g.giftMax(p, gi.To)
-			p.conn.send(proto.SGiftInfo, proto.GiftInfo{To: gi.To, Max: max, Reason: why, Balance: g.store.Balance(gi.To)})
-		}
-	case proto.CGift:
-		var gf proto.Gift
-		if decode(m, &gf) == nil {
-			g.onGift(p, gf.To, gf.Amount)
 		}
 	case proto.CChat:
 		var c proto.Chat
@@ -1264,6 +1264,9 @@ func (g *Game) endRound() {
 // checkRefill runs the daily refill when a new refill period begins. Players
 // in the middle of a hand are refilled when the hand ends.
 func (g *Game) checkRefill() {
+	if g.lobbyRefills {
+		return // the lobby does it
+	}
 	period := g.cfg.RefillPeriod(time.Now())
 	if period == g.lastPeriod {
 		return
@@ -1344,6 +1347,7 @@ func (g *Game) view(viewer *player) proto.TableState {
 	}
 	house := g.store.House()
 	st.HouseNet, st.HouseTier = house.Net, house.Tier
+	st.TableID, st.TableName = g.tableID, g.tableName
 	if !g.deadline.IsZero() {
 		st.Deadline = g.deadline.UnixMilli()
 		st.TimerTotal = g.timerTotal.Milliseconds()
@@ -1458,6 +1462,7 @@ func (g *Game) broadcast() {
 	for c, p := range g.conns {
 		c.send(proto.SState, g.view(p))
 	}
+	g.updateInfo()
 }
 
 // ---------------------------------------------------------------- admin helpers
@@ -1602,3 +1607,16 @@ func (g *Game) abortHand() {
 }
 
 func topBetName(s *Store) string { n, _ := s.TopBet(); return n }
+
+// updateInfo refreshes the table's line in the lobby.
+func (g *Game) updateInfo() {
+	in := proto.TableInfo{ID: g.tableID, Name: g.tableName, Game: proto.GameBlackjack, Seats: len(g.seats),
+		Stakes: fmt.Sprintf("Bets %s-%s", commas(g.cfg.MinBet), commas(g.cfg.MaxBet)), Watching: len(g.spectators)}
+	for _, p := range g.seats {
+		if p != nil {
+			in.Players++
+			in.Names = append(in.Names, p.user)
+		}
+	}
+	g.info.Store(&in)
+}

@@ -3,7 +3,6 @@
 package server
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -41,20 +40,7 @@ func (g *Game) onChat(p *player, text string) {
 			g.errTo(p, "Only admins can use / commands.")
 			return
 		}
-		if g.exec == nil {
-			return
-		}
-		g.log.Printf("admin %s: %s", p.user, text)
-		c, line := p.conn, text
-		go func() { // commands can wait on the game loop: not from inside it
-			var b bytes.Buffer
-			guard(g.log.Printf, "admin command", nil, func() { g.exec(line, &b) })
-			out := strings.Split(strings.TrimRight(b.String(), "\n"), "\n")
-			if len(out) == 1 && out[0] == "" {
-				out = []string{"  done"}
-			}
-			c.send(proto.SConsole, proto.Console{Lines: append([]string{"> " + line}, out...)})
-		}()
+		runAdminCommand(g.log, g.exec, p.conn, p.user, text)
 		return
 	}
 	if !g.cfg.TableChat {
@@ -207,7 +193,7 @@ func (s *Server) Update(w io.Writer, force bool) {
 	s.setUpdStatus("Restarting into v" + v + "...")
 	fmt.Fprintf(w, "  v%s is installed and checked. Restarting now; reconnect in a few seconds.\n", v)
 	s.Log.Printf("v%s installed; restarting", v)
-	s.Game.Announce(fmt.Sprintf("The house is updating to v%s. Back in a few seconds.", v))
+	s.Lobby.Announce(fmt.Sprintf("The house is updating to v%s. Back in a few seconds.", v))
 	s.upd.mu.Lock()
 	s.upd.restart = true
 	s.upd.mu.Unlock()

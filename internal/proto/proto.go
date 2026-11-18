@@ -89,7 +89,8 @@ const (
 )
 
 type Hello struct {
-	Version int `json:"version"`
+	Version int  `json:"version"`
+	Lobby   bool `json:"lobby,omitempty"` // the game has a lobby (1.8+)
 }
 
 type ServerInfo struct {

@@ -30,46 +30,81 @@ type Setting struct {
 var secretKeys = map[string]bool{"discord.bot_token": true, "discord.webhook_url": true}
 
 // SettingsOf lists every setting in c.
-func SettingsOf(c *Config) []Setting {
+func SettingsOf(c *Config) []Setting { return settingsOfValue(reflect.ValueOf(c).Elem(), "", "") }
+
+// settingsOfValue lists the json fields of a struct as settings.
+func settingsOfValue(v reflect.Value, prefix, group string) []Setting {
 	var out []Setting
-	var walk func(v reflect.Value, prefix, group string)
-	walk = func(v reflect.Value, prefix, group string) {
-		t := v.Type()
-		for i := 0; i < t.NumField(); i++ {
-			f := t.Field(i)
-			tag := strings.Split(f.Tag.Get("json"), ",")[0]
-			if tag == "" || tag == "-" || !f.IsExported() {
-				continue
-			}
-			fv := v.Field(i)
-			key := prefix + tag
-			s := Setting{Key: key, Group: group}
-			switch fv.Kind() {
-			case reflect.Struct:
-				walk(fv, key+".", tag)
-				continue
-			case reflect.Bool:
-				s.Kind, s.Value = "bool", strconv.FormatBool(fv.Bool())
-			case reflect.Int, reflect.Int64, reflect.Int32:
-				s.Kind, s.Value = "int", strconv.FormatInt(fv.Int(), 10)
-			case reflect.Float64, reflect.Float32:
-				s.Kind, s.Value = "float", strconv.FormatFloat(fv.Float(), 'f', -1, 64)
-			case reflect.String:
-				s.Kind, s.Value = "string", fv.String()
-			case reflect.Slice:
-				var parts []string
-				for j := 0; j < fv.Len(); j++ {
-					parts = append(parts, fmt.Sprint(fv.Index(j).Interface()))
-				}
-				s.Kind, s.Value = "list", strings.Join(parts, ",")
-			default:
-				continue
-			}
-			out = append(out, s)
+	t := v.Type()
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		tag := strings.Split(f.Tag.Get("json"), ",")[0]
+		if tag == "" || tag == "-" || !f.IsExported() {
+			continue
 		}
+		fv := v.Field(i)
+		key := prefix + tag
+		s := Setting{Key: key, Group: group}
+		switch fv.Kind() {
+		case reflect.Struct:
+			out = append(out, settingsOfValue(fv, key+".", tag)...)
+			continue
+		case reflect.Bool:
+			s.Kind, s.Value = "bool", strconv.FormatBool(fv.Bool())
+		case reflect.Int, reflect.Int64, reflect.Int32:
+			s.Kind, s.Value = "int", strconv.FormatInt(fv.Int(), 10)
+		case reflect.Float64, reflect.Float32:
+			s.Kind, s.Value = "float", strconv.FormatFloat(fv.Float(), 'f', -1, 64)
+		case reflect.String:
+			s.Kind, s.Value = "string", fv.String()
+		case reflect.Slice:
+			var parts []string
+			for j := 0; j < fv.Len(); j++ {
+				parts = append(parts, fmt.Sprint(fv.Index(j).Interface()))
+			}
+			s.Kind, s.Value = "list", strings.Join(parts, ",")
+		default:
+			continue
+		}
+		out = append(out, s)
 	}
-	walk(reflect.ValueOf(c).Elem(), "", "")
 	return out
+}
+
+// parseSetting reads a typed value for a setting.
+func parseSetting(key, kind, value string) (any, error) {
+	value = strings.TrimSpace(value)
+	switch kind {
+	case "bool":
+		switch strings.ToLower(value) {
+		case "true", "on", "yes", "1":
+			return true, nil
+		case "false", "off", "no", "0":
+			return false, nil
+		}
+		return nil, fmt.Errorf("%s is on or off", key)
+	case "int":
+		n, err := strconv.ParseInt(strings.ReplaceAll(value, ",", ""), 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("%s needs a whole number", key)
+		}
+		return n, nil
+	case "float":
+		n, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return nil, fmt.Errorf("%s needs a number", key)
+		}
+		return n, nil
+	case "list":
+		parts := []string{}
+		for _, p := range strings.Split(value, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				parts = append(parts, p)
+			}
+		}
+		return parts, nil
+	}
+	return value, nil
 }
 
 // SettingInfos lists the settings for the protocol; secrets are blanked
@@ -124,43 +159,13 @@ func (s *Server) SetSetting(key, value string) error {
 	if kind == "" {
 		return fmt.Errorf("there's no setting called %q", key)
 	}
-	var v any
 	value = strings.TrimSpace(value)
 	if secretKeys[key] && value == "(set)" {
 		return nil // the masked placeholder came back unchanged
 	}
-	switch kind {
-	case "bool":
-		switch strings.ToLower(value) {
-		case "true", "on", "yes", "1":
-			v = true
-		case "false", "off", "no", "0":
-			v = false
-		default:
-			return fmt.Errorf("%s is on or off", key)
-		}
-	case "int":
-		n, err := strconv.ParseInt(strings.ReplaceAll(value, ",", ""), 10, 64)
-		if err != nil {
-			return fmt.Errorf("%s needs a whole number", key)
-		}
-		v = n
-	case "float":
-		n, err := strconv.ParseFloat(value, 64)
-		if err != nil {
-			return fmt.Errorf("%s needs a number", key)
-		}
-		v = n
-	case "list":
-		parts := []string{}
-		for _, p := range strings.Split(value, ",") {
-			if p = strings.TrimSpace(p); p != "" {
-				parts = append(parts, p)
-			}
-		}
-		v = parts
-	default:
-		v = value
+	v, err := parseSetting(key, kind, value)
+	if err != nil {
+		return err
 	}
 	if s.configPath == "" {
 		return errors.New("this server has no config file")
