@@ -349,6 +349,28 @@ var hatSprites = []sprite{
 		".kWwWwWwWwWwWwWwWwWwk........",
 		"..kkkkkkkkkkkkkkkkkk.........",
 	}, map[rune]string{'b': "3a4fb8", 'B': "6f86ea", 'y': "ffd23f", 'w': "f4f2ea", 'W': "c9c6ba"}},
+	// 25 the chip tower (biggest bet): a wobbly stack of chips, gold on top
+	{[]string{
+		"....kkkkkkkk....",
+		"...kgGgggGggk...",
+		"...kyywyywyyk...",
+		"....kkkkkkkk....",
+		"...kprwrrwrrk...",
+		"....kkkkkkkkk...",
+		"....kbwbbwbbbk..",
+		"....kkkkkkkkk...",
+		"...kpwppwppwk...",
+		"...kkkkkkkkkk...",
+		"..knwnnwnnwnk...",
+		"..kkkkkkkkkkk...",
+		"...kgwggwggwgk..",
+		"...kkkkkkkkkkk..",
+		"..krwrrwrrwrrk..",
+		"..kkkkkkkkkkkk..",
+		".kkbwbbwbbwbbkk.",
+		"kkkkkkkkkkkkkkkk",
+	}, map[rune]string{'g': "f2c14e", 'G': "fff2b8", 'y': "c9961f", 'w': "f4f2ea",
+		'r': "d2323c", 'p': "8a3fd1", 'b': "2f6fd6", 'n': "1f8a4c"}},
 }
 
 func genHats() {

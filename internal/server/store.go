@@ -78,6 +78,7 @@ type Account struct {
 	Splits          int   `json:"splits"`
 	RefillCount     int   `json:"refill_count"`
 	PokerHands      int   `json:"poker_hands,omitempty"`
+	BiggestBet      int64 `json:"biggest_bet,omitempty"` // most riding on one hand, any game
 
 	Unlocked []string `json:"unlocked,omitempty"`
 	Hat      string   `json:"hat,omitempty"`
@@ -106,7 +107,7 @@ func (s *Store) stats(a *Account) cosmetics.Stats {
 		Hands: a.HandsPlayed, Blackjacks: a.Blackjacks, BestWinStreak: a.BestWinStreak, WorstLoseStreak: a.WorstLoseStreak,
 		Busts: a.Busts, DoublesWon: a.DoublesWon, Splits: a.Splits, Refills: a.RefillCount,
 		RankRich: key != "" && key == s.topRich, RankNet: key != "" && key == s.topNet,
-		RankHands: key != "" && key == s.topHands,
+		RankHands: key != "" && key == s.topHands, RankBet: key != "" && key == s.topBet,
 	}
 }
 
@@ -121,6 +122,8 @@ func (s *Store) look(a *Account) (hat, frame, title string) {
 		hat = "laurel"
 	case st.RankHands:
 		hat = "nightcap"
+	case st.RankBet:
+		hat = "chip_tower"
 	case a.Hat != "" && cosmetics.Has(a.Hat, st, own):
 		hat = a.Hat
 	}
@@ -148,7 +151,7 @@ func (s *Store) profileOf(a *Account) proto.Profile {
 		BestWinStreak: a.BestWinStreak, WorstLoseStreak: a.WorstLoseStreak, Busts: a.Busts,
 		DoublesWon: a.DoublesWon, Splits: a.Splits, RefillCount: a.RefillCount,
 		Unlocked: append([]string(nil), a.Unlocked...), Hat: hat, Frame: frame, Title: title,
-		EquippedHat: a.Hat, RankRich: st.RankRich, RankNet: st.RankNet, RankHands: st.RankHands,
+		EquippedHat: a.Hat, RankRich: st.RankRich, RankNet: st.RankNet, RankHands: st.RankHands, RankBet: st.RankBet, BiggestBet: a.BiggestBet,
 		Admin: a.Admin, GiftsIn: a.GiftsIn, GiftsOut: a.GiftsOut,
 		Online: s.online[strings.ToLower(a.Username)],
 	}
@@ -213,6 +216,26 @@ func (s *Store) recomputeRanks() {
 	if handsTie || bestHands == 0 {
 		hands = ""
 	}
+	// the biggest bet is a record: whoever holds it keeps it until someone
+	// beats it outright (a tie with someone else at load time: nobody)
+	var bet string
+	var bestBet int64
+	betTie := false
+	for k, a := range s.accounts {
+		switch {
+		case a.BiggestBet > bestBet:
+			bet, bestBet, betTie = k, a.BiggestBet, false
+		case a.BiggestBet == bestBet && bestBet > 0:
+			betTie = true
+		}
+	}
+	if h, ok := s.accounts[s.topBet]; ok && h.BiggestBet == bestBet && bestBet > 0 {
+		bet, betTie = s.topBet, false
+	}
+	if betTie || bestBet == 0 {
+		bet = ""
+	}
+	s.topBet = bet
 	s.topRich, s.topNet, s.topHands = rich, net, hands
 }
 
@@ -226,6 +249,16 @@ func (s *Store) TakeUnlocks() []Unlock {
 }
 
 // Tops returns the current #1 richest and #1 lifetime usernames ("" if none).
+// TopBet is who holds the biggest-bet record, and how big it is.
+func (s *Store) TopBet() (string, int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.accounts[s.topBet]; ok {
+		return a.Username, a.BiggestBet
+	}
+	return "", 0
+}
+
 // TopHands is who has played the most hands ("" if nobody or a tie).
 func (s *Store) TopHands() string {
 	s.mu.Lock()
@@ -292,6 +325,7 @@ type Store struct {
 	house    proto.HouseStats
 	topRich  string
 	topHands string
+	topBet   string
 	topNet   string
 	unlocks  []Unlock
 	changes  int  // successful saves, to know when a backup is due
@@ -739,6 +773,9 @@ func (s *Store) Settle(username string, hands []HandResult) {
 		}
 		a.HandsPlayed++
 		a.Wagered += h.Wagered
+		if h.Wagered > a.BiggestBet {
+			a.BiggestBet = h.Wagered
+		}
 		switch {
 		case d > 0:
 			a.HandsWon++

@@ -151,3 +151,31 @@ func TestPreviewPiles(t *testing.T) {
 	}
 	save(t, dir, "30_piles.png", a.fb)
 }
+
+// TestPreviewUniqueHats draws the most-hands and biggest-bet sets on a portrait.
+func TestPreviewUniqueHats(t *testing.T) {
+	dir := os.Getenv("PREVIEW_DIR")
+	if dir == "" {
+		t.Skip("set PREVIEW_DIR to render previews")
+	}
+	assets, err := LoadAssets("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := New(fakePlatform{}, &Config{}, assets)
+	a.SetSize(640, 360)
+	a.computeLayout()
+	a.drawTableBG()
+	for i, h := range []string{"crown", "laurel", "nightcap", "chip_tower"} {
+		x, y := 120+i*110, 150
+		frame := "frame_gold"
+		if h == "nightcap" {
+			frame = "frame_marathon"
+		}
+		a.drawFrame(frame, x-2, y-2)
+		blit(a.fb, a.A.DefaultAvatar, x, y)
+		a.drawHat(h, x, y)
+		a.text(x+16, y+40, h, a.A.C("text"), alignCenter)
+	}
+	save(t, dir, "31_unique_hats.png", a.fb)
+}

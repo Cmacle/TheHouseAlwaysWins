@@ -241,3 +241,31 @@ func TestMostHandsCosmetics(t *testing.T) {
 		t.Fatalf("tie: top hands %q", s.TopHands())
 	}
 }
+
+// The biggest bet is a record: it moves only when someone beats it.
+func TestBiggestBetRecord(t *testing.T) {
+	g, _, _ := giftGame(t)
+	s := g.store
+	s.Settle("alice", []HandResult{{Wagered: 500, Payout: 0}})
+	if n, amt := s.TopBet(); n != "alice" || amt != 500 {
+		t.Fatalf("record %s %d", n, amt)
+	}
+	// she also has the most hands, and the Nightcap outranks the Tower
+	if p, _ := s.Profile("alice"); !p.RankBet || p.Hat != "nightcap" {
+		t.Fatalf("alice: record %v, hat %q", p.RankBet, p.Hat)
+	}
+	s.Settle("bob", []HandResult{{Wagered: 500, Payout: 1000}}) // ties: alice keeps it
+	if n, _ := s.TopBet(); n != "alice" {
+		t.Fatalf("a tie took the record: %s", n)
+	}
+	s.Settle("bob", []HandResult{{Wagered: 600, Payout: 0}})
+	if n, amt := s.TopBet(); n != "bob" || amt != 600 {
+		t.Fatalf("record %s %d after bob beat it", n, amt)
+	}
+	if err := s.Equip("bob", "title", "t_bet_the_farm"); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := s.Profile("bob"); !p.RankBet || p.BiggestBet != 600 {
+		t.Fatalf("bob: record %v, biggest %d", p.RankBet, p.BiggestBet)
+	}
+}
