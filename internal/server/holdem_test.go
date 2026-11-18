@@ -100,6 +100,17 @@ func play(t *testing.T, tb *Holdem, conns []*conn, hands int, rng *rand.Rand, ch
 			tb.onAct(p, act, amt)
 			continue
 		}
+		if tb.phase == pkReady {
+			// most people deal themselves in; now and then someone doesn't
+			for _, p := range tb.humans() {
+				if p.sitOut {
+					tb.onAct(p, "sitin", 0)
+				}
+				if tb.playing(p) && !p.dealIn && rng.Intn(10) > 0 {
+					tb.onAct(p, "in", 0)
+				}
+			}
+		}
 		fn := tb.queued
 		if fn == nil {
 			if tb.phase == pkWaiting {
@@ -233,6 +244,76 @@ func TestHoldemBuyInCashOutAndCrash(t *testing.T) {
 	_ = conns
 }
 
+// Only people who press DEAL ME IN get cards; three misses sits you out.
+func TestHoldemDealIn(t *testing.T) {
+	hc := defaultHoldem()
+	hc.DaleThinkMS = 0
+	tb, _, _ := pokerTable(t, 2, hc)
+	a, b := tb.byUser["player0"], tb.byUser["player1"]
+	if tb.phase != pkReady || !tb.view(a).CanDealIn {
+		t.Fatalf("phase %s, can deal in %v", tb.phase, tb.view(a).CanDealIn)
+	}
+	tb.onAct(a, "in", 0)
+	if tb.view(a).CanDealIn || !tb.view(b).Seats[a.seat].DealtIn {
+		t.Fatal("dealing in didn't show")
+	}
+	fn := tb.queued
+	tb.queued = nil
+	fn() // time's up: player1 never pressed
+	if tb.phase != pkPreflop || !a.inHand || b.inHand || !tb.seats[0].inHand {
+		t.Fatalf("phase %s, in hand: p0 %v p1 %v dale %v", tb.phase, a.inHand, b.inHand, tb.seats[0].inHand)
+	}
+	if len(tb.view(b).Seats[b.seat].Cards) != 0 {
+		t.Fatal("player1 got cards without dealing in")
+	}
+	// both in: it starts at once without waiting out the clock
+	for tb.phase != pkReady {
+		if x := tb.active; x > 0 {
+			tb.onAct(tb.seats[x], "fold", 0)
+			continue
+		}
+		fn := tb.queued
+		tb.queued = nil
+		fn()
+	}
+	tb.onAct(a, "in", 0)
+	tb.onAct(b, "in", 0)
+	fn = tb.queued
+	tb.queued = nil
+	fn()
+	if !a.inHand || !b.inHand {
+		t.Fatal("both dealt in but not both playing")
+	}
+	if b.missed != 0 {
+		t.Fatalf("missed count %d after dealing in", b.missed)
+	}
+	b.missed = 2
+	for tb.phase != pkReady {
+		if x := tb.active; x > 0 {
+			tb.onAct(tb.seats[x], "fold", 0)
+			continue
+		}
+		fn := tb.queued
+		tb.queued = nil
+		fn()
+	}
+	tb.onAct(a, "in", 0)
+	fn = tb.queued
+	tb.queued = nil
+	fn()
+	if !b.sitOut {
+		t.Fatal("three missed hands should sit you out")
+	}
+}
+
+func TestHoldemMiddleSeatFirst(t *testing.T) {
+	tb, _, _ := pokerTable(t, 2, defaultHoldem())
+	// six seats: the middle ones are 3 and 4 (seat 0 is Dale's)
+	if tb.byUser["player0"].seat != 3 || tb.byUser["player1"].seat != 4 {
+		t.Fatalf("seats %d and %d", tb.byUser["player0"].seat, tb.byUser["player1"].seat)
+	}
+}
+
 func TestHoldemDealerSoloOnly(t *testing.T) {
 	hc := defaultHoldem()
 	hc.DealerSoloOnly = true
@@ -255,7 +336,10 @@ func TestHoldemHiddenCards(t *testing.T) {
 	hc := defaultHoldem()
 	hc.DaleThinkMS = 0
 	tb, _, conns := pokerTable(t, 2, hc)
-	for tb.phase == pkWaiting && tb.queued != nil {
+	for (tb.phase == pkWaiting || tb.phase == pkReady) && tb.queued != nil {
+		for _, p := range tb.humans() {
+			tb.onAct(p, "in", 0)
+		}
 		fn := tb.queued
 		tb.queued = nil
 		fn()

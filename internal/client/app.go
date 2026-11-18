@@ -220,6 +220,7 @@ type App struct {
 	ps                 *proto.PokerState
 	bs                 *proto.BeggarState
 	roll               *diceRoll
+	pkRev              *pkRevealFX
 	pkRaise            int64 // the bet/raise amount being chosen
 	pkRaiseFor         int   // hand number the draft belongs to
 	buyTable           proto.TableInfo

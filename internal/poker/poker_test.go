@@ -176,3 +176,22 @@ func TestSettleRandomConserves(t *testing.T) {
 		}
 	}
 }
+
+func TestDescribe(t *testing.T) {
+	c := func(r, s uint8) Card { return Card{Rank: r, Suit: s} }
+	for _, tc := range []struct {
+		hole, board []Card
+		want        string
+	}{
+		{[]Card{c(1, 0), c(13, 1)}, nil, "Ace high"},
+		{[]Card{c(6, 0), c(6, 1)}, nil, "Pair of Sixes"},
+		{[]Card{c(1, 0), c(13, 1)}, []Card{c(13, 2), c(7, 3), c(2, 0)}, "Pair of Kings"},
+		{[]Card{c(1, 0), c(13, 1)}, []Card{c(13, 2), c(1, 3), c(2, 0), c(9, 1)}, "Two Pair, Aces and Kings"},
+		{[]Card{{}, {}}, nil, ""},
+		{[]Card{c(1, 0), c(13, 1)}, []Card{{}, {}, {}}, "Ace high"},
+	} {
+		if got := Describe(tc.hole, tc.board); got != tc.want {
+			t.Errorf("%v + %v = %q, want %q", tc.hole, tc.board, got, tc.want)
+		}
+	}
+}

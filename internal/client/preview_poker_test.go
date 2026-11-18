@@ -59,6 +59,8 @@ func pokerPreviewState() *proto.PokerState {
 	}
 	ps.Seats[0] = proto.PokerSeat{Seat: 0, Username: "Dale", Dale: true, Stack: 860, Bet: 40, InHand: true, Connected: true, Cards: []bj.Card{{}, {}}, Action: "bet 40"}
 	ps.Seats[1] = proto.PokerSeat{Seat: 1, Username: "Big_Tony", Stack: 420, InHand: true, Folded: true, Connected: true, Action: "fold"}
+	ps.Seats[5] = proto.PokerSeat{Seat: 5, Username: "LuckyLou", Stack: 300, Bet: 120, InHand: true, Connected: true, Cards: []bj.Card{{}, {}}, Action: "raise 120"}
+	ps.Seats[6] = proto.PokerSeat{Seat: 6, Username: "Cmacle", Stack: 2200, Bet: 120, InHand: true, Connected: true, Cards: []bj.Card{{}, {}}, Action: "call 120"}
 	ps.Seats[3] = proto.PokerSeat{Seat: 3, Username: "You_There", Stack: 570, InHand: true, Connected: true, Cards: []bj.Card{card(1, 2), card(13, 2)}, Hat: "fedora", Title: "t_bluffer"}
 	ps.Seats[4] = proto.PokerSeat{Seat: 4, Username: "Deb", Stack: 990, Bet: 40, InHand: true, Connected: true, Cards: []bj.Card{{}, {}}, Action: "call 40"}
 	return ps
@@ -144,4 +146,40 @@ func TestPreviewBeggar(t *testing.T) {
 	a.onBeggar(bs)
 	frame()
 	save(t, dir, "54_beggar_rich.png", a.fb)
+}
+
+func TestPreviewPokerDealInReveal(t *testing.T) {
+	a, frame, dir := pokerPreviewApp(t)
+	a.onJoined(proto.Joined{ID: "holdem", Game: proto.GameHoldem, Name: "Hold'em"})
+	r := pokerPreviewState()
+	r.Phase, r.Actions, r.Active, r.Board, r.Pot, r.Message = "ready", nil, -1, nil, 0, "New hand. Press DEAL ME IN to play it."
+	r.CanDealIn = true
+	for i := range r.Seats {
+		r.Seats[i].Cards, r.Seats[i].Bet, r.Seats[i].Action, r.Seats[i].InHand, r.Seats[i].Folded = nil, 0, "", false, false
+	}
+	r.Seats[4].DealtIn, r.Seats[6].DealtIn = true, true
+	r.Deadline = time.Now().Add(7 * time.Second).UnixMilli()
+	r.TimerTotal = 10000
+	a.onPoker(r)
+	frame()
+	save(t, dir, "45_poker_dealin.png", a.fb)
+
+	// the flop, face down and big
+	f := pokerPreviewState()
+	f.Phase, f.Actions, f.Active, f.Deadline = "flop", nil, -1, 0
+	f.HandNumber = 13
+	f.Seats[3].Cards = []bj.Card{card(1, 2), card(10, 3)}
+	f.Board = []bj.Card{{}, {}, {}}
+	f.Reveal = &proto.PokerReveal{From: 0, Count: 3, Until: time.Now().Add(1500 * time.Millisecond).UnixMilli()}
+	a.onPoker(f)
+	a.pkRev.start = time.Now().Add(-time.Second)
+	frame()
+	save(t, dir, "46_poker_reveal_wait.png", a.fb)
+	g := *f
+	g.Board = []bj.Card{card(1, 0), card(10, 1), card(7, 1)}
+	g.Reveal = &proto.PokerReveal{From: 0, Count: 3, Until: f.Reveal.Until, Shown: true}
+	a.onPoker(&g)
+	a.pkRev.flippedAt = time.Now().Add(-900 * time.Millisecond)
+	frame()
+	save(t, dir, "47_poker_reveal_flipped.png", a.fb)
 }

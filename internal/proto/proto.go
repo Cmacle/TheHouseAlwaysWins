@@ -373,7 +373,17 @@ type PokerSeat struct {
 	Action        string           `json:"action,omitempty"`    // last thing they did
 	HandName      string           `json:"hand_name,omitempty"` // at the showdown
 	Won           int64            `json:"won,omitempty"`
-	Best          []blackjack.Card `json:"best,omitempty"` // their best five, at the showdown
+	Best          []blackjack.Card `json:"best,omitempty"`     // their best five, at the showdown
+	DealtIn       bool             `json:"dealt_in,omitempty"` // pressed DEAL ME IN for the coming hand
+}
+
+// PokerReveal is board cards being revealed: Count cards from From stay
+// face down until Until, then flip.
+type PokerReveal struct {
+	From  int   `json:"from"`
+	Count int   `json:"count"`
+	Until int64 `json:"until"` // unix ms, server clock
+	Shown bool  `json:"shown,omitempty"`
 }
 
 // PokerState is a poker table as seen by one client.
@@ -413,6 +423,8 @@ type PokerState struct {
 	HouseTier      int          `json:"house_tier"`
 	Settings       Settings     `json:"settings"`
 	Spectators     int          `json:"spectators,omitempty"`
+	CanDealIn      bool         `json:"can_deal_in,omitempty"` // press DEAL ME IN now
+	Reveal         *PokerReveal `json:"reveal,omitempty"`
 }
 
 // BeggarState is the Beggars Table: anyone nearly broke can roll five dice,

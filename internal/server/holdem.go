@@ -33,11 +33,12 @@ type holdemCfg struct {
 	BetweenSeconds int   `json:"between_seconds"`  // pause between hands
 	DealerSoloOnly bool  `json:"dealer_solo_only"` // Dale only plays someone who's alone
 	DaleThinkMS    int   `json:"dale_think_ms"`    // how long he takes to act
+	DealInSeconds  int   `json:"deal_in_seconds"`  // time to press DEAL ME IN before a hand
 }
 
 func defaultHoldem() holdemCfg {
 	return holdemCfg{Seats: 6, SmallBlind: 5, BigBlind: 10, MinBuyIn: 200, MaxBuyIn: 1000,
-		ActionSeconds: 25, BetweenSeconds: 5, DaleThinkMS: 1600}
+		ActionSeconds: 25, BetweenSeconds: 4, DaleThinkMS: 1600, DealInSeconds: 10}
 }
 
 func (h *holdemCfg) validate() {
@@ -51,17 +52,30 @@ func (h *holdemCfg) validate() {
 	h.ActionSeconds = min(max(h.ActionSeconds, 5), 300)
 	h.BetweenSeconds = min(max(h.BetweenSeconds, 2), 60)
 	h.DaleThinkMS = min(max(h.DaleThinkMS, 0), 10000)
+	if h.DealInSeconds == 0 {
+		h.DealInSeconds = 10
+	}
+	h.DealInSeconds = min(max(h.DealInSeconds, 3), 60)
 }
 
 // Hold'em phases.
 const (
 	pkWaiting  = "waiting"
+	pkReady    = "ready" // players press DEAL ME IN for the next hand
 	pkPreflop  = "preflop"
 	pkFlop     = "flop"
 	pkTurn     = "turn"
 	pkRiver    = "river"
 	pkShowdown = "showdown"
 )
+
+// pkReveal holds new board cards face down for a moment, then flips them
+// (the card_reveal setting).
+type pkReveal struct {
+	from, n int
+	until   time.Time
+	shown   bool
+}
 
 type hPlayer struct {
 	user     string
@@ -78,7 +92,9 @@ type hPlayer struct {
 	acted    bool // has acted since the last full raise
 	canRais  bool // may raise when it's their turn
 	sitOut   bool
-	away     int // missed turns in a row
+	away     int  // missed turns in a row
+	dealIn   bool // pressed DEAL ME IN for the coming hand
+	missed   int  // hands in a row they didn't deal themselves into
 	leaving  bool
 	action   string // last action, shown by the seat
 	show     bool   // cards face up for everyone
@@ -124,6 +140,7 @@ type Holdem struct {
 	deadline   time.Time
 	timerTotal time.Duration
 	pending    *holdemCfg // settings change waiting for the hand to end
+	reveal     *pkReveal  // board cards being revealed
 	infoBox    infoBox
 	instant    bool   // tests: timers don't wait, the test runs them
 	queued     func() // tests: the timer that would have fired
@@ -179,7 +196,7 @@ func (t *Holdem) safely(what string, f func()) {
 }
 
 func (t *Holdem) abortHand() {
-	if t.phase == pkWaiting {
+	if t.phase == pkWaiting || t.phase == pkReady {
 		return
 	}
 	t.log.Printf("[%s] calling off hand #%d after a crash", t.id, t.handNo)
@@ -310,10 +327,11 @@ func (t *Holdem) onJoin(c *conn, user string, buyIn int64) {
 // sitDown seats a watcher with a buy-in (or with chips already at the
 // table, after a reconnect).
 func (t *Holdem) sitDown(p *hPlayer, buyIn int64) bool {
+	// fill from the middle of the rail outward, like blackjack
 	free := -1
-	for i := 1; i < len(t.seats); i++ {
-		if t.seats[i] == nil {
-			free = i
+	for _, i := range seatOrder(len(t.seats) - 1) {
+		if t.seats[i+1] == nil {
+			free = i + 1
 			break
 		}
 	}
@@ -431,8 +449,11 @@ func (t *Holdem) onAct(p *hPlayer, act string, amount int64) {
 		p.sitOut = true
 		t.broadcast()
 		return
+	case "in", "dealin":
+		t.dealMeIn(p)
+		return
 	case "sitin":
-		p.sitOut, p.away = false, 0
+		p.sitOut, p.away, p.missed = false, 0, 0
 		t.maybeStart()
 		t.broadcast()
 		return
@@ -582,29 +603,83 @@ func (t *Holdem) maybeStart() {
 		}
 		return
 	}
-	t.message = ""
-	t.after(1200*time.Millisecond, t.startHand)
+	// everyone who can play has a few seconds to deal themselves in
+	t.phase = pkReady
+	for _, p := range t.humans() {
+		p.dealIn = false
+	}
+	t.message = "New hand. Press DEAL ME IN to play it."
+	d := time.Duration(t.hc.DealInSeconds) * time.Second
+	t.setDeadline(d)
+	t.after(d, t.startHand)
+}
+
+// dealMeIn marks a player in for the coming hand; once everyone who can
+// play is in, it starts right away.
+func (t *Holdem) dealMeIn(p *hPlayer) {
+	if t.phase != pkReady || !t.playing(p) || p.dealIn {
+		return
+	}
+	p.dealIn, p.missed = true, 0
+	for _, o := range t.humans() {
+		if t.playing(o) && !o.dealIn {
+			t.broadcast()
+			return
+		}
+	}
+	t.clearDeadline()
+	t.after(400*time.Millisecond, t.startHand)
+	t.broadcast()
 }
 
 func (t *Holdem) startHand() {
-	if t.phase != pkWaiting {
+	if t.phase != pkReady {
 		return
 	}
+	t.clearDeadline()
+	// whoever didn't deal in sits this one out (and after three, until they
+	// come back)
+	in := 0
+	for _, p := range t.humans() {
+		if !t.playing(p) {
+			continue
+		}
+		if p.dealIn {
+			in++
+			continue
+		}
+		p.missed++
+		if p.missed >= 3 && p.conn != nil {
+			p.sitOut = true
+			t.errTo(p, "You've been sat out after missing three hands. Press SIT IN to play again.")
+		}
+	}
+	daleIn := in > 0 && (!t.hc.DealerSoloOnly || in == 1)
+	if in+map[bool]int{true: 1}[daleIn] < 2 {
+		t.phase = pkWaiting
+		t.message = "Nobody dealt in."
+		t.after(time.Duration(t.hc.BetweenSeconds)*time.Second, t.maybeStart)
+		t.broadcast()
+		return
+	}
+	t.phase = pkWaiting // the deal below takes it from here
 	dale := t.seats[0]
-	daleIn := t.daleIn()
 	if daleIn && dale.stack < t.hc.MaxBuyIn/2 {
 		dale.stack = t.hc.MaxBuyIn // the house always has more chips
 	}
-	in := func(p *hPlayer) bool {
+	dealt := func(p *hPlayer) bool {
 		if p.dale {
 			return daleIn
 		}
-		return t.playing(p)
+		return t.playing(p) && p.dealIn
 	}
-	players := t.inOrder(t.button, in)
+	players := t.inOrder(t.button, dealt)
 	if len(players) < 2 {
 		t.maybeStart()
 		return
+	}
+	for _, p := range t.humans() {
+		p.dealIn = false
 	}
 	t.handNo++
 	t.voice.talked = 0
@@ -902,11 +977,11 @@ func (t *Holdem) endRound() {
 		}
 	}
 	var next string
+	from := len(t.board)
 	switch t.phase {
 	case pkPreflop:
 		next = pkFlop
 		t.board = append(t.board, t.deck.Draw(), t.deck.Draw(), t.deck.Draw())
-		t.reactToFlop()
 	case pkFlop:
 		next = pkTurn
 		t.board = append(t.board, t.deck.Draw())
@@ -919,18 +994,50 @@ func (t *Holdem) endRound() {
 	}
 	t.phase = next
 	t.eventAll(proto.Event{Kind: "card", Seat: -1})
-	t.broadcast()
 	pause := 900 * time.Millisecond
 	if runOut {
 		pause = 1800 * time.Millisecond // let the drama play out
 	}
-	t.after(pause, func() {
-		if runOut {
-			t.endRound()
-			return
+	carryOn := func() {
+		if next == pkFlop {
+			t.reactToFlop()
 		}
-		t.nextTurn(t.button)
+		t.after(pause, func() {
+			if runOut {
+				t.endRound()
+				return
+			}
+			t.nextTurn(t.button)
+		})
+	}
+	if !t.cfg.CardReveal || t.instant {
+		t.broadcast()
+		carryOn()
+		return
+	}
+	// the new cards stay face down, big in the middle, then flip
+	d := t.revealDelay()
+	t.reveal = &pkReveal{from: from, n: len(t.board) - from, until: time.Now().Add(d)}
+	t.broadcast()
+	t.after(d, func() {
+		t.reveal.shown = true
+		t.eventAll(proto.Event{Kind: "reveal", Seat: -1})
+		t.broadcast()
+		t.after(revealSettle+time.Duration(t.reveal.n-1)*150*time.Millisecond, func() {
+			t.reveal = nil
+			t.broadcast()
+			carryOn()
+		})
 	})
+}
+
+func (t *Holdem) revealDelay() time.Duration {
+	lo, hi := t.cfg.CardRevealMinSeconds, t.cfg.CardRevealMaxSeconds
+	s := lo
+	if hi > lo {
+		s += t.rng.Float64() * (hi - lo)
+	}
+	return time.Duration(s * float64(time.Second))
 }
 
 // returnUncalled gives back the part of the biggest bet nobody matched.
@@ -1147,6 +1254,7 @@ func (t *Holdem) endHandCleanup() {
 		}
 	}
 	t.active = -1
+	t.reveal = nil
 }
 
 func (t *Holdem) display(p *hPlayer) string {
@@ -1187,6 +1295,15 @@ func (t *Holdem) view(viewer *hPlayer) proto.PokerState {
 	if st.Board == nil {
 		st.Board = []poker.Card{}
 	}
+	if r := t.reveal; r != nil {
+		st.Reveal = &proto.PokerReveal{From: r.from, Count: r.n, Until: r.until.UnixMilli(), Shown: r.shown}
+		if !r.shown {
+			for i := r.from; i < r.from+r.n && i < len(st.Board); i++ {
+				st.Board[i] = poker.Card{}
+			}
+		}
+	}
+	st.CanDealIn = t.phase == pkReady && viewer.seat > 0 && t.playing(viewer) && !viewer.dealIn
 	if !viewer.dale {
 		st.Balance = t.store.Balance(viewer.user)
 	}
@@ -1210,6 +1327,7 @@ func (t *Holdem) view(viewer *hPlayer) proto.PokerState {
 			sv.InHand, sv.Folded, sv.AllIn, sv.SittingOut = p.inHand, p.folded, p.allIn, p.sitOut
 			sv.Connected = p.dale || p.conn != nil
 			sv.Action, sv.Won = p.action, p.won
+			sv.DealtIn = t.phase == pkReady && p.dealIn
 			if !p.dale {
 				if prof, ok := t.store.Profile(p.user); ok {
 					sv.AvatarVersion, sv.Hat, sv.Frame, sv.Title = prof.AvatarVersion, prof.Hat, prof.Frame, prof.Title

@@ -300,3 +300,57 @@ func Equity(hole []Card, board []Card, opponents, sims int, rng *rand.Rand) floa
 	}
 	return total / float64(sims)
 }
+
+// Describe names what hole cards make with the board so far: before the
+// flop that's a pocket pair or the high card, after it the best five.
+func Describe(hole, board []Card) string {
+	_, name := describe(hole, board)
+	return name
+}
+
+// Strength is the category of what hole cards make with the board so far
+// (HighCard..RoyalFlush), -1 if a card is hidden.
+func Strength(hole, board []Card) int {
+	cat, _ := describe(hole, board)
+	return cat
+}
+
+func describe(hole, board []Card) (int, string) {
+	for _, c := range hole {
+		if c.Rank == 0 {
+			return -1, "" // a hidden card
+		}
+	}
+	all := append([]Card{}, hole...)
+	for _, c := range board {
+		if c.Rank != 0 { // still face down (being revealed)
+			all = append(all, c)
+		}
+	}
+	if len(all) >= 5 {
+		s, _ := Best(all)
+		return s.Category(), s.Name()
+	}
+	if len(hole) == 0 {
+		return -1, ""
+	}
+	if len(all) > 2 {
+		// a partial board can't happen in Hold'em, but be safe
+		all = all[:2]
+	}
+	hi := 0
+	counts := map[int]int{}
+	pair := 0
+	for _, c := range all {
+		r := high(c)
+		counts[r]++
+		if counts[r] == 2 && r > pair {
+			pair = r
+		}
+		hi = max(hi, r)
+	}
+	if pair > 0 {
+		return Pair, "Pair of " + plural(rankName(pair))
+	}
+	return HighCard, rankName(hi) + " high"
+}
