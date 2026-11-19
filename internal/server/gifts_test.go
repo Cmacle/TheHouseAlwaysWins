@@ -206,7 +206,7 @@ func TestRevealKeepsSeatMessage(t *testing.T) {
 }
 
 // Whoever has played the most hands (all games) wears the Nightcap and may
-// use the Marathon Frame and the Part Of The Furniture title.
+// use the Marathon Frame and the The Furniture title.
 func TestMostHandsCosmetics(t *testing.T) {
 	g, _, _ := giftGame(t)
 	s := g.store

@@ -20,3 +20,8 @@ client.json
 /android/app/libs/*.aar
 /android/app/libs/*.jar
 /android/local.properties
+
+# signing keys never go in the repo
+*.keystore
+*.jks
+android-signing/

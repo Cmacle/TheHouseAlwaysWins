@@ -76,10 +76,10 @@ Discord.
   more. Harder goals have flashier rewards. **Whoever has the most chips right
   now automatically wears The Crown**, the #1 lifetime earner gets the golden
   Laurel Wreath, and whoever has played the most hands wears **The Nightcap**
-  (and can use the Marathon Frame and the title Part Of The Furniture). The
+  (and can use the Marathon Frame and the title The Furniture). The
   biggest single bet ever made earns **The Chip Tower** and the title Bet The
   Farm, until someone beats it, and the record for most chips held at once
-  earns **The Moneybags**, the **Vault Frame** and the title High Water Mark.
+  earns **The Moneybags**, the **Vault Frame** and the title High Water.
   Record hats go on automatically, but only if you haven't picked a hat
   yourself. Frames grow fancier with rarity: the rarest spill out around the
   picture (never over it). The best hats and frames are animated: crowns and
@@ -369,7 +369,7 @@ Taking the crown is announced to everyone.
 | High Roller | Rare | Bet a total of $100,000 |
 | Down Bad | Rare | Be down $10,000 lifetime |
 | Double Trouble | Rare | Win 25 doubled hands |
-| Professional Degenerate | Rare | Receive 30 daily refills |
+| Degenerate | Rare | Receive 30 daily refills |
 | Card Shark | Epic | Get 50 blackjacks |
 | On Fire | Epic | Win 9 hands in a row |
 | Comeback Kid | Epic | Fall $5,000 behind, then get back to even |
@@ -380,12 +380,12 @@ Taking the crown is announced to everyone.
 | Living Legend | Legendary | Be up $50,000 lifetime |
 | Owns The House | Unique | Be #1 on the Richest leaderboard |
 | The G.O.A.T. | Unique | Be #1 on the Lifetime leaderboard |
-| Part Of The Furniture | Unique | Play more hands than anyone (all games) |
+| The Furniture | Unique | Play more hands than anyone (all games) |
 | Bet The Farm | Unique | Make the biggest single bet (all games); kept until beaten |
-| High Water Mark | Unique | Hold the most chips at once, ever; kept until beaten |
+| High Water | Unique | Hold the most chips at once, ever; kept until beaten |
 | Grinder | Uncommon | Play 250 hands of Hold'em |
 | Pot Committed | Rare | Win a Hold'em pot of $5,000 |
-| Stone Cold Bluffer | Rare | Win 25 pots holding nothing (no showdown) |
+| Cold Bluffer | Rare | Win 25 pots holding nothing (no showdown) |
 | Quad God | Epic | Make four of a kind 3 times |
 | Dale Slayer | Epic | Beat Dale at the showdown 100 times |
 | Royalty | Legendary | Make a royal flush |
@@ -793,10 +793,13 @@ gomobile bind -target=android/arm64,android/arm -androidapi 21 -o android/app/li
 cd android && gradle assembleRelease
 ```
 
-The APK is signed with `android/app/release.keystore` (password
-`thehousealwayswins`), which is committed so every build can update the
-installed app. It only identifies this app; it isn't a secret worth guarding
-for a friends-only game.
+The release APK is signed with a private key that is never kept in the repo.
+GitHub Actions gets it from two repository secrets, `ANDROID_KEYSTORE_B64` (the
+keystore, base64) and `ANDROID_KEYSTORE_PASSWORD`; without them the build skips
+the APK with a warning. A local build without `ANDROID_KEYSTORE` set falls back
+to the debug key (fine for testing, but it won't install over the released
+app). The key was replaced in 1.9.1 because the old one had been committed, so
+phones with an older version need to uninstall once and install the new APK.
 
 ### Automatic releases
 

@@ -605,7 +605,7 @@ func (a *App) drawCasinoSeats(cs *proto.CasinoState) {
 		}
 		label(ar.Max.Y+4, fitText(a.A.Font, sv.Username, seatW), nameCol)
 		if name, c, ok := titleOf(sv.Title); ok {
-			label(ar.Max.Y+13, fitText(a.A.Font, name, seatW+16), c)
+			label(ar.Max.Y+13, fitText(a.A.Font, name, seatW+20), c)
 		}
 		// bets, stacked above the hat
 		by := cy - 16 - a.A.Theme.HatHeight + a.A.Theme.HatOverlap - 4

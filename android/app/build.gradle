@@ -20,23 +20,27 @@ android {
         versionName versionText
     }
 
-    // A fixed key so new APKs install over old ones without uninstalling.
+    // The release key (the same one every time, so new APKs install over old
+    // ones) is never kept in the repo: CI writes it from the
+    // ANDROID_KEYSTORE_B64 secret and passes its path and password in the
+    // environment. Without it (a local build) the APK gets the debug key.
+    def keyPath = System.getenv('ANDROID_KEYSTORE')
+    def haveKey = keyPath != null && file(keyPath).exists()
     signingConfigs {
         release {
-            storeFile file('release.keystore')
-            storePassword 'thehousealwayswins'
-            keyAlias 'house'
-            keyPassword 'thehousealwayswins'
+            if (haveKey) {
+                storeFile file(keyPath)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS') ?: 'house'
+                keyPassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            signingConfig haveKey ? signingConfigs.release : signingConfigs.debug
             minifyEnabled false
-        }
-        debug {
-            signingConfig signingConfigs.release
         }
     }
 

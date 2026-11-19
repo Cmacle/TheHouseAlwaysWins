@@ -4,7 +4,9 @@ package client
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +17,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	bj "github.com/Cmacle/TheHouseAlwaysWins/internal/blackjack"
@@ -116,20 +119,45 @@ func init() {
 }
 
 // ExportDefaults writes every default asset that does not yet exist in dir, so
-// players can see and replace them.
+// players can see and replace them. A copy written by an older version that
+// nobody has edited since is brought up to date (otherwise its old art would
+// hide what's new, like hats added since); anything a player changed stays.
 func ExportDefaults(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	// what we wrote last time, so an untouched file can be recognised
+	manifestPath := filepath.Join(dir, ".defaults.json")
+	written := map[string]string{}
+	if b, err := os.ReadFile(manifestPath); err == nil {
+		_ = json.Unmarshal(b, &written)
+	}
+	changed := false
 	entries, _ := fs.ReadDir(defaultFS, "defaultassets")
 	for _, e := range entries {
 		dst := filepath.Join(dir, e.Name())
-		if _, err := os.Stat(dst); err == nil {
-			continue
-		}
 		b, _ := defaultFS.ReadFile("defaultassets/" + e.Name())
+		cur := sha256hex(b)
+		if have, err := os.ReadFile(dst); err == nil {
+			h := sha256hex(have)
+			if h == cur {
+				if written[e.Name()] != cur {
+					written[e.Name()], changed = cur, true
+				}
+				continue
+			}
+			if h != written[e.Name()] && !slices.Contains(oldDefaults[e.Name()], h) {
+				continue // the player's own art
+			}
+		}
 		if err := os.WriteFile(dst, b, 0o644); err != nil {
 			return err
+		}
+		written[e.Name()], changed = cur, true
+	}
+	if changed {
+		if b, err := json.MarshalIndent(written, "", "  "); err == nil {
+			_ = os.WriteFile(manifestPath, b, 0o644)
 		}
 	}
 	themePath := filepath.Join(dir, "theme.json")
@@ -359,3 +387,8 @@ dealer's cards, as the players feel: rev_dealer_bust, rev_dealer_strong
 theme.json            sizes, chip values and text colours (#rrggbb or
                       #rrggbbaa)
 `
+
+func sha256hex(b []byte) string {
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
+}

@@ -299,7 +299,7 @@ func (a *App) drawPoker() {
 		}
 		label(ar.Max.Y+4, fitText(a.A.Font, sv.Username, seatW), nameCol)
 		if name, c, ok := titleOf(sv.Title); ok {
-			label(ar.Max.Y+13, fitText(a.A.Font, name, seatW+16), c)
+			label(ar.Max.Y+13, fitText(a.A.Font, name, seatW+20), c)
 		}
 		if line, lc := a.pokerSeatLine(ps, sv); line != "" {
 			label(ar.Max.Y+22, fitText(a.A.Font, line, seatW+20), lc)

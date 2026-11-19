@@ -176,7 +176,7 @@ var Catalog = []Item{
 	{ID: "t_high_roller", Kind: Title, Name: "High Roller", Desc: "Wager $100,000 total.", Tier: Rare, Metric: MWagered, Goal: 100_000},
 	{ID: "t_down_bad", Kind: Title, Name: "Down Bad", Desc: "Be down $10,000 lifetime.", Tier: Rare, Metric: MNetDown, Goal: 10_000},
 	{ID: "t_double_trouble", Kind: Title, Name: "Double Trouble", Desc: "Win 25 doubled hands.", Tier: Rare, Metric: MDoublesWon, Goal: 25},
-	{ID: "t_degenerate", Kind: Title, Name: "Professional Degenerate", Desc: "Receive 30 daily refills.", Tier: Rare, Metric: MRefills, Goal: 30},
+	{ID: "t_degenerate", Kind: Title, Name: "Degenerate", Desc: "Receive 30 daily refills.", Tier: Rare, Metric: MRefills, Goal: 30},
 	{ID: "t_card_shark", Kind: Title, Name: "Card Shark", Desc: "Get 50 blackjacks.", Tier: Epic, Metric: MBlackjacks, Goal: 50},
 	{ID: "t_on_fire", Kind: Title, Name: "On Fire", Desc: "Nine wins in a row.", Tier: Epic, Metric: MWinStreak, Goal: 9},
 	{ID: "t_comeback", Kind: Title, Name: "Comeback Kid", Desc: "Fall $5,000 behind lifetime, then climb back to even.", Tier: Epic, Metric: MComeback, Goal: 5_000},
@@ -187,7 +187,7 @@ var Catalog = []Item{
 	{ID: "t_legend", Kind: Title, Name: "Living Legend", Desc: "Be up $50,000 lifetime.", Tier: Legendary, Metric: MNetUp, Goal: 50_000},
 	{ID: "t_grinder", Kind: Title, Name: "Grinder", Desc: "Play 250 hands of Hold'em.", Tier: Uncommon, Metric: MPkHands, Goal: 250},
 	{ID: "t_pot_committed", Kind: Title, Name: "Pot Committed", Desc: "Win a pot of $5,000 or more.", Tier: Rare, Metric: MPkBigPot, Goal: 5_000},
-	{ID: "t_bluffer", Kind: Title, Name: "Stone Cold Bluffer", Desc: "Win 25 pots holding nothing.", Tier: Rare, Metric: MPkBluffs, Goal: 25},
+	{ID: "t_bluffer", Kind: Title, Name: "Cold Bluffer", Desc: "Win 25 pots holding nothing.", Tier: Rare, Metric: MPkBluffs, Goal: 25},
 	{ID: "t_quad_god", Kind: Title, Name: "Quad God", Desc: "Make four of a kind three times.", Tier: Epic, Metric: MPkQuads, Goal: 3},
 	{ID: "t_dale_slayer", Kind: Title, Name: "Dale Slayer", Desc: "Beat Dale at the showdown 100 times.", Tier: Epic, Metric: MPkBeatDale, Goal: 100},
 	{ID: "t_royalty", Kind: Title, Name: "Royalty", Desc: "Make a royal flush.", Tier: Legendary, Metric: MPkRoyal, Goal: 1},
@@ -199,9 +199,9 @@ var Catalog = []Item{
 	{ID: "t_lucky_dog", Kind: Title, Name: "Lucky Dog", Desc: "Hit three of a kind at Red Dog.", Tier: Epic, Metric: MRdTrips, Goal: 1},
 	{ID: "t_owns_house", Kind: Title, Name: "Owns The House", Desc: "Have the most chips right now.", Tier: Unique, Metric: MRankRich},
 	{ID: "t_goat", Kind: Title, Name: "The G.O.A.T.", Desc: "Be #1 on the lifetime leaderboard.", Tier: Unique, Metric: MRankNet},
-	{ID: "t_high_water", Kind: Title, Name: "High Water Mark", Desc: "Hold more chips at once than anyone ever has.", Tier: Unique, Metric: MRankPeak},
+	{ID: "t_high_water", Kind: Title, Name: "High Water", Desc: "Hold more chips at once than anyone ever has.", Tier: Unique, Metric: MRankPeak},
 	{ID: "t_bet_the_farm", Kind: Title, Name: "Bet The Farm", Desc: "Make the biggest bet anyone has made.", Tier: Unique, Metric: MRankBet},
-	{ID: "t_furniture", Kind: Title, Name: "Part Of The Furniture", Desc: "Play more hands than anyone.", Tier: Unique, Metric: MRankHands},
+	{ID: "t_furniture", Kind: Title, Name: "The Furniture", Desc: "Play more hands than anyone.", Tier: Unique, Metric: MRankHands},
 }
 
 var byID = func() map[string]*Item {
