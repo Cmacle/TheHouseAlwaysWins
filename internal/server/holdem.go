@@ -1285,6 +1285,35 @@ func (t *Holdem) finishHand(bluffs map[*hPlayer]bool, beatDale map[*hPlayer]bool
 			t.notify.BigWin(p.user, delta)
 		}
 	}
+	// Dale's result is the house's: split it between the players he won it
+	// from (or lost it to), so each player's part of the house is known
+	if t.seats[0].inHand && daleDelta != 0 {
+		var pool int64
+		var parts []res
+		for _, r := range results {
+			if r.p.dale {
+				continue
+			}
+			if (daleDelta > 0 && r.delta < 0) || (daleDelta < 0 && r.delta > 0) {
+				parts = append(parts, r)
+				pool += max(r.delta, -r.delta)
+			}
+		}
+		amt := max(daleDelta, -daleDelta)
+		left := amt
+		for i, r := range parts {
+			share := amt * max(r.delta, -r.delta) / pool
+			if i == len(parts)-1 {
+				share = left
+			}
+			left -= share
+			if daleDelta > 0 {
+				t.store.RecordHouseShare(r.p.user, share, 0)
+			} else {
+				t.store.RecordHouseShare(r.p.user, 0, share)
+			}
+		}
+	}
 	if t.seats[0].inHand {
 		house, prevTier := t.store.RecordPokerHouse(daleDelta)
 		_ = house

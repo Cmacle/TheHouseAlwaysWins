@@ -39,6 +39,15 @@ func New(cfg *Config, baseDir string, lg *log.Logger) (*Server, error) {
 	s.Lobby = newLobby(s)
 	s.Lobby.build()
 	s.Game = s.Lobby.firstGame()
+	// what the house won and lost against each player, for accounts from
+	// before it was tracked (so a ban can take it back out)
+	var pokerTables []string
+	for _, r := range s.Lobby.recs {
+		if r.def.Game == proto.GameHoldem {
+			pokerTables = append(pokerTables, r.def.ID)
+		}
+	}
+	store.EstimateHouseShares(pokerTables)
 	if n := store.ReturnTableStacks(); n > 0 {
 		lg.Printf("returned poker chips left on a table to %d player(s)", n)
 	}

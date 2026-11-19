@@ -686,6 +686,7 @@ players | leaderboard [n] [rich] | stats <user> | accounts | house
 give <user> <amount>        add/remove chips without touching lifetime net
 refill <user|all>           immediate top-up (counts against net)
 resetstats <user> | setpassword <user> <pass> | delete <user> | kick <user>
+ban <user> [reason]         kick and delete the account (see Banning)
 say <message> | reload | save | quit
 backup | backups | restore <backup>
 admin <user> [on|off] | admins
@@ -699,6 +700,20 @@ table get <id> | table set <id> <setting> <value>
 
 Admins can type any of these in chat as `/command`, at a table or in the
 lobby.
+
+### Banning
+
+`ban <user> [reason]` (from the server window, or `/ban` in game chat for
+admins) throws the player out with the reason, then deletes their account
+exactly as if it had been removed from the data by hand: they're gone from
+every leaderboard, record and table board, and record hats pass to whoever is
+next. What the house won and lost against them is also taken out of the
+house's totals, so their play doesn't skew them. That's tracked exactly from
+1.9.2 on (including their share of Dale's poker results); for older play it's
+estimated from their results at the house's games. A backup is made first, so
+`restore` can undo a ban. The name is free afterwards, the same as a deleted
+account. From the game, admins can't ban or delete another admin or
+themselves; that takes the server window.
 
 ### Chip gifts
 

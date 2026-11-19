@@ -4,6 +4,7 @@ package server
 
 import (
 	"io"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -266,6 +267,16 @@ func runAdminCommand(lg interface{ Printf(string, ...any) }, exec func(string, i
 		return
 	}
 	lg.Printf("admin %s: %s", user, line)
+	// from the game, admins can't ban or delete an admin (or themselves);
+	// that takes the server window
+	if f := strings.Fields(strings.TrimPrefix(strings.TrimSpace(line), "/")); len(f) >= 2 && c != nil && c.srv != nil {
+		if cmd := strings.ToLower(f[0]); cmd == "ban" || cmd == "delete" {
+			if strings.EqualFold(f[1], user) || c.srv.Store.IsAdmin(f[1]) {
+				c.send(proto.SConsole, proto.Console{Lines: []string{"> " + line, "  Admins can't be banned or deleted from the game. Use the server window."}})
+				return
+			}
+		}
+	}
 	go func() {
 		var b lineBuffer
 		guard(lg.Printf, "admin command", nil, func() { exec(line, &b) })

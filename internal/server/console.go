@@ -50,6 +50,8 @@ func (s *Server) Exec(line string, w io.Writer) {
   resetstats <user>           zero lifetime stats and set balance to the refill amount
   setpassword <user> <pass>   change a password and sign out saved logins
   delete <user>               delete an account
+  ban <user> [reason]         kick and delete an account, and take what the
+                              house won and lost against them out of its totals
   kick <user>                 disconnect a player
   say <message>               message everyone at the table
   admin <user> [on|off]       make someone an admin (they can type /commands in chat)
@@ -170,6 +172,26 @@ func (s *Server) Exec(line string, w io.Writer) {
 		s.backup("before-delete")
 		s.Lobby.Kick(args[0], "Your account was deleted.")
 		fmt.Fprintln(w, " ", okText(s.Store.Delete(args[0])))
+		s.notifier().LeaderboardChanged()
+	case "ban":
+		if !need(1, "ban <user> [reason]") {
+			return
+		}
+		reason := strings.TrimSpace(strings.Join(args[1:], " "))
+		s.backup("before-ban")
+		msg := "You have been banned from this server."
+		if reason != "" {
+			msg += " Reason: " + reason
+		}
+		s.Lobby.Kick(args[0], msg)
+		name, house, err := s.Store.Ban(args[0])
+		if err != nil {
+			fmt.Fprintln(w, " ", err)
+			return
+		}
+		fmt.Fprintf(w, "  %s is banned: the account is deleted, and %s came out of the house's totals.\n", name, signedChips(house))
+		s.Log.Printf("banned %s (%s); house net %+d removed", name, reason, house)
+		s.Lobby.Announce("[House] " + name + " has been banned.")
 		s.notifier().LeaderboardChanged()
 	case "kick":
 		if !need(1, "kick <user>") {
@@ -352,4 +374,11 @@ func okText(ok bool) string {
 		return "done"
 	}
 	return "no such account"
+}
+
+func signedChips(n int64) string {
+	if n >= 0 {
+		return "+" + commas(n)
+	}
+	return "-" + commas(-n)
 }

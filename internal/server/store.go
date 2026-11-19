@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -56,6 +57,12 @@ type Account struct {
 	RefillTotal int64 `json:"refill_total"`
 	// Admins can run server commands from the game (/command in chat).
 	Admin bool `json:"admin,omitempty"`
+	// What the house has won from and lost to this player (house-banked
+	// games, and their share of Dale's poker results). Before 1.9.2 this is
+	// an estimate from their results.
+	HouseWon     int64 `json:"house_won,omitempty"`
+	HouseLost    int64 `json:"house_lost,omitempty"`
+	HouseTracked bool  `json:"house_tracked,omitempty"`
 	// Chips sent to and received from other players. Received chips count
 	// like a refill (subtracted from Net), sent ones are added back, so
 	// lifetime gain stays what you actually won from the house.
@@ -629,7 +636,8 @@ func (s *Store) Register(username, password string, avatar []byte, startBalance 
 	}
 	tok := newToken()
 	a := &Account{
-		Username: username, Salt: base64.StdEncoding.EncodeToString(salt), PassHash: hash,
+		HouseTracked: true,
+		Username:     username, Salt: base64.StdEncoding.EncodeToString(salt), PassHash: hash,
 		Tokens: []string{hashToken(tok)}, Balance: startBalance, LastRefill: period,
 		Created: time.Now(), LastSeen: time.Now(),
 	}
@@ -661,6 +669,7 @@ func (s *Store) Login(username, password, token string) (*proto.Profile, string,
 		time.Sleep(300 * time.Millisecond)
 		return nil, "", errors.New("unknown username or wrong password")
 	}
+
 	if token != "" {
 		th := hashToken(token)
 		s.mu.Lock()
@@ -861,6 +870,11 @@ func (s *Store) Settle(username string, hands []HandResult) {
 		d := h.Payout - h.Wagered
 		round += d
 		a.Net += d
+		if d > 0 {
+			a.HouseLost += d
+		} else {
+			a.HouseWon += -d
+		}
 		if d > 0 {
 			a.Won += d
 		} else {
@@ -1527,6 +1541,75 @@ func (s *Store) Credit(username string, amount int64) {
 	defer s.mu.Unlock()
 	if a, ok := s.accounts[strings.ToLower(username)]; ok && amount > 0 {
 		a.Balance += amount
+		s.dirty = true
+	}
+}
+
+// ---------------------------------------------------------------- bans
+
+// Ban deletes an account outright (as if it were taken out of the data by
+// hand) and takes what the house won and lost against the player out of the
+// house's totals, so nothing they did is left behind. Returns the house net
+// that was removed.
+func (s *Store) Ban(username string) (string, int64, error) {
+	key := strings.ToLower(username)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.accounts[key]
+	if !ok {
+		return "", 0, fmt.Errorf("no account called %q", username)
+	}
+	// the house keeps its won and lost per round, so the player's net comes
+	// out of whichever side it landed on
+	h := &s.house
+	n := a.HouseWon - a.HouseLost
+	if n > 0 {
+		h.Won = max(h.Won-n, 0)
+	} else {
+		h.Lost = max(h.Lost+n, 0)
+	}
+	h.Net -= n
+	h.Tier = banter.Tier(h.Net, h.Tier)
+	delete(s.accounts, key)
+	_ = os.Remove(s.avatarPath(key))
+	s.recomputeRanks()
+	s.dirty = true
+	return a.Username, a.HouseWon - a.HouseLost, nil
+}
+
+// RecordHouseShare adds a player's share of a house result (Dale's poker
+// winnings or losses, split between the players he won from or lost to).
+func (s *Store) RecordHouseShare(username string, won, lost int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.accounts[strings.ToLower(username)]; ok {
+		a.HouseWon += won
+		a.HouseLost += lost
+		s.dirty = true
+	}
+}
+
+// EstimateHouseShares fills in what the house won and lost against each
+// player from before it was tracked: their results at house-banked games,
+// which is everything they won and lost apart from at the poker tables
+// (pokerTables; poker before 1.9 can't be told apart and is included).
+func (s *Store) EstimateHouseShares(pokerTables []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range s.accounts {
+		if a.HouseTracked {
+			continue
+		}
+		won, lost := a.Won, a.Lost
+		for _, id := range pokerTables {
+			if ts := a.Tables[id]; ts != nil {
+				won -= ts.Won
+				lost -= ts.Lost
+			}
+		}
+		// the player's winnings are the house's losses and the other way round
+		a.HouseWon, a.HouseLost = max(lost, 0), max(won, 0)
+		a.HouseTracked = true
 		s.dirty = true
 	}
 }
