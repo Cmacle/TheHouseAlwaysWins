@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	bj "github.com/Cmacle/TheHouseAlwaysWins/internal/blackjack"
@@ -248,5 +249,35 @@ func TestOfferNewGames(t *testing.T) {
 		if ti.Game == proto.GameRedDog {
 			t.Fatal("a closed Red Dog table came back")
 		}
+	}
+}
+
+// A Beggars Table still on the old limit of 50 moves to the refill amount
+// once; one someone set to another number keeps it.
+func TestBeggarLimitMigrates(t *testing.T) {
+	dir := t.TempDir()
+	cfg := DefaultConfig()
+	cfg.DataDir = dir
+	os.WriteFile(filepath.Join(dir, "tables.json"), []byte(`[
+  {"id": "beggars", "name": "Beggars Table", "game": "beggar", "settings": {"max_balance": 50}},
+  {"id": "pit", "name": "The Pit", "game": "beggar", "settings": {"max_balance": 200}}
+]`), 0o644)
+	os.WriteFile(filepath.Join(dir, "tables-offered.json"), []byte(`["baccarat","beggar","blackjack","holdem","reddog"]`), 0o644)
+	s, err := New(cfg, dir, log.New(io.Discard, "", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits := map[string]int64{}
+	for _, id := range []string{"beggars", "pit"} {
+		b := s.Lobby.find(id).t.(beggarTable)
+		limits[id] = b.limit()
+	}
+	if limits["beggars"] != cfg.RefillAmount || limits["pit"] != 200 {
+		t.Fatalf("limits %v", limits)
+	}
+	// the change is saved, so it only happens once
+	b, _ := os.ReadFile(filepath.Join(dir, "tables.json"))
+	if !strings.Contains(string(b), `"max_balance": 0`) {
+		t.Fatalf("tables.json not updated:\n%s", b)
 	}
 }

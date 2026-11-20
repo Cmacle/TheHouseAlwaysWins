@@ -234,6 +234,7 @@ func TestBeggarEndToEnd(t *testing.T) {
 	s := startServerS(t, 39520, func(c *server.Config) { c.RefillAmount = 20 })
 	var out strings.Builder
 	s.Exec("table set beggars odds 1", &out)
+	s.Exec("table set beggars max_balance 50", &out) // a set limit instead of the refill amount
 	a := newTestApp(t, s.Addr().String(), "pauper")
 	apps := []*App{a}
 	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 5 }, "lobby")

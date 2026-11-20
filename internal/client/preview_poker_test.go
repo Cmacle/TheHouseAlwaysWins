@@ -136,7 +136,7 @@ func TestPreviewBeggar(t *testing.T) {
 	bs.Dice, bs.GoalKind, bs.GoalNeed, bs.GoalFace, bs.Chance = g.Dice, g.Kind, g.Need, g.Face, g.P
 	roll := throwMsg(1, g.Dice, 42, 0)
 	roll.ShakeMS = 1400
-	for i, at := range []float64{0.6, 1.25, 1.42, 1.55, 1.9, 2.3, 11} {
+	for i, at := range []float64{0.1, 0.6, 1.25, 1.55, 2.0, 2.35, 2.7, 11} {
 		a.onDice(roll)
 		a.roll.start = time.Now().Add(-time.Duration(at * float64(time.Second)))
 		frame()

@@ -728,6 +728,9 @@ func (a *App) logout() {
 	a.send(proto.CLogout, nil)
 	a.Cfg.Token = ""
 	a.Cfg.Save()
+	if a.Cfg.RememberMe {
+		a.fPass = a.Cfg.Password() // filled in, ready to log back in
+	}
 	a.kicked = true
 	if a.net != nil {
 		a.net.Close()

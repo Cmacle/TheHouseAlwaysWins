@@ -102,3 +102,55 @@ func TestFacesFair(t *testing.T) {
 		t.Errorf("faces aren't fair: %v (chi-square %.1f)", count[1:], chi)
 	}
 }
+
+// Dice never visibly sink into each other: across many throws, at every
+// step, no two dice overlap by more than a sliver.
+func TestDiceDontOverlap(t *testing.T) {
+	worst, bad := 0.0, 0
+	for seed := int64(1); seed <= 120; seed++ {
+		w := NewWorld(MaxDice-int(seed%3), seed)
+		for !w.Settled() {
+			w.Step()
+			for i := range w.Dice {
+				for j := i + 1; j < len(w.Dice); j++ {
+					if d, _, _, ok := overlap(&w.Dice[i], &w.Dice[j]); ok {
+						worst = math.Max(worst, d)
+						if d > 0.06 {
+							bad++
+						}
+					}
+				}
+			}
+		}
+	}
+	t.Logf("deepest overlap %.3f die widths, %d steps past 0.06", worst, bad)
+	if worst > 0.12 || bad > 20 {
+		t.Errorf("dice overlap: deepest %.3f, %d steps past 0.06", worst, bad)
+	}
+}
+
+// The overlap test agrees with simple cases.
+func TestOverlapCases(t *testing.T) {
+	a := Body{Pos: V3{0, 0, 0}, Rot: Quat{W: 1}}
+	b := Body{Pos: V3{0.9, 0, 0}, Rot: Quat{W: 1}}
+	if d, n, _, ok := overlap(&a, &b); !ok || math.Abs(d-0.1) > 1e-6 || n.X > -0.99 {
+		t.Errorf("side by side: %v %.3f %+v", ok, d, n)
+	}
+	b.Pos.X = 1.01
+	if _, _, _, ok := overlap(&a, &b); ok {
+		t.Error("apart but overlapping")
+	}
+	// edge to edge: both turned 45 degrees about different axes, so only
+	// their edges can meet
+	c, s := math.Cos(math.Pi/8), math.Sin(math.Pi/8) // 45 degree turns
+	a.Rot, b.Rot = Quat{W: c, Z: s}, Quat{W: c, X: s}
+	b.Pos = V3{1.2, 0, 0}
+	if d, _, _, ok := overlap(&a, &b); !ok || d > 0.02 {
+		t.Errorf("an edge just into a face should barely touch: %v %.3f", ok, d)
+	}
+	b.Rot = Quat{W: c, Y: s}
+	b.Pos = V3{1.35, 0, 0} // corner-ish edges crossing: 0.707 + 0.707 > 1.35
+	if d, _, _, ok := overlap(&a, &b); !ok || d < 0.03 {
+		t.Errorf("crossed edges should overlap: %v %.3f", ok, d)
+	}
+}

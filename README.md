@@ -21,10 +21,11 @@ Discord.
   hats, frame and titles, and Dale has opinions about both.
 - **Table leaderboards:** every table keeps its own board of who has won and
   lost the most there (the THIS TABLE tab in the leaderboard).
-- **The Beggars Table:** broke and nobody to buy you back in? With fewer than
-  50 chips you can throw real 3D physics dice as often as you like. One shared
-  tray: when a throw makes the goal (picked to match the odds setting, about
-  1 in 1,000), everyone at the table under the limit gets 50 chips. It's a
+- **The Beggars Table:** broke and nobody to buy you back in? Below the daily
+  refill amount you can throw real 3D physics dice as often as you like. One
+  shared tray: when a throw makes the goal (picked to match the odds setting,
+  about 1 in 1,000), everyone at the table under the limit gets 50 chips, and
+  you can keep winning until you're back up to the refill amount. It's a
   handout, so it doesn't count toward lifetime winnings.
 
 - **Server** (`HouseServer.exe`, or a Linux binary) built to run 24/7.
@@ -248,7 +249,9 @@ all keep one.
 
 ## The Beggars Table
 
-For anyone with fewer than 50 chips (counting chips at another table).
+For anyone with fewer chips than the daily refill amount (counting chips at
+another table). Every win pays the prize, so a broke player can keep winning
+their way back up until they reach the refill amount.
 Everyone at the table shares one tray of dice, and everyone there is shown
 around the rail with their chips (dimmed if they're over the limit).
 Whenever the dice are still, anyone under the limit can press **THROW THE
@@ -275,7 +278,14 @@ default 1 in 1,000, that's 9 dice needing 8 or more fives or sixes: really
 moment, not just whoever threw it. The prize is a handout: it isn't counted
 in anyone's lifetime gain/loss or winnings. Dale has plenty to say about it.
 Table settings: `odds` (aim for 1 in this many), `prize`, `max_balance` (you
-can throw with fewer chips than this).
+can throw with fewer chips than this; 0, the default, means the refill
+amount). Tables from before 1.9.6 still on the old default of 50 move to the
+refill amount once, on the first start.
+
+The dice collide as true cubes: besides corner contacts, every pair is
+checked with an exact cube-against-cube test (including edge against edge),
+and any overlap is pushed apart at every step, so dice never sink into each
+other.
 
 ## How a hand of blackjack works
 
@@ -788,9 +798,17 @@ the Lifetime board only ever shows what was won from the house.
 | F11 or Alt+Enter | Fullscreen |
 | Esc | Close a window |
 
-`client.json` stores the server address, your remembered login (a revocable
-token, never your password), the volume settings (`volume`, `effects_volume`,
-`voice_volume`, `reveal_volume`, 0-100), `window_scale` (0 = automatic) and `fullscreen`. Logging out forgets the saved login.
+`client.json` stores the server address, your remembered login, the volume
+settings (`volume`, `effects_volume`, `voice_volume`, `reveal_volume`, 0-100),
+`window_scale` (0 = automatic) and `fullscreen`.
+
+With **Remember me** on, the game keeps a revocable login token and your
+password. The password is filled in on the login screen after a restart or a
+log out, and if the saved token stops working the game logs in with the
+password by itself. On Windows the password is encrypted for your Windows
+user (DPAPI), so copying `client.json` to another PC or user doesn't reveal
+it. On Linux and Android it's only scrambled, and `client.json` is readable
+by you alone. Turn Remember me off and log in once to forget it.
 
 ### If the window stays blank (Windows)
 

@@ -141,6 +141,8 @@ type App struct {
 	status       string
 	statusErr    bool
 	tokenTry     bool
+	passTry      bool   // logging in with the saved password after the token failed
+	lastPass     string // the password just used to log in or sign up
 	reconnectAt  time.Time
 
 	// session
@@ -263,6 +265,9 @@ func New(p Platform, cfg *Config, assets *Assets) *App {
 	a.fServer, a.fPort = splitServer(cfg.Server)
 	if cfg.RememberMe && cfg.Token != "" && cfg.Username != "" && cfg.Server != "" {
 		a.reconnectAt = time.Now()
+	}
+	if cfg.RememberMe {
+		a.fPass = cfg.Password()
 	}
 	if a.fUser == "" {
 		a.focusID = "user"
@@ -541,9 +546,14 @@ func (a *App) handleMsg(m proto.Msg) {
 		a.Cfg.Server = normAddr(a.net.Addr)
 		if a.Cfg.RememberMe {
 			a.Cfg.Token = ok.Token
+			if a.lastPass != "" {
+				a.Cfg.SetPassword(a.lastPass)
+			}
 		} else {
 			a.Cfg.Token = ""
+			a.Cfg.SetPassword("")
 		}
+		a.lastPass, a.passTry = "", false
 		a.Cfg.Save()
 		a.screen = scrLobby
 		a.st, a.ps, a.bs, a.roll, a.game, a.lobbyKnown = nil, nil, nil, nil, "", false
@@ -565,7 +575,15 @@ func (a *App) handleMsg(m proto.Msg) {
 			a.Cfg.Token = ""
 			a.Cfg.Save()
 			a.tokenTry = false
+			// the saved login ran out: try the remembered password once
+			if pw := a.Cfg.Password(); a.Cfg.RememberMe && pw != "" && !a.passTry && a.net != nil {
+				a.passTry, a.lastPass = true, pw
+				a.send(proto.CLogin, proto.Login{Username: a.Cfg.Username, Password: pw})
+				a.setStatus("Logging in...", false)
+				return
+			}
 		}
+		a.passTry, a.lastPass = false, ""
 		a.setStatus(f.Reason, true)
 		a.sound("error")
 	case proto.SState:

@@ -111,6 +111,18 @@ func (l *Lobby) offerNewGames(defs []TableDef) []TableDef {
 		seen[d.Game] = true
 	}
 	changed := err != nil
+	// 1.9.6: the Beggars Table's limit follows the refill amount; tables
+	// still on the old default of 50 move over to it once
+	const refillLimit = "beggar-limit-refill"
+	if !seen[refillLimit] {
+		seen[refillLimit], changed = true, true
+		for i, d := range defs {
+			if v, ok := d.Settings["max_balance"].(float64); ok && d.Game == proto.GameBeggar && v == 50 {
+				defs[i].Settings["max_balance"] = 0
+				l.s.Log.Printf("%s: players can now stay until they reach the refill amount", d.Name)
+			}
+		}
+	}
 	for _, d := range defaultTables(l.s.cfg()) {
 		if seen[d.Game] {
 			continue

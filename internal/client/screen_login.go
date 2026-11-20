@@ -174,7 +174,7 @@ func (a *App) doLogin() {
 	a.Cfg.Server = addr
 	a.Cfg.Save()
 	user, pass := a.fUser, a.fPass
-	a.tokenTry = false
+	a.tokenTry, a.passTry, a.lastPass = false, false, pass
 	a.connect(addr, func() {
 		a.send(proto.CLogin, proto.Login{Username: user, Password: pass})
 		a.setStatus("Logging in...", false)
@@ -200,7 +200,7 @@ func (a *App) doRegister() {
 	a.Cfg.Server = addr
 	a.Cfg.Save()
 	reg := proto.Register{Username: a.fUser, Password: a.fPass, Avatar: a.regAvatar, ServerPassword: a.fServerPass, Invite: a.fInvite}
-	a.tokenTry = false
+	a.tokenTry, a.passTry, a.lastPass = false, false, a.fPass
 	a.connect(addr, func() {
 		a.send(proto.CRegister, reg)
 		a.setStatus("Creating account...", false)

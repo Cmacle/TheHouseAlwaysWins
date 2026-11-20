@@ -35,11 +35,11 @@ const shakeMS = 1400
 type beggarCfg struct {
 	Odds       int   `json:"odds"`        // aim for 1 in this many rolls winning
 	Prize      int64 `json:"prize"`       // what a win pays
-	MaxBalance int64 `json:"max_balance"` // you can roll with fewer chips than this
+	MaxBalance int64 `json:"max_balance"` // you can roll with fewer chips than this; 0 = the refill amount
 }
 
 func defaultBeggar() beggarCfg {
-	return beggarCfg{Odds: 1000, Prize: 50, MaxBalance: 50}
+	return beggarCfg{Odds: 1000, Prize: 50, MaxBalance: 0}
 }
 
 func (c *beggarCfg) validate() {
@@ -50,7 +50,7 @@ func (c *beggarCfg) validate() {
 	if c.Prize < 1 {
 		c.Prize = d.Prize
 	}
-	if c.MaxBalance < 1 {
+	if c.MaxBalance < 0 {
 		c.MaxBalance = d.MaxBalance
 	}
 }
@@ -153,7 +153,7 @@ func (t *Beggar) handle(ev event) {
 			dr.Elapsed = time.Since(t.curAt).Milliseconds()
 			p.conn.send(proto.SDice, dr)
 		}
-		if t.store.Chips(p.user) < t.bc.MaxBalance {
+		if t.store.Chips(p.user) < t.limit() {
 			t.say(banter.EvBgHello, p, banter.Vars{Amount: t.bc.Prize}, 0.9, prioNormal)
 		} else {
 			t.say(banter.EvBgTooRich, p, banter.Vars{Amount: t.store.Chips(p.user)}, 0.9, prioNormal)
@@ -187,8 +187,8 @@ func (t *Beggar) why(p *bgPlayer) string {
 	if t.cur != nil {
 		return "The dice are still rolling."
 	}
-	if chips := t.store.Chips(p.user); chips >= t.bc.MaxBalance {
-		return fmt.Sprintf("This table is for players with fewer than %s chips. You have %s.", commas(t.bc.MaxBalance), commas(chips))
+	if chips := t.store.Chips(p.user); chips >= t.limit() {
+		return fmt.Sprintf("This table is for players with fewer than %s chips. You have %s.", commas(t.limit()), commas(chips))
 	}
 	return ""
 }
@@ -252,7 +252,7 @@ func (t *Beggar) landed(p *bgPlayer, id int, g dice.Goal, faces []int, win bool)
 		seen := map[string]bool{}
 		for _, o := range t.conns {
 			key := strings.ToLower(o.user)
-			if seen[key] || t.store.Chips(o.user) >= t.bc.MaxBalance {
+			if seen[key] || t.store.Chips(o.user) >= t.limit() {
 				continue
 			}
 			seen[key] = true
@@ -348,7 +348,7 @@ func (t *Beggar) onChat(p *bgPlayer, text string) {
 
 func (t *Beggar) view(p *bgPlayer, withLog bool) proto.BeggarState {
 	g := t.goal
-	st := proto.BeggarState{Table: t.id, Name: t.name, Odds: t.bc.Odds, Prize: t.bc.Prize, MaxBalance: t.bc.MaxBalance,
+	st := proto.BeggarState{Table: t.id, Name: t.name, Odds: t.bc.Odds, Prize: t.bc.Prize, MaxBalance: t.limit(),
 		Dice: g.Dice, GoalKind: g.Kind, GoalNeed: g.Need, GoalFace: g.Face, Chance: g.P,
 		Balance: t.store.Chips(p.user), Rolling: t.cur != nil, TableRolls: t.rolls, Feed: t.feed,
 		ServerTime: time.Now().UnixMilli(),
@@ -374,7 +374,7 @@ func (t *Beggar) view(p *bgPlayer, withLog bool) proto.BeggarState {
 			seen[key] = true
 			st.Players = append(st.Players, o.user)
 			bal := t.store.Chips(o.user)
-			sv := proto.BeggarSeat{Username: o.user, Balance: bal, CanRoll: bal < t.bc.MaxBalance,
+			sv := proto.BeggarSeat{Username: o.user, Balance: bal, CanRoll: bal < t.limit(),
 				Throwing: t.cur != nil && strings.EqualFold(t.cur.By, o.user)}
 			if prof, ok := t.store.Profile(o.user); ok {
 				sv.AvatarVersion, sv.Hat, sv.Frame, sv.Title = prof.AvatarVersion, prof.Hat, prof.Frame, prof.Title
@@ -401,7 +401,7 @@ func (t *Beggar) broadcast() {
 
 func (t *Beggar) updateInfo() {
 	in := proto.TableInfo{ID: t.id, Name: t.name, Game: proto.GameBeggar, Seats: 99,
-		Stakes: fmt.Sprintf("Under %s chips only", commas(t.bc.MaxBalance))}
+		Stakes: fmt.Sprintf("Under %s chips only", commas(t.limit()))}
 	for _, p := range t.conns {
 		in.Players++
 		in.Names = append(in.Names, p.user)
@@ -474,4 +474,17 @@ func (b beggarTable) players() []string {
 func (b beggarTable) summary() string {
 	in := b.tinfo()
 	return fmt.Sprintf("%s: %d begging", b.name, in.Players)
+}
+
+// limit is the chips you have to be under to play here: the max_balance
+// setting, or the daily refill amount when that's 0, so a broke player can
+// keep winning the prize until they're back up to a refill's worth.
+func (t *Beggar) limit() int64 {
+	if t.bc.MaxBalance > 0 {
+		return t.bc.MaxBalance
+	}
+	if t.cfg != nil && t.cfg.RefillAmount > 0 {
+		return t.cfg.RefillAmount
+	}
+	return 50
 }

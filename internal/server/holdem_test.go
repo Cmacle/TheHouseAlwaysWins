@@ -438,6 +438,7 @@ func TestBeggarTable(t *testing.T) {
 	dir := t.TempDir()
 	cfg := DefaultConfig()
 	cfg.DataDir = dir
+	cfg.RefillAmount = 100 // the table's limit follows the refill amount
 	s, err := New(cfg, dir, log.New(io.Discard, "", 0))
 	if err != nil {
 		t.Fatal(err)
@@ -464,10 +465,16 @@ func TestBeggarTable(t *testing.T) {
 	if after.Balance != before.Balance+50 || after.Net != before.Net || after.BeggarWins != 1 || after.BeggarRolls != 1 {
 		t.Fatalf("before %+v\nafter %+v", before, after)
 	}
-	// 60 chips now: too many to roll
+	// 60 chips: still under the refill amount, so they stay and win again
 	s.Lobby.route(c, mkMsg(proto.CDice, nil))
 	b.DoWait(func() {})
-	if p, _ := s.Store.Profile("poorguy"); p.BeggarRolls != 1 {
+	if p, _ := s.Store.Profile("poorguy"); p.Balance != 110 || p.BeggarRolls != 2 {
+		t.Fatalf("second win: %d chips, %d rolls", p.Balance, p.BeggarRolls)
+	}
+	// 110 chips: at the refill amount, so no more
+	s.Lobby.route(c, mkMsg(proto.CDice, nil))
+	b.DoWait(func() {})
+	if p, _ := s.Store.Profile("poorguy"); p.BeggarRolls != 2 {
 		t.Fatalf("rolled with %d chips", p.Balance)
 	}
 	gotDice, gotErr := false, false
@@ -483,14 +490,14 @@ func TestBeggarTable(t *testing.T) {
 	}
 	// losing rolls at real odds land later and pay nothing
 	b.DoWait(func() { b.instant = false; b.bc.Odds = 1000000; b.goal = dice.Plan(1000000) })
-	s.Store.AdminAdjust("poorguy", -30)
+	s.Store.AdminAdjust("poorguy", -80)
 	s.Lobby.route(c, mkMsg(proto.CDice, nil))
 	rolling := true
 	for end := time.Now().Add(20 * time.Second); rolling && time.Now().Before(end); {
 		time.Sleep(100 * time.Millisecond)
 		b.DoWait(func() { rolling = b.cur != nil })
 	}
-	if p, _ := s.Store.Profile("poorguy"); rolling || p.Balance != 30 || p.BeggarRolls != 2 {
+	if p, _ := s.Store.Profile("poorguy"); rolling || p.Balance != 30 || p.BeggarRolls != 3 {
 		t.Fatalf("after a losing roll: %d chips, %d rolls", p.Balance, p.BeggarRolls)
 	}
 }
@@ -500,6 +507,7 @@ func TestBeggarTable(t *testing.T) {
 func TestBeggarShared(t *testing.T) {
 	dir := t.TempDir()
 	cfg := DefaultConfig()
+	cfg.RefillAmount = 100
 	cfg.DataDir = dir
 	s, err := New(cfg, dir, log.New(io.Discard, "", 0))
 	if err != nil {

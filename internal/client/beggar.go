@@ -53,11 +53,14 @@ func (a *App) diceTray() image.Rectangle {
 	w := min(330, ScreenW-30)
 	h := 128
 	top := a.L.cardsY + 30
+	x0 := ScreenW/2 - w/2
 	if a.L.portrait {
 		top = a.L.msgY + 30
 		h = 150
+		w = ScreenW - 92 // room on the right for the cup between throws
+		x0 = 12
 	}
-	return image.Rect(ScreenW/2-w/2, top, ScreenW/2+w/2, top+h)
+	return image.Rect(x0, top, x0+w, top+h)
 }
 
 func (a *App) onDice(r proto.DiceRoll) {
@@ -357,32 +360,44 @@ const (
 	cupTilt = 1.85 // radians it tips to (about 106 degrees)
 )
 
-// cupPose is where the cup's base is, the way its mouth points, and how
-// solid it is, t seconds into the throw (negative while shaking).
+// cupRest is where the cup stands between throws: on the table just right
+// of the tray, mouth up.
+var cupRest = dice.V3{X: dice.TrayW + 0.45 + 0.35 + cupR, Y: dice.TrayD * 0.55, Z: 0}
+
+// cupPose is where the cup's base is, which way its mouth points, and how
+// solid it is, t seconds into the throw (negative while shaking). It's
+// picked up, shaken, tipped to pour, then set back down upright in the same
+// spot, so it never leaves the table.
 func cupPose(t float64, shake float64) (base, axis dice.V3, alpha float64) {
+	up := dice.V3{Z: 1}
 	tilt := dice.V3{X: -math.Sin(cupTilt), Z: math.Cos(cupTilt)}
 	tippedBase := dice.CupMouth.Sub(tilt.Mul(cupH))
-	upBase := dice.V3{X: dice.TrayW - 1.6, Y: dice.TrayD / 2, Z: 2.2}
+	held := dice.V3{X: dice.TrayW - 1.6, Y: dice.TrayD / 2, Z: 2.2} // shaken here
+	ease := func(f float64) float64 { f = math.Max(0, math.Min(1, f)); return f * f * (3 - 2*f) }
+	tipTo := func(f float64) dice.V3 { ang := cupTilt * f; return dice.V3{X: -math.Sin(ang), Z: math.Cos(ang)} }
 	switch {
 	case t < -cupTip:
-		// shaking: quick jiggles side to side and up and down
+		// picked up from the table, then shaken: quick jiggles side to
+		// side and up and down
 		since := t + shake
-		k := math.Min(1, since*4) // ramps up as it's picked up
+		lift := ease(since / 0.3)
+		k := lift
 		j := dice.V3{X: 0.35 * math.Sin(since*38), Y: 0.2 * math.Sin(since*29+1), Z: 0.3 * math.Abs(math.Sin(since*19))}.Mul(k)
 		wob := 0.16 * math.Sin(since*38+0.6) * k
-		return upBase.Add(j), dice.V3{X: -math.Sin(wob), Z: math.Cos(wob)}, 1
+		return cupRest.Add(held.Sub(cupRest).Mul(lift)).Add(j), dice.V3{X: -math.Sin(wob), Z: math.Cos(wob)}, 1
 	case t < 0:
-		// tipping over
-		f := (t + cupTip) / cupTip
-		f = f * f * (3 - 2*f)
-		ang := cupTilt * f
-		return upBase.Add(tippedBase.Sub(upBase).Mul(f)), dice.V3{X: -math.Sin(ang), Z: math.Cos(ang)}, 1
+		// tipping over to pour
+		f := ease((t + cupTip) / cupTip)
+		return held.Add(tippedBase.Sub(held).Mul(f)), tipTo(f), 1
 	case t < 0.45:
 		return tippedBase, tilt, 1
+	case t < 1.25:
+		// turned back upright and set down where it started
+		f := ease((t - 0.45) / 0.8)
+		arc := dice.V3{Z: 1.2 * math.Sin(f*math.Pi)} // lifted a little on the way
+		return tippedBase.Add(cupRest.Sub(tippedBase).Mul(f)).Add(arc), tipTo(1 - f), 1
 	}
-	// lifted away up and to the right, fading out
-	f := math.Min(1, (t-0.45)/0.55)
-	return tippedBase.Add(dice.V3{X: 3 * f, Z: 4 * f}), tilt, 1 - f
+	return cupRest, up, 1
 }
 
 // drawCup draws the cup as a shaded leather cylinder with a brass rim.
@@ -476,6 +491,7 @@ func (a *App) drawDiceTray(view image.Rectangle) {
 	r := a.roll
 	if r == nil {
 		drawTray3D(a.fb, cam, true)
+		drawCup(a.fb, cam, cupRest, dice.V3{Z: 1}, 1)
 		return
 	}
 	poses, t := r.poses(a.now)
@@ -488,6 +504,7 @@ func (a *App) drawDiceTray(view image.Rectangle) {
 	}
 	mouth := base.Add(axis.Mul(cupH))
 	inCup := func(p dice.V3) bool { return t < 0.45 && p.Sub(mouth).Dot(axis) < 0.2 }
+	resting := t >= 0.45 // on its way back to (or standing on) the table beside the tray
 	// shadows on the felt, cast away from the light
 	for _, p := range poses {
 		var pts [][2]float64
@@ -515,7 +532,7 @@ func (a *App) drawDiceTray(view image.Rectangle) {
 		return dist[order[i]] > dist[order[j]]
 	})
 	g := a.bsGoal()
-	cupDrawn := false
+	cupDrawn := resting // drawn last, after the front wall
 	for _, i := range order {
 		if !cupDrawn && !inCup(poses[i].Pos) {
 			// dice still inside the cup were drawn before it; the rest go in front
@@ -536,6 +553,11 @@ func (a *App) drawDiceTray(view image.Rectangle) {
 	}
 	if !cupDrawn {
 		drawCup(a.fb, cam, base, axis, alpha)
+	}
+	if resting {
+		drawTray3D(a.fb, cam, true)
+		drawCup(a.fb, cam, base, axis, alpha)
+		return
 	}
 	drawTray3D(a.fb, cam, true)
 }
@@ -581,7 +603,10 @@ func (a *App) drawBeggar() {
 	tray := a.diceTray()
 	felt := a.A.C("felt_text")
 	g := a.bsGoal()
-	head := fmt.Sprintf("%s  -  1 IN %s (%s)", strings.ToUpper(bs.Name), commas(int64(math.Round(g.Odds()))), pct(g.P))
+	head := strings.ToUpper(bs.Name)
+	if g.P > 0 && g.Dice > 0 {
+		head += fmt.Sprintf("  -  1 IN %s (%s)", commas(int64(math.Round(g.Odds()))), pct(g.P))
+	}
 	a.A.Font.Draw(a.fb, ScreenW/2-a.A.Font.Width(fitText(a.A.Font, head, ScreenW-20))/2, tray.Min.Y-22, fitText(a.A.Font, head, ScreenW-20), a.A.C("gold"))
 	noun := "DICE"
 	if g.Dice == 1 {

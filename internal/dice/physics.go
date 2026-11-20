@@ -397,6 +397,26 @@ func (w *World) Step() {
 			}
 		}
 	}
+	// moving can push dice into each other again: push them apart now, so
+	// no step ends with one die inside another
+	for iter := 0; iter < 3; iter++ {
+		clean := true
+		for i := range w.Dice {
+			for j := i + 1; j < len(w.Dice); j++ {
+				a, b := &w.Dice[i], &w.Dice[j]
+				if a.Pos.Sub(b.Pos).Len() > 1.75 {
+					continue
+				}
+				if d, n, _, ok := overlap(a, b); ok && d > 0.002 {
+					separate(a, b, n.Mul(d))
+					clean = false
+				}
+			}
+		}
+		if clean {
+			break
+		}
+	}
 	if allAsleep {
 		w.calm += step
 	} else {
@@ -404,22 +424,112 @@ func (w *World) Step() {
 	}
 }
 
-// diePair handles two dice touching: corners of one inside the other, and
-// centres too close (edge against edge).
+// diePair handles two dice touching. Corners of one inside the other give
+// the resting contacts; on top of that, an exact cube-against-cube test
+// (separating axes: the six face directions and the nine edge-by-edge
+// directions) finds any overlap at all, edge against edge included, and
+// pushes the dice apart along the shallowest way out.
 func (w *World) diePair(a, b *Body) {
-	d := a.Pos.Sub(b.Pos)
-	dist := d.Len()
-	if dist > 1.75 { // farther than two half-diagonals: can't touch
+	if a.Pos.Sub(b.Pos).Len() > 1.75 { // farther than two half-diagonals
 		return
 	}
 	w.cornersInto(a, b)
 	w.cornersInto(b, a)
-	if dist < 1.0 && dist > 1e-6 {
-		n := d.Mul(1 / dist)
-		mid := b.Pos.Add(d.Mul(0.5))
-		w.contact(a, b, mid, n, 0.3, 0.3)
-		separate(a, b, n.Mul((1.0-dist)*0.5))
+	if depth, n, p, ok := overlap(a, b); ok {
+		w.contact(a, b, p, n, 0.3, 0.3)
+		separate(a, b, n.Mul(depth))
 	}
+}
+
+// axes are a die's three face directions in the world.
+func (b *Body) axes() [3]V3 {
+	return [3]V3{b.Rot.Rotate(V3{X: 1}), b.Rot.Rotate(V3{Y: 1}), b.Rot.Rotate(V3{Z: 1})}
+}
+
+// support is the corner of b farthest along dir.
+func (b *Body) support(dir V3, ax [3]V3) V3 {
+	p := b.Pos
+	for _, e := range ax {
+		if e.Dot(dir) >= 0 {
+			p = p.Add(e.Mul(half))
+		} else {
+			p = p.Sub(e.Mul(half))
+		}
+	}
+	return p
+}
+
+// Overlap says how deep two dice overlap, the direction to push a out of
+// b, and where they touch. ok is false when they don't overlap.
+func overlap(a, b *Body) (depth float64, n, point V3, ok bool) {
+	A, B := a.axes(), b.axes()
+	d := a.Pos.Sub(b.Pos)
+	best := math.Inf(1)
+	bestKind, bi, bj := 0, 0, 0
+	try := func(L V3, kind, i, j int) bool {
+		l := L.Len()
+		if l < 1e-6 {
+			return true // parallel edges: covered by the face directions
+		}
+		L = L.Mul(1 / l)
+		ra, rb := 0.0, 0.0
+		for k := 0; k < 3; k++ {
+			ra += half * math.Abs(A[k].Dot(L))
+			rb += half * math.Abs(B[k].Dot(L))
+		}
+		dist := d.Dot(L)
+		o := ra + rb - math.Abs(dist)
+		if o <= 0 {
+			return false // a gap along this direction: no overlap
+		}
+		if kind == 2 {
+			o += 1e-4 // prefer a face direction when it's a tie
+		}
+		if o < best {
+			best, bestKind, bi, bj = o, kind, i, j
+			if dist < 0 {
+				L = L.Mul(-1)
+			}
+			n = L
+		}
+		return true
+	}
+	for i := 0; i < 3; i++ {
+		if !try(A[i], 0, i, 0) || !try(B[i], 1, i, 0) {
+			return 0, V3{}, V3{}, false
+		}
+	}
+	for i := 0; i < 3; i++ {
+		for j := 0; j < 3; j++ {
+			if !try(A[i].Cross(B[j]), 2, i, j) {
+				return 0, V3{}, V3{}, false
+			}
+		}
+	}
+	switch bestKind {
+	case 0: // a face of a: b's deepest corner
+		point = b.support(n, B)
+	case 1: // a face of b: a's deepest corner
+		point = a.support(n.Mul(-1), A)
+	default:
+		// edge against edge: the nearest points of the two edges
+		pa, pb := a.support(n.Mul(-1), A), b.support(n, B)
+		ea, eb := A[bi], B[bj]
+		// the edges run along ea through pa's middle and eb through pb's
+		ca := pa.Sub(ea.Mul(ea.Dot(pa.Sub(a.Pos))))
+		cb := pb.Sub(eb.Mul(eb.Dot(pb.Sub(b.Pos))))
+		r := ca.Sub(cb)
+		k := ea.Dot(eb)
+		den := 1 - k*k
+		s, t := 0.0, 0.0
+		if den > 1e-6 {
+			s = (k*eb.Dot(r) - ea.Dot(r)) / den
+			t = (eb.Dot(r) - k*ea.Dot(r)) / den
+		}
+		s, t = math.Max(-half, math.Min(half, s)), math.Max(-half, math.Min(half, t))
+		point = ca.Add(ea.Mul(s)).Add(cb.Add(eb.Mul(t))).Mul(0.5)
+	}
+	return best, n, point, true
 }
 
 // cornersInto pushes a's corners out of b.
