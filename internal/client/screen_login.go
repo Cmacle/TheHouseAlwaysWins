@@ -19,6 +19,11 @@ func hostChar(r rune) bool { return r != ' ' }
 
 func digitChar(r rune) bool { return r >= '0' && r <= '9' }
 
+// inviteChar allows the letters and digits invite codes are made of.
+func inviteChar(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
+}
+
 // serverAddr validates the server and port boxes and returns host:port.
 func (a *App) serverAddr() (string, bool) {
 	host, _ := splitServer(a.fServer)
@@ -94,12 +99,16 @@ func (a *App) drawLogin() {
 		enter = a.textField("rpass", image.Rect(x0, pr.Min.Y+90, half-3, pr.Min.Y+108), &a.fPass, true, 128, "", nil) || enter
 		enter = a.textField("rpass2", image.Rect(half+3, pr.Min.Y+90, fx1, pr.Min.Y+108), &a.fPass2, true, 128, "", nil) || enter
 		label(pr.Min.Y+114, "SERVER PASSWORD")
-		hint, hintC := "if it has one", a.A.C("text_dim")
-		if a.serverInfo.NeedsPassword && a.net != nil {
-			hint, hintC = "required", a.A.C("gold")
+		a.text(half+3, pr.Min.Y+114, "INVITE CODE", a.A.C("gold"), alignLeft)
+		passHint, invHint := "if any", "if any"
+		if a.net != nil && a.serverInfo.NeedsPassword {
+			passHint = "required"
 		}
-		a.text(x0+a.A.Font.Width("SERVER PASSWORD")+6, pr.Min.Y+114, hint, hintC, alignLeft)
-		enter = a.textField("rspass", image.Rect(x0, pr.Min.Y+124, fx1, pr.Min.Y+142), &a.fServerPass, true, 128, "", nil) || enter
+		if a.net != nil && a.serverInfo.NeedsInvite {
+			invHint = "required, ask an admin"
+		}
+		enter = a.textField("rspass", image.Rect(x0, pr.Min.Y+124, half-3, pr.Min.Y+142), &a.fServerPass, true, 128, passHint, nil) || enter
+		enter = a.textField("rinvite", image.Rect(half+3, pr.Min.Y+124, fx1, pr.Min.Y+142), &a.fInvite, false, 4, invHint, inviteChar) || enter
 
 		// avatar picker
 		ax := fx1 + 10
@@ -190,7 +199,7 @@ func (a *App) doRegister() {
 	}
 	a.Cfg.Server = addr
 	a.Cfg.Save()
-	reg := proto.Register{Username: a.fUser, Password: a.fPass, Avatar: a.regAvatar, ServerPassword: a.fServerPass}
+	reg := proto.Register{Username: a.fUser, Password: a.fPass, Avatar: a.regAvatar, ServerPassword: a.fServerPass, Invite: a.fInvite}
 	a.tokenTry = false
 	a.connect(addr, func() {
 		a.send(proto.CRegister, reg)

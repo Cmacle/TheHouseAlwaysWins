@@ -249,10 +249,12 @@ all keep one.
 ## The Beggars Table
 
 For anyone with fewer than 50 chips (counting chips at another table).
-Everyone at the table shares one tray of dice. Whenever the dice are still,
-anyone under the limit can press **THROW THE DICE** (or Space). The dice
-rattle in the cup for a second, then fly into the tray, tumbling, knocking
-into each other and bouncing off the walls until they settle. Everyone at the
+Everyone at the table shares one tray of dice, and everyone there is shown
+around the rail with their chips (dimmed if they're over the limit).
+Whenever the dice are still, anyone under the limit can press **THROW THE
+DICE** (or Space). A leather dice cup shakes over the tray, tips over and
+pours the dice out, then lifts away; the dice tumble, knock into each other
+and bounce off the walls until they settle. Everyone at the
 table sees the same throw, and anyone who arrives mid-throw sees it from
 where it is.
 
@@ -519,9 +521,11 @@ command.
 | `max_spectators` | 20 | People allowed to wait on the rail when seats are full |
 | `allow_registration` | true | Let new players create accounts |
 | `offer_client_updates` | true | Offer players with an older game the update when they connect |
+| `require_latest_client` | true | Only the server's own version of the game can log in or sign up; an older game can still connect, but only to take the update |
 | `backup_interval_minutes` | 60 | How often to back up while things are changing (0 = only at start and stop) |
 | `backup_keep` / `backup_days` | 48 / 30 | Keep the newest 48 backups, plus one a day for 30 days |
 | `server_password` | "" | If set, new players must enter it to create an account (existing accounts log in normally) |
+| `require_invite` | false | New accounts need a one-use invite code made by an admin (see Invite codes) |
 | `refill_amount` | 1000 | Starting chips, and the daily top-up level |
 | `refill_time` | `00:00` | When the daily refill happens (24h) |
 | `timezone` | `Local` | Time zone for `refill_time`, e.g. `America/Chicago` |
@@ -672,6 +676,30 @@ checked against the release's `SHA256SUMS.txt` and thrown away if it doesn't
 match. To update everyone, update the server: players are offered the matching
 version the next time they connect. Set `offer_client_updates` to `false` to
 turn the offers off.
+
+With `require_latest_client` on (the default), a game older than the server
+can still connect and take the update, but it can't log in or make an
+account until it's updated: it's told which version the server runs. Games
+from before 1.9.5 don't report their version, so they always count as older.
+
+### Invite codes
+
+To stop one person making a pile of accounts, turn on `require_invite`.
+Then making an account needs a four-character invite code from an admin, and
+each code works once. In the server window:
+
+- `invite [n] [note]` makes n codes (one by default), e.g. `invite 3 cousins`
+- `invites` lists the unused ones, who made them and when
+- `uninvite <code|all>` cancels unused codes
+
+Admins can type the same commands in chat (`/invite`, `/invites`,
+`/uninvite`); codes they make are marked as theirs. Players type the code in
+the INVITE CODE box when they make their account. Codes aren't case
+sensitive and avoid look-alike characters (no 0/O or 1/I/L). A code is only
+used up if the account is actually made, and each account remembers who made
+the code it used (`invited_by` in accounts.json). Wrong codes are slowed
+down and a connection is dropped after 8 bad tries. Codes are kept in
+`invites.json` and included in backups.
 
 ### Backups and crash safety
 

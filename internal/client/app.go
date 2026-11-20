@@ -135,6 +135,7 @@ type App struct {
 	fPass        string
 	fPass2       string
 	fServerPass  string
+	fInvite      string
 	regAvatar    []byte
 	regAvatarImg *image.RGBA
 	status       string
@@ -548,7 +549,7 @@ func (a *App) handleMsg(m proto.Msg) {
 		a.st, a.ps, a.bs, a.roll, a.game, a.lobbyKnown = nil, nil, nil, nil, "", false
 		a.cs, a.csRev, a.csFX = nil, nil, nil
 		a.tokenTry = false
-		a.fPass, a.fPass2, a.fServerPass = "", "", ""
+		a.fPass, a.fPass2, a.fServerPass, a.fInvite = "", "", "", ""
 		a.focusID = ""
 		a.setStatus("", false)
 		a.cardSeen = map[string]time.Time{}

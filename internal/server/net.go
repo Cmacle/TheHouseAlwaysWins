@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/release"
 )
 
 // Server ties the listener, store and game together.
@@ -44,7 +46,8 @@ type conn struct {
 
 	user    string
 	token   string
-	lobbyOK bool // the game knows about the lobby (newer than 1.8)
+	lobbyOK bool   // the game knows about the lobby (newer than 1.8)
+	release string // the game's release version, "0.0.0" before 1.9.5
 	fails   int
 }
 
@@ -174,6 +177,7 @@ func (c *conn) reader() {
 		Name: s.cfg().ServerName, Version: proto.Version,
 		AllowRegistration: s.cfg().AllowRegistration, MOTD: s.cfg().MOTD,
 		NeedsPassword: s.cfg().ServerPassword != "",
+		NeedsInvite:   s.cfg().RequireInvite,
 		ServerVersion: Version, Updates: s.cfg().OfferClientUpdates,
 	})
 	sc := bufio.NewScanner(c.nc)
@@ -208,6 +212,10 @@ func (c *conn) handle(m proto.Msg) bool {
 			return false
 		}
 		c.lobbyOK = h.Lobby
+		c.release = h.Release
+		if c.release == "" {
+			c.release = "0.0.0" // older than 1.9.5
+		}
 		return true
 	case proto.CTableBoard:
 		var req proto.TableBoardReq
@@ -243,6 +251,13 @@ func (c *conn) handle(m proto.Msg) bool {
 	}
 
 	if c.user == "" {
+		if (m.Type == proto.CRegister || m.Type == proto.CLogin) && s.tooOld(c) {
+			s.Log.Printf("refused a version %s game (server is %s)", c.release, Version)
+			c.send(proto.SAuthFail, proto.AuthFail{Reason: fmt.Sprintf(
+				"This server runs version %s and your game is %s. Update the game to play: use the update button, or download it from the GitHub releases page.",
+				Version, c.release)})
+			return true // stay connected so the game can still offer the update
+		}
 		switch m.Type {
 		case proto.CRegister:
 			var r proto.Register
@@ -264,12 +279,38 @@ func (c *conn) handle(m proto.Msg) bool {
 				c.send(proto.SAuthFail, proto.AuthFail{Reason: reason})
 				return true
 			}
-			prof, tok, err := s.Store.Register(r.Username, r.Password, r.Avatar, s.cfg().RefillAmount, s.cfg().RefillPeriod(time.Now()))
-			if err != nil {
-				c.send(proto.SAuthFail, proto.AuthFail{Reason: err.Error()})
+			var prof *proto.Profile
+			var tok string
+			var err error
+			if s.cfg().RequireInvite {
+				var iv *Invite
+				tok, iv, err = s.Store.RegisterInvited(r.Invite, r.Username, r.Password, r.Avatar, s.cfg().RefillAmount, s.cfg().RefillPeriod(time.Now()))
+				if err == nil {
+					if p, ok := s.Store.Profile(r.Username); ok {
+						prof = &p
+					}
+					s.Log.Printf("new account: %s (invite %s from %s)", r.Username, iv.Code, iv.By)
+				} else if errors.Is(err, errInvite) {
+					c.fails++
+					s.Log.Printf("registration refused for %q: bad invite code", r.Username)
+					time.Sleep(time.Second) // slow down guessing
+					c.send(proto.SAuthFail, proto.AuthFail{Reason: err.Error()})
+					return c.fails < 8
+				}
+			} else {
+				prof, tok, err = s.Store.Register(r.Username, r.Password, r.Avatar, s.cfg().RefillAmount, s.cfg().RefillPeriod(time.Now()))
+				if err == nil {
+					s.Log.Printf("new account: %s", prof.Username)
+				}
+			}
+			if err != nil || prof == nil {
+				reason := "Couldn't make the account."
+				if err != nil {
+					reason = err.Error()
+				}
+				c.send(proto.SAuthFail, proto.AuthFail{Reason: reason})
 				return true
 			}
-			s.Log.Printf("new account: %s", prof.Username)
 			c.authed(prof, tok)
 			s.notifier().LeaderboardChanged()
 		case proto.CLogin:
@@ -394,4 +435,18 @@ func (c *conn) authed(prof *proto.Profile, tok string) {
 	c.user, c.token = prof.Username, tok
 	c.send(proto.SAuthOK, proto.AuthOK{Username: prof.Username, Token: tok, Profile: *prof})
 	c.srv.Lobby.authed(c)
+}
+
+// tooOld says the game is older than the server and require_latest_client
+// is on. Games that never said hello count as old; development builds on
+// either side don't count.
+func (s *Server) tooOld(c *conn) bool {
+	if !s.cfg().RequireLatestClient {
+		return false
+	}
+	rel := c.release
+	if rel == "" {
+		rel = "0.0.0"
+	}
+	return release.Newer(Version, rel)
 }

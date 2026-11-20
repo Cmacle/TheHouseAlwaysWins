@@ -98,6 +98,9 @@ const (
 type Hello struct {
 	Version int  `json:"version"`
 	Lobby   bool `json:"lobby,omitempty"` // the game has a lobby (1.8+)
+	// Release is the game's release version ("1.9.5"); games before 1.9.5
+	// don't send it.
+	Release string `json:"release,omitempty"`
 }
 
 type ServerInfo struct {
@@ -107,6 +110,8 @@ type ServerInfo struct {
 	MOTD              string `json:"motd"`
 	// NeedsPassword: creating an account needs the server password.
 	NeedsPassword bool `json:"needs_password,omitempty"`
+	// NeedsInvite: creating an account needs an invite code from an admin.
+	NeedsInvite bool `json:"needs_invite,omitempty"`
 	// ServerVersion is the server's release version ("1.6.0", or "dev");
 	// Updates says whether to offer older clients the update.
 	ServerVersion string `json:"server_version,omitempty"`
@@ -119,6 +124,8 @@ type Register struct {
 	Avatar   []byte `json:"avatar,omitempty"` // PNG bytes (base64 in JSON)
 	// ServerPassword is needed when the server has one set.
 	ServerPassword string `json:"server_password,omitempty"`
+	// Invite is the one-use code an admin made, when the server needs one.
+	Invite string `json:"invite,omitempty"`
 }
 
 type Login struct {
@@ -446,28 +453,29 @@ type PokerState struct {
 // throw when the dice are still, and when a throw makes the goal everyone at
 // the table who is under the limit gets the prize.
 type BeggarState struct {
-	Table      string   `json:"table"`
-	Name       string   `json:"name"`
-	Odds       int      `json:"odds"`        // the chance the table is set to: 1 in this many
-	Dice       int      `json:"dice"`        // how many dice are thrown
-	GoalKind   string   `json:"goal_kind"`   // "sum" or "faces"
-	GoalNeed   int      `json:"goal_need"`   // the total, or how many dice must count
-	GoalFace   int      `json:"goal_face"`   // faces: the lowest face that counts
-	Chance     float64  `json:"chance"`      // the goal's real chance with fair dice
-	Prize      int64    `json:"prize"`       // what a win pays
-	MaxBalance int64    `json:"max_balance"` // you can roll with fewer chips than this
-	Balance    int64    `json:"balance"`     // yours
-	CanRoll    bool     `json:"can_roll"`
-	Reason     string   `json:"reason,omitempty"`  // why you can't
-	Rolling    bool     `json:"rolling,omitempty"` // the table's dice are in the air
-	Roller     string   `json:"roller,omitempty"`  // who threw them
-	Rolls      int64    `json:"rolls"`             // yours, all time
-	Wins       int64    `json:"wins"`
-	TableRolls int64    `json:"table_rolls"` // everyone's, since the server started
-	Players    []string `json:"players,omitempty"`
-	Feed       []string `json:"feed,omitempty"` // recent happenings, newest last
-	ServerTime int64    `json:"server_time"`
-	Settings   Settings `json:"settings"`
+	Table      string       `json:"table"`
+	Name       string       `json:"name"`
+	Odds       int          `json:"odds"`        // the chance the table is set to: 1 in this many
+	Dice       int          `json:"dice"`        // how many dice are thrown
+	GoalKind   string       `json:"goal_kind"`   // "sum" or "faces"
+	GoalNeed   int          `json:"goal_need"`   // the total, or how many dice must count
+	GoalFace   int          `json:"goal_face"`   // faces: the lowest face that counts
+	Chance     float64      `json:"chance"`      // the goal's real chance with fair dice
+	Prize      int64        `json:"prize"`       // what a win pays
+	MaxBalance int64        `json:"max_balance"` // you can roll with fewer chips than this
+	Balance    int64        `json:"balance"`     // yours
+	CanRoll    bool         `json:"can_roll"`
+	Reason     string       `json:"reason,omitempty"`  // why you can't
+	Rolling    bool         `json:"rolling,omitempty"` // the table's dice are in the air
+	Roller     string       `json:"roller,omitempty"`  // who threw them
+	Rolls      int64        `json:"rolls"`             // yours, all time
+	Wins       int64        `json:"wins"`
+	TableRolls int64        `json:"table_rolls"` // everyone's, since the server started
+	Players    []string     `json:"players,omitempty"`
+	Seats      []BeggarSeat `json:"seats,omitempty"` // everyone at the table, in the order they came
+	Feed       []string     `json:"feed,omitempty"`  // recent happenings, newest last
+	ServerTime int64        `json:"server_time"`
+	Settings   Settings     `json:"settings"`
 
 	DealerSay      string       `json:"dealer_say,omitempty"`
 	DealerSayID    int          `json:"dealer_say_id,omitempty"`
@@ -477,6 +485,18 @@ type BeggarState struct {
 	DealerLog      []DealerLine `json:"dealer_log,omitempty"`
 	HouseNet       int64        `json:"house_net"`
 	HouseTier      int          `json:"house_tier"`
+}
+
+// BeggarSeat is someone at the Beggars Table.
+type BeggarSeat struct {
+	Username      string `json:"username"`
+	AvatarVersion string `json:"avatar_version,omitempty"`
+	Hat           string `json:"hat,omitempty"`
+	Frame         string `json:"frame,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Balance       int64  `json:"balance"`
+	CanRoll       bool   `json:"can_roll,omitempty"` // under the limit: can throw and collects on a win
+	Throwing      bool   `json:"throwing,omitempty"` // threw the dice in the air
 }
 
 // DiceRoll is a throw in progress. The server simulated it; Track is the

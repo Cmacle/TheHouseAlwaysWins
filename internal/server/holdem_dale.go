@@ -277,9 +277,13 @@ func runAdminCommand(lg interface{ Printf(string, ...any) }, exec func(string, i
 			}
 		}
 	}
+	run := line
+	if f := strings.Fields(strings.TrimPrefix(strings.TrimSpace(line), "/")); len(f) > 0 && strings.EqualFold(f[0], "invite") {
+		run = "invite-as " + user + " " + strings.Join(f[1:], " ") // the codes are marked as theirs
+	}
 	go func() {
 		var b lineBuffer
-		guard(lg.Printf, "admin command", nil, func() { exec(line, &b) })
+		guard(lg.Printf, "admin command", nil, func() { exec(run, &b) })
 		out := b.lines()
 		if len(out) == 0 {
 			out = []string{"  done"}

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"math/rand"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -29,7 +30,7 @@ import (
 // throw.
 
 // shakeMS is the rattle in the cup before the dice leave it.
-const shakeMS = 1000
+const shakeMS = 1400
 
 type beggarCfg struct {
 	Odds       int   `json:"odds"`        // aim for 1 in this many rolls winning
@@ -68,6 +69,7 @@ func beggarConfig(d TableDef) (beggarCfg, error) {
 }
 
 type bgPlayer struct {
+	joined   int // order of arrival, for seating
 	user     string
 	conn     *conn
 	lastTalk time.Time
@@ -92,6 +94,7 @@ type Beggar struct {
 	feed     []string
 	rolls    int64
 	nextID   int
+	joinSeq  int
 	cur      *proto.DiceRoll // the throw in the air, nil when the dice are still
 	curAt    time.Time
 	info     atomic.Pointer[proto.TableInfo]
@@ -140,7 +143,8 @@ func (t *Beggar) DoWait(fn func()) {
 func (t *Beggar) handle(ev event) {
 	switch ev.kind {
 	case evJoin:
-		p := &bgPlayer{user: ev.user, conn: ev.c}
+		t.joinSeq++
+		p := &bgPlayer{user: ev.user, conn: ev.c, joined: t.joinSeq}
 		t.conns[ev.c] = p
 		t.updateInfo()
 		t.send(p, true)
@@ -262,11 +266,11 @@ func (t *Beggar) landed(p *bgPlayer, id int, g dice.Goal, faces []int, win bool)
 		}
 		switch len(paid) {
 		case 0:
-			t.addFeed(fmt.Sprintf("%s rolled %s, but nobody here was broke enough to collect.", p.user, what))
+			t.addFeed(fmt.Sprintf("%s hit it, but nobody here was broke enough to collect.", p.user))
 		case 1:
-			t.addFeed(fmt.Sprintf("%s rolled %s: %s chips for %s!", p.user, what, commas(t.bc.Prize), paid[0]))
+			t.addFeed(fmt.Sprintf("%s hit it: +%s for %s!", p.user, commas(t.bc.Prize), paid[0]))
 		default:
-			t.addFeed(fmt.Sprintf("%s rolled %s: %s chips each for %d players!", p.user, what, commas(t.bc.Prize), len(paid)))
+			t.addFeed(fmt.Sprintf("%s hit it: +%s each for %d players!", p.user, commas(t.bc.Prize), len(paid)))
 		}
 		t.log.Printf("[%s] %s threw %v (%s): paid %d to %s", t.id, p.user, faces, what, t.bc.Prize, strings.Join(paid, ", "))
 		t.say(banter.EvBgWin, p, banter.Vars{Amount: t.bc.Prize}, 1, prioHigh)
@@ -359,8 +363,24 @@ func (t *Beggar) view(p *bgPlayer, withLog bool) proto.BeggarState {
 	if prof, ok := t.store.Profile(p.user); ok {
 		st.Rolls, st.Wins = prof.BeggarRolls, prof.BeggarWins
 	}
+	present := make([]*bgPlayer, 0, len(t.conns))
+	seen := map[string]bool{}
 	for _, o := range t.conns {
-		st.Players = append(st.Players, o.user)
+		present = append(present, o)
+	}
+	sort.Slice(present, func(i, j int) bool { return present[i].joined < present[j].joined })
+	for _, o := range present {
+		if key := strings.ToLower(o.user); !seen[key] {
+			seen[key] = true
+			st.Players = append(st.Players, o.user)
+			bal := t.store.Chips(o.user)
+			sv := proto.BeggarSeat{Username: o.user, Balance: bal, CanRoll: bal < t.bc.MaxBalance,
+				Throwing: t.cur != nil && strings.EqualFold(t.cur.By, o.user)}
+			if prof, ok := t.store.Profile(o.user); ok {
+				sv.AvatarVersion, sv.Hat, sv.Frame, sv.Title = prof.AvatarVersion, prof.Hat, prof.Frame, prof.Title
+			}
+			st.Seats = append(st.Seats, sv)
+		}
 	}
 	house := t.store.House()
 	st.HouseNet, st.HouseTier = house.Net, house.Tier

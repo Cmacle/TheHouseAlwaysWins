@@ -75,7 +75,7 @@ func runBot(t *testing.T, addr, name string, stopAfter time.Duration, wg *sync.W
 		t.Fatal(err)
 	}
 	b := &bot{name: name, nc: nc, w: bufio.NewWriter(nc)}
-	b.send(proto.CHello, proto.Hello{Version: proto.Version})
+	b.send(proto.CHello, proto.Hello{Version: proto.Version, Release: Version})
 	b.send(proto.CRegister, proto.Register{Username: name, Password: "secret"})
 	wg.Add(1)
 	go func() {

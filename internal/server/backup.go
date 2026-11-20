@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// Backups are zip files in <data_dir>/backups holding accounts.json,
+// Backups are zip files in <data_dir>/backups holding accounts.json, invites.json,
 // house.json, the avatars and the server config. One is made when the server
 // starts, every backup_interval_minutes while anything changed, before risky
 // console commands, after a crash is caught, and on shutdown. The newest
@@ -71,6 +71,9 @@ func (s *Store) Backup(label, configPath string) (string, error) {
 	err = add(filepath.Join(s.dir, "accounts.json"), "accounts.json")
 	if err == nil {
 		err = add(filepath.Join(s.dir, "house.json"), "house.json")
+	}
+	if _, serr := os.Stat(filepath.Join(s.dir, "invites.json")); err == nil && serr == nil {
+		err = add(filepath.Join(s.dir, "invites.json"), "invites.json")
 	}
 	if err == nil && configPath != "" {
 		err = add(configPath, "server.json")
@@ -193,7 +196,7 @@ func (s *Store) Restore(name, configPath string) error {
 	for _, f := range zr.File {
 		dst := ""
 		switch {
-		case f.Name == "accounts.json" || f.Name == "house.json":
+		case f.Name == "accounts.json" || f.Name == "house.json" || f.Name == "invites.json":
 			dst = filepath.Join(s.dir, f.Name)
 		case strings.HasPrefix(f.Name, "avatars/") && !strings.Contains(f.Name[8:], "/") && !strings.Contains(f.Name, ".."):
 			dst = filepath.Join(s.dir, "avatars", f.Name[8:])

@@ -53,6 +53,9 @@ func (s *Server) Exec(line string, w io.Writer) {
   ban <user> [reason]         kick and delete an account, and take what the
                               house won and lost against them out of its totals
   kick <user>                 disconnect a player
+  invite [n] [note]           make n one-use invite codes (for require_invite)
+  invites                     list unused invite codes
+  uninvite <code|all>         cancel an unused invite code
   say <message>               message everyone at the table
   admin <user> [on|off]       make someone an admin (they can type /commands in chat)
   admins                      list admins
@@ -193,6 +196,38 @@ func (s *Server) Exec(line string, w io.Writer) {
 		s.Log.Printf("banned %s (%s); house net %+d removed", name, reason, house)
 		s.Lobby.Announce("[House] " + name + " has been banned.")
 		s.notifier().LeaderboardChanged()
+	case "invite", "invite-as":
+		by := "server"
+		if cmd == "invite-as" { // /invite from an admin in the game
+			if !need(1, "invite-as <admin> [n] [note]") {
+				return
+			}
+			by, args = args[0], args[1:]
+		}
+		n := 1
+		if len(args) > 0 {
+			if v, err := strconv.Atoi(args[0]); err == nil {
+				n, args = v, args[1:]
+			}
+		}
+		codes := s.Store.MakeInvites(n, by, strings.Join(args, " "))
+		s.Store.Save()
+		s.Log.Printf("%s made %d invite code(s)", by, len(codes))
+		fmt.Fprintf(w, "  invite code(s), one account each: %s\n", strings.Join(codes, "  "))
+		if !s.cfg().RequireInvite {
+			fmt.Fprintln(w, "  (require_invite is off, so anyone can sign up without one: 'set require_invite on')")
+		}
+	case "invites":
+		for _, l := range inviteLines(s.Store.Invites()) {
+			fmt.Fprintln(w, l)
+		}
+	case "uninvite":
+		if !need(1, "uninvite <code|all>") {
+			return
+		}
+		n := s.Store.RevokeInvite(args[0])
+		s.Store.Save()
+		fmt.Fprintf(w, "  %d invite code(s) cancelled\n", n)
 	case "kick":
 		if !need(1, "kick <user>") {
 			return

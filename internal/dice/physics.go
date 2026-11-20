@@ -167,18 +167,24 @@ type Hit struct {
 	K float64
 }
 
-// NewWorld throws n dice from the right end of the tray, flying left.
+// The cup the dice are poured from: it tips over the right end of the
+// tray, mouth to the left. CupMouth is where its mouth is when it has
+// tipped, and the dice start packed just inside it.
+var CupMouth = V3{TrayW - 3.0, TrayD / 2, 4.0}
+
+// NewWorld pours n dice out of the cup, flying left.
 func NewWorld(n int, seed int64) *World {
 	rng := rand.New(rand.NewSource(seed))
 	w := &World{rng: rng}
 	for i := 0; i < n; i++ {
-		row, col := i%4, i/4
+		// packed 2 deep, 3 across, 2 high, with a little jitter
+		col, row, layer := i%2, (i/2)%3, i/6
 		b := Body{
-			Pos: V3{TrayW - 1.2 - float64(col)*1.3 - rng.Float64()*0.4,
-				1.4 + float64(row)*1.6 + rng.Float64()*0.5,
-				2.5 + rng.Float64()*2.5},
+			Pos: V3{CupMouth.X + 0.9 + float64(col)*1.08 + rng.Float64()*0.04,
+				CupMouth.Y + float64(row-1)*1.08 + rng.Float64()*0.04,
+				CupMouth.Z - 0.4 + float64(layer)*1.08 + rng.Float64()*0.04},
 			Rot: randomRot(rng),
-			Vel: V3{-(24 + rng.Float64()*14), (rng.Float64()*2 - 1) * 7, 6 + rng.Float64()*9},
+			Vel: V3{-(18 + rng.Float64()*14), (rng.Float64()*2 - 1) * 7, 1 + rng.Float64()*6},
 			Ang: V3{rng.NormFloat64(), rng.NormFloat64(), rng.NormFloat64()}.Norm().Mul(14 + rng.Float64()*20),
 		}
 		w.Dice = append(w.Dice, b)

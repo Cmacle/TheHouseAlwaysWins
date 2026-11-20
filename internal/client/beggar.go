@@ -18,8 +18,8 @@ import (
 
 // The Beggars Table: one shared tray of dice for everyone at the table.
 // The server throws the dice in a 3D physics simulation and sends the
-// recorded throw; the client rattles them for a moment, then replays the
-// throw exactly, drawn as shaded cubes in a wooden tray. Whatever faces the
+// recorded throw; the client shakes them in a cup, tips it over, then
+// replays the throw exactly, drawn as shaded cubes in a wooden tray. Whatever faces the
 // simulation came to rest on is the result.
 
 type diceRoll struct {
@@ -33,6 +33,7 @@ type diceRoll struct {
 	hits    []float64 // knock times into the throw
 	hitsK   []uint8
 	nextHit int
+	paid    map[string]bool // who was under the limit when it was thrown
 	done    bool
 	chimed  bool
 }
@@ -66,6 +67,14 @@ func (a *App) onDice(r proto.DiceRoll) {
 	}
 	dr := &diceRoll{id: r.ID, by: r.By, track: tr, faces: r.Faces, win: r.Win,
 		start: a.now.Add(-time.Duration(r.Elapsed) * time.Millisecond), shake: float64(r.ShakeMS) / 1000}
+	dr.paid = map[string]bool{}
+	if a.bs != nil {
+		for _, sv := range a.bs.Seats {
+			if sv.CanRoll {
+				dr.paid[strings.ToLower(sv.Username)] = true
+			}
+		}
+	}
 	for i, h := range r.Hits {
 		dr.hits = append(dr.hits, float64(h)/1000)
 		k := uint8(255)
@@ -339,6 +348,124 @@ func drawTray3D(dst *image.RGBA, cam camera, front bool) {
 	box(W, 0, W+t, D)
 }
 
+// The dice cup: shaken upright over the right end of the tray, then tipped
+// so its mouth points left and the dice pour out, then lifted away.
+const (
+	cupR    = 1.75 // radius, die widths
+	cupH    = 3.4  // height
+	cupTip  = 0.35 // seconds to tip it over
+	cupTilt = 1.85 // radians it tips to (about 106 degrees)
+)
+
+// cupPose is where the cup's base is, the way its mouth points, and how
+// solid it is, t seconds into the throw (negative while shaking).
+func cupPose(t float64, shake float64) (base, axis dice.V3, alpha float64) {
+	tilt := dice.V3{X: -math.Sin(cupTilt), Z: math.Cos(cupTilt)}
+	tippedBase := dice.CupMouth.Sub(tilt.Mul(cupH))
+	upBase := dice.V3{X: dice.TrayW - 1.6, Y: dice.TrayD / 2, Z: 2.2}
+	switch {
+	case t < -cupTip:
+		// shaking: quick jiggles side to side and up and down
+		since := t + shake
+		k := math.Min(1, since*4) // ramps up as it's picked up
+		j := dice.V3{X: 0.35 * math.Sin(since*38), Y: 0.2 * math.Sin(since*29+1), Z: 0.3 * math.Abs(math.Sin(since*19))}.Mul(k)
+		wob := 0.16 * math.Sin(since*38+0.6) * k
+		return upBase.Add(j), dice.V3{X: -math.Sin(wob), Z: math.Cos(wob)}, 1
+	case t < 0:
+		// tipping over
+		f := (t + cupTip) / cupTip
+		f = f * f * (3 - 2*f)
+		ang := cupTilt * f
+		return upBase.Add(tippedBase.Sub(upBase).Mul(f)), dice.V3{X: -math.Sin(ang), Z: math.Cos(ang)}, 1
+	case t < 0.45:
+		return tippedBase, tilt, 1
+	}
+	// lifted away up and to the right, fading out
+	f := math.Min(1, (t-0.45)/0.55)
+	return tippedBase.Add(dice.V3{X: 3 * f, Z: 4 * f}), tilt, 1 - f
+}
+
+// drawCup draws the cup as a shaded leather cylinder with a brass rim.
+func drawCup(dst *image.RGBA, cam camera, base, axis dice.V3, alpha float64) {
+	if alpha <= 0 {
+		return
+	}
+	const sides = 16
+	// two directions across the cup
+	u := axis.Cross(dice.V3{Y: 1})
+	if u.Len() < 0.1 {
+		u = axis.Cross(dice.V3{X: 1})
+	}
+	u = u.Norm()
+	v := axis.Cross(u).Norm()
+	mouth := base.Add(axis.Mul(cupH))
+	ring := func(c dice.V3, r float64, i int) dice.V3 {
+		sn, cs := math.Sincos(float64(i) * 2 * math.Pi / sides)
+		return c.Add(u.Mul(cs * r)).Add(v.Mul(sn * r))
+	}
+	a8 := uint8(255 * alpha)
+	leather := color.RGBA{142, 38, 34, a8}
+	brass := color.RGBA{214, 170, 70, a8}
+	tint := func(c color.RGBA, k float64) color.RGBA { out := shade(c, k); out.A = c.A; return out }
+	var polys []struct {
+		pts   [][2]float64
+		depth float64
+		c     color.RGBA
+	}
+	add := func(ws []dice.V3, n dice.V3, c color.RGBA, inside bool) {
+		mid := dice.V3{}
+		for _, w := range ws {
+			mid = mid.Add(w)
+		}
+		mid = mid.Mul(1 / float64(len(ws)))
+		facing := n.Dot(cam.pos.Sub(mid)) > 0
+		if facing == inside {
+			return
+		}
+		var pts [][2]float64
+		for _, w := range ws {
+			pts = append(pts, cam.pt(w))
+		}
+		_, _, d := cam.project(mid)
+		if c == brass {
+			d -= 0.05 // bands sit on the leather
+		}
+		k := 0.55 + 0.5*math.Max(0, n.Dot(lightDir))
+		if inside {
+			k = 0.35 + 0.2*math.Max(0, n.Mul(-1).Dot(lightDir))
+		}
+		polys = append(polys, struct {
+			pts   [][2]float64
+			depth float64
+			c     color.RGBA
+		}{pts, d, tint(c, k)})
+	}
+	for i := 0; i < sides; i++ {
+		p0, p1 := ring(base, cupR*0.92, i), ring(base, cupR*0.92, i+1)
+		q0, q1 := ring(mouth, cupR, i), ring(mouth, cupR, i+1)
+		mid := ring(base.Add(axis.Mul(cupH/2)), 1, i).Add(ring(base.Add(axis.Mul(cupH/2)), 1, i+1)).Mul(0.5)
+		n := mid.Sub(base.Add(axis.Mul(cupH / 2))).Norm()
+		add([]dice.V3{p0, p1, q1, q0}, n, leather, false) // outside
+		add([]dice.V3{p0, p1, q1, q0}, n, leather, true)  // the inside, seen through the mouth
+		// brass bands near the mouth and the base
+		r0, r1 := ring(mouth.Sub(axis.Mul(0.35)), cupR*0.985, i), ring(mouth.Sub(axis.Mul(0.35)), cupR*0.985, i+1)
+		add([]dice.V3{r0, r1, q1, q0}, n, brass, false)
+		b0, b1 := ring(base.Add(axis.Mul(0.3)), cupR*0.93, i), ring(base.Add(axis.Mul(0.3)), cupR*0.93, i+1)
+		add([]dice.V3{p0, p1, b1, b0}, n, brass, false)
+	}
+	var bottom []dice.V3
+	for i := 0; i < sides; i++ {
+		bottom = append(bottom, ring(base, cupR*0.92, i))
+	}
+	add(bottom, axis.Mul(-1), leather, false) // the base, from outside
+	add(bottom, axis.Mul(-1), leather, true)  // the floor of the cup, seen inside
+	// inside surfaces first, then the outside, each far to near
+	sort.SliceStable(polys, func(i, j int) bool { return polys[i].depth > polys[j].depth })
+	for _, p := range polys {
+		fillPoly(dst, p.pts, p.c)
+	}
+}
+
 // drawDiceTray draws the tray and the dice in it.
 func (a *App) drawDiceTray(view image.Rectangle) {
 	cam := newCamera(view)
@@ -351,7 +478,16 @@ func (a *App) drawDiceTray(view image.Rectangle) {
 		drawTray3D(a.fb, cam, true)
 		return
 	}
-	poses, _ := r.poses(a.now)
+	poses, t := r.poses(a.now)
+	base, axis, alpha := cupPose(t, r.shake)
+	if t < 0 {
+		// the dice are in the cup
+		drawTray3D(a.fb, cam, true)
+		drawCup(a.fb, cam, base, axis, alpha)
+		return
+	}
+	mouth := base.Add(axis.Mul(cupH))
+	inCup := func(p dice.V3) bool { return t < 0.45 && p.Sub(mouth).Dot(axis) < 0.2 }
 	// shadows on the felt, cast away from the light
 	for _, p := range poses {
 		var pts [][2]float64
@@ -371,9 +507,21 @@ func (a *App) drawDiceTray(view image.Rectangle) {
 		order[i] = i
 		_, _, dist[i] = cam.project(p.Pos)
 	}
-	sort.Slice(order, func(i, j int) bool { return dist[order[i]] > dist[order[j]] })
+	sort.Slice(order, func(i, j int) bool {
+		ci, cj := inCup(poses[order[i]].Pos), inCup(poses[order[j]].Pos)
+		if ci != cj {
+			return ci
+		}
+		return dist[order[i]] > dist[order[j]]
+	})
 	g := a.bsGoal()
+	cupDrawn := false
 	for _, i := range order {
+		if !cupDrawn && !inCup(poses[i].Pos) {
+			// dice still inside the cup were drawn before it; the rest go in front
+			drawCup(a.fb, cam, base, axis, alpha)
+			cupDrawn = true
+		}
 		look := dieLook{body: color.RGBA{246, 242, 230, 255}, pip: color.RGBA{30, 24, 24, 255}}
 		if r.done {
 			switch {
@@ -385,6 +533,9 @@ func (a *App) drawDiceTray(view image.Rectangle) {
 			}
 		}
 		drawDie3D(a.fb, cam, poses[i], look)
+	}
+	if !cupDrawn {
+		drawCup(a.fb, cam, base, axis, alpha)
 	}
 	drawTray3D(a.fb, cam, true)
 }
@@ -416,7 +567,6 @@ func (a *App) drawBeggar() {
 	a.chatPreInput()
 	a.computeLayout()
 	a.drawTableBG()
-	L := a.L
 	bs, st := a.bs, a.st
 	if bs == nil || st == nil {
 		a.text(ScreenW/2, ScreenH/2-10, "Joining the table...", a.A.C("text"), alignCenter)
@@ -463,7 +613,7 @@ func (a *App) drawBeggar() {
 	case r == nil:
 		a.textOutlined(ScreenW/2, tray.Max.Y+8, "Anyone under the limit can throw", felt, alignCenter)
 	case !r.done:
-		a.textOutlined(ScreenW/2, tray.Max.Y+8, fitText(a.A.Font, r.by+" throws...", ScreenW-20), a.A.C("text"), alignCenter)
+		a.textOutlined(ScreenW/2, tray.Max.Y+8, fitText(a.A.Font, r.by+" throws...", a.newsW()), a.A.C("text"), alignCenter)
 	case r.win:
 		msg, c := "WINNER!", a.A.C("gold")
 		if (a.frame/10)%2 == 0 {
@@ -473,14 +623,14 @@ func (a *App) drawBeggar() {
 		mid := tray.Min.Y + tray.Dy()/2
 		fillRect(a.fb, image.Rect(ScreenW/2-tw/2, mid-12, ScreenW/2+tw/2, mid+12), color.RGBA{0, 0, 0, 150})
 		a.textBig(ScreenW/2, mid-8, msg, c, 2, alignCenter)
-		a.textOutlined(ScreenW/2, tray.Max.Y+8, fitText(a.A.Font, fmt.Sprintf("%s rolled %s", r.by, a.scoreText(g, r.faces)), ScreenW-20), a.A.C("gold"), alignCenter)
+		a.textOutlined(ScreenW/2, tray.Max.Y+8, fitText(a.A.Font, fmt.Sprintf("%s rolled %s", r.by, a.scoreText(g, r.faces)), a.newsW()), a.A.C("gold"), alignCenter)
 	default:
 		got := g.Score(r.faces)
 		c := a.A.C("text")
 		if float64(got) >= float64(g.Need)*0.85 {
 			c = a.A.C("highlight")
 		}
-		a.textOutlined(ScreenW/2, tray.Max.Y+8, fitText(a.A.Font, fmt.Sprintf("%s rolled %s. Needed %d.", r.by, a.scoreText(g, r.faces), g.Need), ScreenW-20), c, alignCenter)
+		a.textOutlined(ScreenW/2, tray.Max.Y+8, fitText(a.A.Font, fmt.Sprintf("%s rolled %s. Needed %d.", r.by, a.scoreText(g, r.faces), g.Need), a.newsW()), c, alignCenter)
 	}
 
 	// what's been happening, and who else is here
@@ -489,18 +639,10 @@ func (a *App) drawBeggar() {
 		if i < len(bs.Feed)-3 {
 			continue
 		}
-		a.text(ScreenW/2, y, fitText(a.A.Font, f, ScreenW-20), a.A.C("gold"), alignCenter)
+		a.text(ScreenW/2, y, fitText(a.A.Font, f, a.newsW()), a.A.C("gold"), alignCenter)
 		y += 10
 	}
-	var others []string
-	for _, p := range bs.Players {
-		if !strings.EqualFold(p, a.username) {
-			others = append(others, p)
-		}
-	}
-	if len(others) > 0 && y < L.hudTop-12 {
-		a.text(ScreenW/2, y, fitText(a.A.Font, "Also begging: "+strings.Join(others, ", "), ScreenW-20), a.A.C("text_dim"), alignCenter)
-	}
+	a.drawBeggarSeats(bs)
 
 	a.drawSpeech(st)
 	a.drawLogButton(st)
@@ -509,6 +651,92 @@ func (a *App) drawBeggar() {
 	a.drawChatBar(st)
 	a.blocked = updating
 	a.drawOverlays()
+}
+
+// beggarSeatPos is where the i-th of n people sits: around the rail in
+// landscape, in rows under the tray's news on a phone.
+func (a *App) beggarSeatPos(i, n int) (int, int) {
+	if !a.L.portrait {
+		return a.seatPos(beggarSlots[i], 8)
+	}
+	const perRow = 4
+	row, k := i/perRow, i%perRow
+	m := min(perRow, n-row*perRow)
+	y := a.diceTray().Max.Y + 78 + row*58
+	return ScreenW * (2*k + 1) / (2 * m), y
+}
+
+// newsW is how wide the lines under the tray can be without running into
+// the seats beside them.
+func (a *App) newsW() int {
+	if a.L.portrait {
+		return ScreenW - 20
+	}
+	return min(ScreenW-20, 280)
+}
+
+// beggarSlots is the order seats fill around the rail: the ends first,
+// working in, so the middle under the tray stays clear for the news.
+var beggarSlots = []int{0, 7, 1, 6, 2, 5, 3, 4}
+
+// drawBeggarSeats draws everyone at the table around the rail, with their
+// chips. Whoever threw the dice in the air is marked; a win pays everyone
+// under the limit, so they get the +chips sign when it lands.
+func (a *App) drawBeggarSeats(bs *proto.BeggarState) {
+	const slots = 8
+	seatW := a.seatSpacing(slots)
+	type seatHat struct {
+		id   string
+		x, y int
+	}
+	var hats []seatHat
+	r := a.roll
+	for i, sv := range bs.Seats {
+		if i >= slots {
+			break
+		}
+		x, cy := a.beggarSeatPos(i, len(bs.Seats))
+		ar := image.Rect(x-16, cy-16, x+16, cy+16)
+		if sv.Throwing || r != nil && !r.done && strings.EqualFold(r.by, sv.Username) {
+			strokeRect(a.fb, ar.Inset(-10), a.A.C("gold"))
+		}
+		a.drawFrame(sv.Frame, ar.Min.X, ar.Min.Y)
+		blit(a.fb, a.avatarImg(sv.Username, sv.AvatarVersion, 32), ar.Min.X, ar.Min.Y)
+		if !sv.CanRoll {
+			fillRect(a.fb, ar, color.RGBA{0, 0, 0, 110}) // too rich to play here
+		}
+		hats = append(hats, seatHat{sv.Hat, ar.Min.X, ar.Min.Y})
+		px, left := ar.Max.X+3, false
+		if px+pileChip+20 > ScreenW-2 {
+			px, left = ar.Min.X-3-pileChip, true
+		}
+		a.drawChipPile(px, ar.Max.Y, sv.Balance, left)
+		nameCol := a.A.C("text")
+		if strings.EqualFold(sv.Username, a.username) {
+			nameCol = a.A.C("gold")
+		}
+		label := func(y int, s string, c color.RGBA) {
+			hw := a.A.Font.Width(s)/2 + 2
+			a.text(min(max(x, hw), ScreenW-hw), y, s, c, alignCenter)
+		}
+		label(ar.Max.Y+4, fitText(a.A.Font, sv.Username, seatW), nameCol)
+		if name, c, ok := titleOf(sv.Title); ok {
+			label(ar.Max.Y+13, fitText(a.A.Font, name, seatW+20), c)
+		}
+		top := cy - 16 - a.A.Theme.HatHeight + a.A.Theme.HatOverlap - 10
+		switch {
+		case r != nil && r.done && r.win && r.paid[strings.ToLower(sv.Username)] && (a.frame/8)%4 != 0:
+			a.textOutlined(x, top, "+"+commas(bs.Prize), a.A.C("gold"), alignCenter)
+		case r != nil && !r.done && strings.EqualFold(r.by, sv.Username):
+			a.textOutlined(x, top, "THROWING", a.A.C("gold"), alignCenter)
+		}
+	}
+	for _, h := range hats {
+		a.drawHat(h.id, h.x, h.y)
+	}
+	if extra := len(bs.Seats) - slots; extra > 0 {
+		a.text(ScreenW-6, a.L.hudTop-12, fmt.Sprintf("+%d more here", extra), a.A.C("text_dim"), alignRight)
+	}
 }
 
 // scoreText says what a throw made: "a total of 31" or "6 counting dice".

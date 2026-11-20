@@ -124,7 +124,9 @@ func TestPreviewBeggar(t *testing.T) {
 	save(t, dir, "50_lobby_beggar.png", a.fb)
 	a.onJoined(proto.Joined{ID: "beggars", Game: proto.GameBeggar, Name: "Beggars Table"})
 	bs := &proto.BeggarState{Table: "beggars", Name: "Beggars Table", Odds: 1000, Prize: 50, MaxBalance: 50, Balance: 12, CanRoll: true,
-		Rolls: 241, TableRolls: 1302, Players: []string{"You_There", "Deb"}, Feed: []string{"Deb rolled 8+ 5s or 6s on 9 dice: 50 chips each for 2 players!"},
+		Rolls: 241, TableRolls: 1302, Players: []string{"You_There", "Deb"},
+		Seats: []proto.BeggarSeat{{Username: "Deb", Balance: 30, CanRoll: true, Hat: "nightcap", Throwing: true}, {Username: "You_There", Balance: 12, CanRoll: true},
+			{Username: "Big_Tony", Balance: 900, Title: "high_water"}, {Username: "LuckyLou", Balance: 4, CanRoll: true}}, Feed: []string{"Deb hit it: +50 each for 2 players!"},
 		Settings: proto.Settings{TableChat: true, DealerTrashTalk: true}, HouseNet: 1520, HouseTier: 1, ServerTime: time.Now().UnixMilli(),
 		DealerSay: "Again, You_There? Persistence. Or a problem.", DealerSayID: 4, DealerSayUntil: time.Now().Add(5 * time.Second).UnixMilli()}
 	a.onBeggar(bs)
@@ -133,7 +135,8 @@ func TestPreviewBeggar(t *testing.T) {
 	g := dice.Plan(1000)
 	bs.Dice, bs.GoalKind, bs.GoalNeed, bs.GoalFace, bs.Chance = g.Dice, g.Kind, g.Need, g.Face, g.P
 	roll := throwMsg(1, g.Dice, 42, 0)
-	for i, at := range []float64{0.4, 1.25, 1.7, 9} {
+	roll.ShakeMS = 1400
+	for i, at := range []float64{0.6, 1.25, 1.42, 1.55, 1.9, 2.3, 11} {
 		a.onDice(roll)
 		a.roll.start = time.Now().Add(-time.Duration(at * float64(time.Second)))
 		frame()

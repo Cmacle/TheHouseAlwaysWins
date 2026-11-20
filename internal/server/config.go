@@ -64,13 +64,19 @@ type Config struct {
 	BackupDays            int `json:"backup_days"`
 	// Offer players with an older client the update when they connect.
 	OfferClientUpdates bool `json:"offer_client_updates"`
-	MaxPlayers         int  `json:"max_players"`
-	MaxSpectators      int  `json:"max_spectators"`
+	// Only the server's own version of the game can log in or sign up. An
+	// older game can still connect, but only to be offered the update.
+	RequireLatestClient bool `json:"require_latest_client"`
+	MaxPlayers          int  `json:"max_players"`
+	MaxSpectators       int  `json:"max_spectators"`
 
 	AllowRegistration bool `json:"allow_registration"`
 	// Server password: if set, new players must enter it to create an
 	// account. Existing accounts log in as usual. Leave empty for none.
 	ServerPassword string `json:"server_password"`
+	// Invite codes: if on, making an account needs a one-use code that an
+	// admin made with "invite" (or /invite in chat).
+	RequireInvite bool `json:"require_invite"`
 
 	// Daily refill: once per day at RefillTime, any account below RefillAmount is
 	// topped up to RefillAmount and the top-up is subtracted from its lifetime
@@ -157,6 +163,7 @@ func DefaultConfig() *Config {
 		BackupKeep:            48,
 		BackupDays:            30,
 		OfferClientUpdates:    true,
+		RequireLatestClient:   true,
 		MaxPlayers:            10,
 		MaxSpectators:         20,
 		AllowRegistration:     true,

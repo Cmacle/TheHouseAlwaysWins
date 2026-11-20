@@ -124,6 +124,8 @@ type Account struct {
 	AvatarVersion string    `json:"avatar_version"`
 	Created       time.Time `json:"created"`
 	LastSeen      time.Time `json:"last_seen"`
+	InvitedBy     string    `json:"invited_by,omitempty"`  // who made the invite code used to sign up
+	InviteCode    string    `json:"invite_code,omitempty"` // and the code
 }
 
 func (a *Account) owned() map[string]bool {
@@ -434,6 +436,7 @@ type Store struct {
 	backedUp int  // changes at the last backup
 	frozen   bool // a backup was restored: stop saving until restart
 	logf     func(string, ...any)
+	invites  map[string]Invite // unused invite codes
 }
 
 var usernameRe = regexp.MustCompile(`^[A-Za-z0-9_]{3,16}$`)
@@ -480,6 +483,7 @@ func OpenStoreLog(dir string, logf func(string, ...any)) (*Store, error) {
 		s.house = house
 	}
 	s.house.Tier = banter.Tier(s.house.Net, s.house.Tier)
+	s.loadInvites()
 	return s, nil
 }
 
@@ -571,6 +575,7 @@ func (s *Store) Save() error {
 	}
 	s.dirty = false
 	house := s.house
+	inv := s.invitesJSON()
 	s.mu.Unlock()
 	sort.Slice(list, func(i, j int) bool { return strings.ToLower(list[i].Username) < strings.ToLower(list[j].Username) })
 	b, err := json.MarshalIndent(list, "", "  ")
@@ -582,6 +587,9 @@ func (s *Store) Save() error {
 		if hb, err = json.MarshalIndent(house, "", "  "); err == nil {
 			err = writeFileSafe(filepath.Join(s.dir, "house.json"), hb, true)
 		}
+	}
+	if err == nil {
+		err = writeFileSafe(s.invitesPath(), inv, true)
 	}
 	s.mu.Lock()
 	if err != nil {
