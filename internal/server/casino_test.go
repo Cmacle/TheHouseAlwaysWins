@@ -238,7 +238,9 @@ func TestOfferNewGames(t *testing.T) {
 	if err := s.Lobby.RemoveTable("reddog"); err != nil {
 		t.Fatal(err)
 	}
-	s2, err := New(cfg, dir, log.New(io.Discard, "", 0))
+	cfg2 := DefaultConfig() // the first server's lobby is still reading cfg
+	cfg2.DataDir = dir
+	s2, err := New(cfg2, dir, log.New(io.Discard, "", 0))
 	if err != nil {
 		t.Fatal(err)
 	}
