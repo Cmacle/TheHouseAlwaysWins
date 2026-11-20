@@ -747,6 +747,16 @@ the Lifetime board only ever shows what was won from the house.
 token, never your password), the volume settings (`volume`, `effects_volume`,
 `voice_volume`, `reveal_volume`, 0-100), `window_scale` (0 = automatic) and `fullscreen`. Logging out forgets the saved login.
 
+### If the window stays blank (Windows)
+
+The Windows client writes `client.log` next to `TheHouseAlwaysWins.exe` (or to
+the temp folder if that folder can't be written). It records the Windows
+version and screen setup, how start-up went, any drawing failures, crashes,
+and, if the window stops updating for 8 seconds, exactly where the game is
+stuck. If smooth scaling or scaling in general fails on a graphics driver, the
+client falls back to plain scaling and then to unscaled drawing on its own and
+notes it in the log. Send `client.log` along with any report.
+
 ### Replacing the art
 
 On first run the client writes every default asset into `assets/` with a

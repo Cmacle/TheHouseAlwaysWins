@@ -28,6 +28,7 @@ var (
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 	comdlg32 = syscall.NewLazyDLL("comdlg32.dll")
 	winmm    = syscall.NewLazyDLL("winmm.dll")
+	ntdll    = syscall.NewLazyDLL("ntdll.dll")
 
 	pRegisterClassExW   = user32.NewProc("RegisterClassExW")
 	pCreateWindowExW    = user32.NewProc("CreateWindowExW")
@@ -68,6 +69,8 @@ var (
 	pStretchDIBits     = gdi32.NewProc("StretchDIBits")
 	pSetStretchBltMode = gdi32.NewProc("SetStretchBltMode")
 	pPatBlt            = gdi32.NewProc("PatBlt")
+	pGetDeviceCaps     = gdi32.NewProc("GetDeviceCaps")
+	pSetDIBitsToDevice = gdi32.NewProc("SetDIBitsToDevice")
 	pSetBrushOrgEx     = gdi32.NewProc("SetBrushOrgEx")
 
 	pGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
@@ -247,6 +250,10 @@ type window struct {
 	minW   int32
 	minH   int32
 	frames int
+	pk     int  // prescale the bgra buffer was built with
+	basic  bool // smooth stretching failed here; use plain stretching
+	direct bool // stretching failed entirely; draw unscaled
+	failed bool // drawing failure already logged
 }
 
 var win *window
@@ -287,6 +294,9 @@ func wndProc(hwnd, m, wp, lp uintptr) uintptr {
 		pBeginPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 		if w.lastFB != nil {
 			w.blit(ps.Hdc)
+		} else {
+			cw, ch := w.clientSize()
+			pPatBlt.Call(ps.Hdc, 0, 0, uintptr(cw), uintptr(ch), blackness)
 		}
 		pEndPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 		return 0
@@ -408,21 +418,53 @@ func (w *window) layout() {
 }
 
 func (w *window) blit(hdc uintptr) {
-	if w.lastFB == nil {
+	if w.lastFB == nil || len(w.bgra) == 0 {
 		return
 	}
 	cw, ch := w.clientSize()
-	sw, sh := w.lastFB.Rect.Dx()*w.k, w.lastFB.Rect.Dy()*w.k
-	if sw == w.dw && sh == w.dh {
-		pSetStretchBltMode.Call(hdc, colorOnColor)
-	} else {
-		pSetStretchBltMode.Call(hdc, halftone)
-		pSetBrushOrgEx.Call(hdc, 0, 0, 0)
+	pk := max(1, w.pk)
+	sw, sh := w.lastFB.Rect.Dx()*pk, w.lastFB.Rect.Dy()*pk
+	if len(w.bgra) < sw*sh*4 {
+		return
 	}
-	pStretchDIBits.Call(hdc,
-		uintptr(w.ox), uintptr(w.oy), uintptr(w.dw), uintptr(w.dh),
-		0, 0, uintptr(sw), uintptr(sh),
-		uintptr(unsafe.Pointer(&w.bgra[0])), uintptr(unsafe.Pointer(&w.bmi)), dibRGBColors, srcCopy)
+	ok := false
+	if !w.direct {
+		mode := uintptr(colorOnColor)
+		if !w.basic && (sw != w.dw || sh != w.dh) {
+			mode = halftone
+		}
+		pSetStretchBltMode.Call(hdc, mode)
+		if mode == halftone {
+			pSetBrushOrgEx.Call(hdc, 0, 0, 0)
+		}
+		r, _, err := pStretchDIBits.Call(hdc,
+			uintptr(w.ox), uintptr(w.oy), uintptr(w.dw), uintptr(w.dh),
+			0, 0, uintptr(sw), uintptr(sh),
+			uintptr(unsafe.Pointer(&w.bgra[0])), uintptr(unsafe.Pointer(&w.bmi)), dibRGBColors, srcCopy)
+		ok = r != 0 && int32(r) != -1
+		if !ok {
+			if mode == halftone {
+				Logf("smooth stretch failed (%v), %dx%d -> %dx%d; switching to plain stretch", err, sw, sh, w.dw, w.dh)
+				w.basic = true
+			} else {
+				Logf("stretch failed (%v), %dx%d -> %dx%d; drawing unscaled", err, sw, sh, w.dw, w.dh)
+				w.direct = true
+			}
+			w.blit(hdc)
+			return
+		}
+	} else {
+		// last resort: copy the buffer 1:1, centred
+		x, y := max(0, (cw-sw)/2), max(0, (ch-sh)/2)
+		r, _, err := pSetDIBitsToDevice.Call(hdc, uintptr(x), uintptr(y), uintptr(sw), uintptr(sh),
+			0, 0, 0, uintptr(sh),
+			uintptr(unsafe.Pointer(&w.bgra[0])), uintptr(unsafe.Pointer(&w.bmi)), dibRGBColors)
+		if r == 0 && !w.failed {
+			w.failed = true
+			Logf("unscaled draw failed too (%v)", err)
+		}
+		return
+	}
 	if w.oy > 0 {
 		pPatBlt.Call(hdc, 0, 0, uintptr(cw), uintptr(w.oy), blackness)
 		pPatBlt.Call(hdc, 0, uintptr(w.oy+w.dh), uintptr(cw), uintptr(ch-w.oy-w.dh), blackness)
@@ -436,6 +478,10 @@ func (w *window) blit(hdc uintptr) {
 func (w *window) present(fb *image.RGBA) {
 	w.lastFB = fb
 	fw, fh, k := fb.Rect.Dx(), fb.Rect.Dy(), max(1, w.k)
+	if w.direct {
+		k = 1
+	}
+	w.pk = k
 	sw, sh := fw*k, fh*k
 	if len(w.bgra) != sw*sh*4 {
 		w.bgra = make([]byte, sw*sh*4)
@@ -562,6 +608,7 @@ func Run(cfg *client.Config, assets *client.Assets, icon []byte) error {
 func RunApp(title string, cfg *client.Config, icon []byte, mk func(client.Platform) *client.App) error {
 	pSetProcessDPIAware.Call()
 	pTimeBeginPeriod.Call(1)
+	LogSystem()
 
 	inst, _, _ := pGetModuleHandleW.Call(0)
 	cursor, _, _ := pLoadCursorW.Call(0, idcArrow)
@@ -609,9 +656,11 @@ func RunApp(title string, cfg *client.Config, icon []byte, mk func(client.Platfo
 		uintptr(x), uintptr(y), uintptr(ww), uintptr(wh),
 		0, 0, inst, 0)
 	if hwnd == 0 {
+		Logf("CreateWindowEx failed: %v", err)
 		return err
 	}
 	w.hwnd = hwnd
+	Logf("window %dx%d at %d,%d (scale %d)", ww, wh, x, y, scale)
 	if len(icon) > 0 {
 		for _, size := range []uintptr{0, 1} { // ICON_SMALL, ICON_BIG
 			px := uintptr(16)
@@ -629,8 +678,11 @@ func RunApp(title string, cfg *client.Config, icon []byte, mk func(client.Platfo
 		w.toggleFullscreen()
 	}
 
+	setStage("starting the game")
 	app := mk(platform{w})
 	defer app.Close()
+	heartbeat.Store(time.Now().UnixNano())
+	go watchdog()
 
 	const frameTime = time.Second / 60
 	next := time.Now()
@@ -665,11 +717,19 @@ func RunApp(title string, cfg *client.Config, icon []byte, mk func(client.Platfo
 		in.Shift = keyDown(0x10)
 		in.Ctrl = keyDown(0x11)
 
+		setStage("drawing a frame")
 		fb := app.Frame(in)
+		setStage("showing a frame")
 		w.present(fb)
+		setStage("sounds")
 		if w.frames++; w.frames%30 == 0 {
 			reapVoices()
 		}
+		if w.frames == 1 {
+			Logf("first frame shown, canvas %dx%d drawn at %dx%d (prescale %d)", w.lw, w.lh, w.dw, w.dh, w.pk)
+		}
+		heartbeat.Store(time.Now().UnixNano())
+		setStage("window messages")
 
 		// reset per-frame input
 		w.in.Pressed, w.in.Released, w.in.RightPressed = false, false, false
@@ -684,6 +744,7 @@ func RunApp(title string, cfg *client.Config, icon []byte, mk func(client.Platfo
 			next = time.Now()
 		}
 	}
+	Logf("window closed after %d frames", w.frames)
 	stopAllSounds()
 	cfg.Save()
 	return nil
