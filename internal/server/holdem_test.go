@@ -547,7 +547,16 @@ func TestBeggarShared(t *testing.T) {
 			t.Fatalf("player %d didn't see the throw", i)
 		}
 	}
-	b.DoWait(func() { b.landed(&bgPlayer{user: "bum0"}, b.cur.ID, b.goal, b.cur.Faces, true) })
+	var before, after dice.Goal
+	b.DoWait(func() {
+		b.bc.Odds = 1000 // so a fresh goal has plenty to choose from
+		before = b.goal
+		b.landed(&bgPlayer{user: "bum0"}, b.cur.ID, b.goal, b.cur.Faces, true)
+		after = b.goal
+	})
+	if after.Kind == before.Kind || after.P <= 0 {
+		t.Errorf("a win should bring a different kind of goal: %+v then %+v", before, after)
+	}
 	for name, want := range map[string]int64{"bum0": 60, "bum1": 70, "bum2": 500} {
 		if p, _ := s.Store.Profile(name); p.Balance != want {
 			t.Errorf("%s has %d, want %d", name, p.Balance, want)

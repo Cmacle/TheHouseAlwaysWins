@@ -457,7 +457,8 @@ type BeggarState struct {
 	Name       string       `json:"name"`
 	Odds       int          `json:"odds"`        // the chance the table is set to: 1 in this many
 	Dice       int          `json:"dice"`        // how many dice are thrown
-	GoalKind   string       `json:"goal_kind"`   // "sum" or "faces"
+	Sides      int          `json:"sides"`       // and how many sides they have (6, 8, 12, 20)
+	GoalKind   string       `json:"goal_kind"`   // dice.GoalSum, GoalLow, GoalKind...
 	GoalNeed   int          `json:"goal_need"`   // the total, or how many dice must count
 	GoalFace   int          `json:"goal_face"`   // faces: the lowest face that counts
 	Chance     float64      `json:"chance"`      // the goal's real chance with fair dice
@@ -508,6 +509,7 @@ type DiceRoll struct {
 	By      string  `json:"by"`      // who threw
 	Elapsed int64   `json:"elapsed"` // ms already played, for someone arriving mid-throw
 	Dice    int     `json:"dice"`
+	Sides   int     `json:"sides"`
 	Faces   []int   `json:"faces"`
 	Win     bool    `json:"win"`
 	MS      int64   `json:"ms"`

@@ -109,7 +109,8 @@ func newBeggar(id, name string, cfg *Config, bc beggarCfg, store *Store, n Notif
 	}
 	t := &Beggar{id: id, name: name, cfg: cfg, bc: bc, store: store, notify: n, log: lg,
 		events: make(chan event, 1024), rng: rand.New(rand.NewSource(time.Now().UnixNano())),
-		voice: newVoice(), conns: map[*conn]*bgPlayer{}, goal: dice.Plan(bc.Odds)}
+		voice: newVoice(), conns: map[*conn]*bgPlayer{}}
+	t.goal = dice.Pick(bc.Odds, nil, t.rng)
 	t.voice.budget = 1 << 30 // no hands here to reset his budget
 	t.updateInfo()
 	return t
@@ -204,7 +205,7 @@ func (t *Beggar) roll(p *bgPlayer) {
 	t.nextID++
 	t.rolls++
 	g := t.goal
-	th := dice.Roll(g.Dice, t.rng.Int63())
+	th := dice.Roll(g.S(), g.Dice, t.rng.Int63())
 	faces := th.Faces
 	win := g.Made(faces)
 	n := t.store.BeggarRoll(p.user)
@@ -212,7 +213,7 @@ func (t *Beggar) roll(p *bgPlayer) {
 		t.store.RecordTable(p.user, t.id, 0)
 	}
 	ms := shakeMS + int(th.Length*1000) + 250
-	dr := proto.DiceRoll{ID: t.nextID, By: p.user, Dice: g.Dice, Faces: faces, Win: win, MS: int64(ms), ShakeMS: shakeMS, Track: th.Track}
+	dr := proto.DiceRoll{ID: t.nextID, By: p.user, Dice: g.Dice, Sides: g.S(), Faces: faces, Win: win, MS: int64(ms), ShakeMS: shakeMS, Track: th.Track}
 	for _, h := range th.Hits {
 		dr.Hits = append(dr.Hits, int(h.T*1000))
 		dr.HitsK = append(dr.HitsK, uint8(h.K*255))
@@ -247,7 +248,7 @@ func (t *Beggar) landed(p *bgPlayer, id int, g dice.Goal, faces []int, win bool)
 	}
 	t.cur = nil
 	if win {
-		what := fmt.Sprintf("%s on %d dice", strings.ToLower(g.Describe()), g.Dice)
+		what := fmt.Sprintf("%s on %d%s", strings.ToLower(g.Describe()), g.Dice, strings.ToLower(g.Die()))
 		var paid []string
 		seen := map[string]bool{}
 		for _, o := range t.conns {
@@ -274,6 +275,9 @@ func (t *Beggar) landed(p *bgPlayer, id int, g dice.Goal, faces []int, win bool)
 		}
 		t.log.Printf("[%s] %s threw %v (%s): paid %d to %s", t.id, p.user, faces, what, t.bc.Prize, strings.Join(paid, ", "))
 		t.say(banter.EvBgWin, p, banter.Vars{Amount: t.bc.Prize}, 1, prioHigh)
+		// a new goal every time someone hits one
+		t.goal = dice.Pick(t.bc.Odds, &g, t.rng)
+		t.addFeed(fmt.Sprintf("New goal: %d %s, %s.", t.goal.Dice, t.goal.Die(), strings.ToLower(t.goal.Describe())))
 		for c := range t.conns {
 			c.event(proto.Event{Kind: "info", Seat: -1, Text: fmt.Sprintf("%s made the number at the Beggars Table!", p.user)})
 		}
@@ -349,7 +353,7 @@ func (t *Beggar) onChat(p *bgPlayer, text string) {
 func (t *Beggar) view(p *bgPlayer, withLog bool) proto.BeggarState {
 	g := t.goal
 	st := proto.BeggarState{Table: t.id, Name: t.name, Odds: t.bc.Odds, Prize: t.bc.Prize, MaxBalance: t.limit(),
-		Dice: g.Dice, GoalKind: g.Kind, GoalNeed: g.Need, GoalFace: g.Face, Chance: g.P,
+		Dice: g.Dice, Sides: g.S(), GoalKind: g.Kind, GoalNeed: g.Need, GoalFace: g.Face, Chance: g.P,
 		Balance: t.store.Chips(p.user), Rolling: t.cur != nil, TableRolls: t.rolls, Feed: t.feed,
 		ServerTime: time.Now().UnixMilli(),
 		Settings: proto.Settings{ServerName: t.cfg.ServerName, RefillAmount: t.cfg.RefillAmount,
@@ -442,8 +446,12 @@ func (b beggarTable) reconfigure(global *Config, d TableDef) {
 		return
 	}
 	b.Do(func() {
+		oddsChanged := bc.Odds != b.bc.Odds
 		b.cfg, b.bc, b.name = global, bc, d.Name
-		b.goal = dice.Plan(bc.Odds)
+		if oddsChanged {
+			old := b.goal
+			b.goal = dice.Pick(bc.Odds, &old, b.rng)
+		}
 		b.updateInfo()
 		b.broadcast()
 	})

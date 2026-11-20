@@ -21,6 +21,7 @@ type Pose struct {
 
 // Throw is a finished, recorded throw.
 type Throw struct {
+	Sides  int
 	Dice   int
 	Faces  []int
 	Track  []byte // TrackHz frames of every die's pose
@@ -28,9 +29,10 @@ type Throw struct {
 	Length float64 // seconds until the dice stopped
 }
 
-// Roll throws n dice with the seed and records the throw.
-func Roll(n int, seed int64) Throw {
-	w := NewWorld(n, seed)
+// Roll throws n dice with that many sides, with the seed, and records the
+// throw.
+func Roll(sides, n int, seed int64) Throw {
+	w := NewWorld(sides, n, seed)
 	var buf []byte
 	record := func() {
 		for i := range w.Dice {
@@ -46,7 +48,7 @@ func Roll(n int, seed int64) Throw {
 		}
 	}
 	record() // the resting pose
-	return Throw{Dice: n, Faces: w.Faces(), Track: buf, Hits: w.Hits, Length: w.T}
+	return Throw{Sides: ShapeFor(sides).Sides, Dice: n, Faces: w.Faces(), Track: buf, Hits: w.Hits, Length: w.T}
 }
 
 func q16(v, scale float64) uint16 {

@@ -34,6 +34,8 @@ type diceRoll struct {
 	hitsK   []uint8
 	nextHit int
 	paid    map[string]bool // who was under the limit when it was thrown
+	sides   int
+	goal    dice.Goal // the goal it was thrown for (a win brings a new one)
 	done    bool
 	chimed  bool
 }
@@ -68,7 +70,7 @@ func (a *App) onDice(r proto.DiceRoll) {
 	if err != nil || len(r.Faces) != r.Dice {
 		return
 	}
-	dr := &diceRoll{id: r.ID, by: r.By, track: tr, faces: r.Faces, win: r.Win,
+	dr := &diceRoll{id: r.ID, by: r.By, track: tr, faces: r.Faces, win: r.Win, sides: r.Sides, goal: a.bsGoal(),
 		start: a.now.Add(-time.Duration(r.Elapsed) * time.Millisecond), shake: float64(r.ShakeMS) / 1000}
 	dr.paid = map[string]bool{}
 	if a.bs != nil {
@@ -247,22 +249,6 @@ func hull(ps [][2]float64) [][2]float64 {
 	return h
 }
 
-// a die's faces: the face number, its corners on the unit cube (in order
-// around the face) and the directions across it for laying out pips
-var dieFaces = func() (fs [7]struct {
-	u, v dice.V3
-}) {
-	for f := 1; f <= 6; f++ {
-		n := dice.FaceAxes[f]
-		u := dice.V3{X: 1}
-		if math.Abs(n.X) > 0.5 {
-			u = dice.V3{Y: 1}
-		}
-		fs[f].u, fs[f].v = u, n.Cross(u)
-	}
-	return
-}()
-
 var pipSpots = map[int][][2]float64{
 	1: {{0, 0}},
 	2: {{-1, -1}, {1, 1}},
@@ -276,35 +262,69 @@ type dieLook struct {
 	body, pip color.RGBA
 }
 
+// dieColors gives each kind of die its own colour.
+func dieColors(sides int) dieLook {
+	switch sides {
+	case 8:
+		return dieLook{color.RGBA{176, 208, 250, 255}, color.RGBA{20, 34, 80, 255}}
+	case 12:
+		return dieLook{color.RGBA{180, 230, 180, 255}, color.RGBA{18, 60, 26, 255}}
+	case 20:
+		return dieLook{color.RGBA{250, 196, 150, 255}, color.RGBA{90, 30, 10, 255}}
+	}
+	return dieLook{color.RGBA{246, 242, 230, 255}, color.RGBA{30, 24, 24, 255}}
+}
+
 // drawDie3D draws one die: the faces turned toward the camera, shaded by
-// the light, with their pips.
-func drawDie3D(dst *image.RGBA, cam camera, p dice.Pose, look dieLook) {
-	for f := 1; f <= 6; f++ {
-		n := p.Rot.Rotate(dice.FaceAxes[f])
-		centre := p.Pos.Add(n.Mul(0.5))
-		if n.Dot(cam.pos.Sub(centre)) <= 0 {
+// the light, with pips (d6) or the number on top.
+func (a *App) drawDie3D(cam camera, p dice.Pose, sh *dice.Shape, look dieLook) {
+	top, topZ := 0, -2.0
+	for _, f := range sh.Faces {
+		if z := p.Rot.Rotate(f.N).Z; z > topZ {
+			top, topZ = f.Val, z
+		}
+	}
+	for _, f := range sh.Faces {
+		n := p.Rot.Rotate(f.N)
+		centre := p.Pos.Add(n.Mul(f.D))
+		toCam := cam.pos.Sub(centre)
+		facing := n.Dot(toCam) / toCam.Len()
+		if facing <= 0 {
 			continue
 		}
-		u, v := p.Rot.Rotate(dieFaces[f].u), p.Rot.Rotate(dieFaces[f].v)
-		quad := [][2]float64{
-			cam.pt(centre.Add(u.Mul(0.5)).Add(v.Mul(0.5))),
-			cam.pt(centre.Add(u.Mul(-0.5)).Add(v.Mul(0.5))),
-			cam.pt(centre.Add(u.Mul(-0.5)).Add(v.Mul(-0.5))),
-			cam.pt(centre.Add(u.Mul(0.5)).Add(v.Mul(-0.5))),
+		poly := make([][2]float64, 0, len(f.Verts))
+		for _, vi := range f.Verts {
+			poly = append(poly, cam.pt(p.Pos.Add(p.Rot.Rotate(sh.Verts[vi]))))
 		}
 		k := 0.58 + 0.5*math.Max(0, n.Dot(lightDir))
-		body := shade(look.body, k)
-		fillPoly(dst, quad, body)
-		strokePoly(dst, quad, shade(look.body, k*0.72))
-		pip := shade(look.pip, 0.7+0.3*k)
-		for _, s := range pipSpots[f] {
-			c := centre.Add(u.Mul(s[0] * 0.25)).Add(v.Mul(s[1] * 0.25))
-			var dot [][2]float64
-			for i := 0; i < 8; i++ {
-				sn, cs := math.Sincos(float64(i) * math.Pi / 4)
-				dot = append(dot, cam.pt(c.Add(u.Mul(cs*0.095)).Add(v.Mul(sn*0.095))))
+		fillPoly(a.fb, poly, shade(look.body, k))
+		strokePoly(a.fb, poly, shade(look.body, k*0.72))
+		ink := shade(look.pip, 0.7+0.3*k)
+		if sh.Sides == 6 {
+			// pips, laid out across the face
+			u := p.Rot.Rotate(sh.Verts[f.Verts[0]]).Sub(n.Mul(f.D)).Norm()
+			v := n.Cross(u)
+			// turn the pip grid to line up with the square's sides
+			u, v = u.Add(v).Norm(), v.Sub(u).Norm()
+			for _, s := range pipSpots[f.Val] {
+				c := centre.Add(u.Mul(s[0] * 0.25)).Add(v.Mul(s[1] * 0.25))
+				var dot [][2]float64
+				for i := 0; i < 8; i++ {
+					sn, cs := math.Sincos(float64(i) * math.Pi / 4)
+					dot = append(dot, cam.pt(c.Add(u.Mul(cs*0.095)).Add(v.Mul(sn*0.095))))
+				}
+				fillPoly(a.fb, dot, ink)
 			}
-			fillPoly(dst, dot, pip)
+			continue
+		}
+		if f.Val == top && facing > 0.2 {
+			// only the top face is numbered, the way the die is read
+			c := cam.pt(centre)
+			txt := strconv.Itoa(f.Val)
+			if f.Val == 6 || f.Val == 9 {
+				txt += "." // tells 6 from 9, like real dice
+			}
+			a.A.Font.Draw(a.fb, int(c[0])-a.A.Font.Width(txt)/2, int(c[1])-3, txt, ink)
 		}
 	}
 }
@@ -506,11 +526,11 @@ func (a *App) drawDiceTray(view image.Rectangle) {
 	inCup := func(p dice.V3) bool { return t < 0.45 && p.Sub(mouth).Dot(axis) < 0.2 }
 	resting := t >= 0.45 // on its way back to (or standing on) the table beside the tray
 	// shadows on the felt, cast away from the light
+	sh := dice.ShapeFor(r.sides)
 	for _, p := range poses {
 		var pts [][2]float64
-		for _, c := range []dice.V3{{X: 1, Y: 1, Z: 1}, {X: -1, Y: 1, Z: 1}, {X: 1, Y: -1, Z: 1}, {X: -1, Y: -1, Z: 1},
-			{X: 1, Y: 1, Z: -1}, {X: -1, Y: 1, Z: -1}, {X: 1, Y: -1, Z: -1}, {X: -1, Y: -1, Z: -1}} {
-			w := p.Pos.Add(p.Rot.Rotate(c.Mul(0.5)))
+		for _, c := range sh.Verts {
+			w := p.Pos.Add(p.Rot.Rotate(c))
 			g := w.Sub(lightDir.Mul(w.Z / lightDir.Z))
 			g.X, g.Y = math.Max(0, math.Min(W, g.X)), math.Max(0, math.Min(D, g.Y))
 			pts = append(pts, cam.pt(g))
@@ -531,7 +551,8 @@ func (a *App) drawDiceTray(view image.Rectangle) {
 		}
 		return dist[order[i]] > dist[order[j]]
 	})
-	g := a.bsGoal()
+	g := r.goal
+	lit := g.Counts(r.faces)
 	cupDrawn := resting // drawn last, after the front wall
 	for _, i := range order {
 		if !cupDrawn && !inCup(poses[i].Pos) {
@@ -539,17 +560,17 @@ func (a *App) drawDiceTray(view image.Rectangle) {
 			drawCup(a.fb, cam, base, axis, alpha)
 			cupDrawn = true
 		}
-		look := dieLook{body: color.RGBA{246, 242, 230, 255}, pip: color.RGBA{30, 24, 24, 255}}
+		look := dieColors(sh.Sides)
 		if r.done {
 			switch {
 			case r.win:
 				look.body = color.RGBA{255, 238, 170, 255}
 				look.pip = color.RGBA{190, 30, 30, 255}
-			case g.Kind == dice.GoalFaces && g.Counts(r.faces[i]):
+			case lit[i]:
 				look.pip = color.RGBA{190, 30, 30, 255}
 			}
 		}
-		drawDie3D(a.fb, cam, poses[i], look)
+		a.drawDie3D(cam, poses[i], sh, look)
 	}
 	if !cupDrawn {
 		drawCup(a.fb, cam, base, axis, alpha)
@@ -567,7 +588,7 @@ func (a *App) bsGoal() dice.Goal {
 	if a.bs == nil {
 		return dice.Goal{}
 	}
-	return dice.Goal{Dice: a.bs.Dice, Kind: a.bs.GoalKind, Need: a.bs.GoalNeed, Face: a.bs.GoalFace, P: a.bs.Chance}
+	return dice.Goal{Dice: a.bs.Dice, Sides: a.bs.Sides, Kind: a.bs.GoalKind, Need: a.bs.GoalNeed, Face: a.bs.GoalFace, P: a.bs.Chance}
 }
 
 // pct writes a chance as a short percentage: 50%, 2.8%, 0.097%.
@@ -608,11 +629,7 @@ func (a *App) drawBeggar() {
 		head += fmt.Sprintf("  -  1 IN %s (%s)", commas(int64(math.Round(g.Odds()))), pct(g.P))
 	}
 	a.A.Font.Draw(a.fb, ScreenW/2-a.A.Font.Width(fitText(a.A.Font, head, ScreenW-20))/2, tray.Min.Y-22, fitText(a.A.Font, head, ScreenW-20), a.A.C("gold"))
-	noun := "DICE"
-	if g.Dice == 1 {
-		noun = "DIE"
-	}
-	sub := fmt.Sprintf("THROW %d %s: %s WINS %s CHIPS FOR EVERYONE HERE", g.Dice, noun, g.Describe(), commas(bs.Prize))
+	sub := fmt.Sprintf("THROW %d %s: %s WINS %s CHIPS FOR EVERYONE HERE", g.Dice, g.Die(), g.Describe(), commas(bs.Prize))
 	sub = fitText(a.A.Font, sub, ScreenW-20)
 	a.A.Font.Draw(a.fb, ScreenW/2-a.A.Font.Width(sub)/2, tray.Min.Y-12, sub, felt)
 
@@ -648,14 +665,9 @@ func (a *App) drawBeggar() {
 		mid := tray.Min.Y + tray.Dy()/2
 		fillRect(a.fb, image.Rect(ScreenW/2-tw/2, mid-12, ScreenW/2+tw/2, mid+12), color.RGBA{0, 0, 0, 150})
 		a.textBig(ScreenW/2, mid-8, msg, c, 2, alignCenter)
-		a.textOutlined(ScreenW/2, tray.Max.Y+8, fitText(a.A.Font, fmt.Sprintf("%s rolled %s", r.by, a.scoreText(g, r.faces)), a.newsW()), a.A.C("gold"), alignCenter)
+		a.textOutlined(ScreenW/2, tray.Max.Y+8, fitText(a.A.Font, fmt.Sprintf("%s rolled %s", r.by, a.scoreText(r.goal, r.faces)), a.newsW()), a.A.C("gold"), alignCenter)
 	default:
-		got := g.Score(r.faces)
-		c := a.A.C("text")
-		if float64(got) >= float64(g.Need)*0.85 {
-			c = a.A.C("highlight")
-		}
-		a.textOutlined(ScreenW/2, tray.Max.Y+8, fitText(a.A.Font, fmt.Sprintf("%s rolled %s. Needed %d.", r.by, a.scoreText(g, r.faces), g.Need), a.newsW()), c, alignCenter)
+		a.textOutlined(ScreenW/2, tray.Max.Y+8, fitText(a.A.Font, fmt.Sprintf("%s rolled %s. Needed %s.", r.by, a.scoreText(r.goal, r.faces), strings.ToLower(r.goal.Describe())), a.newsW()), a.A.C("text"), alignCenter)
 	}
 
 	// what's been happening, and who else is here
@@ -764,24 +776,43 @@ func (a *App) drawBeggarSeats(bs *proto.BeggarState) {
 	}
 }
 
-// scoreText says what a throw made: "a total of 31" or "6 counting dice".
+// scoreText says what a throw made, in terms of its goal: "a total of 31",
+// "3 sixes", "2 of a kind", "4 different".
 func (a *App) scoreText(g dice.Goal, faces []int) string {
 	n := g.Score(faces)
-	if g.Kind != dice.GoalFaces {
-		return fmt.Sprintf("a total of %d", n)
-	}
-	word := "sixes"
-	switch g.Face {
-	case 6:
-		if n == 1 {
+	switch g.Kind {
+	case dice.GoalFaces:
+		word := fmt.Sprintf("%ds", g.Face)
+		switch {
+		case g.Face == 6 && g.S() == 6 && n == 1:
 			word = "six"
+		case g.Face == 6 && g.S() == 6:
+			word = "sixes"
+		case g.Face < g.S()-1:
+			word = fmt.Sprintf("of %d or higher", g.Face)
+		case g.Face == g.S()-1:
+			word = fmt.Sprintf("%ds or %ds", g.Face, g.S())
 		}
-	case 5:
-		word = "5s or 6s"
-	default:
-		word = fmt.Sprintf("dice of %d or higher", g.Face)
+		return fmt.Sprintf("%d %s", n, word)
+	case dice.GoalKind:
+		if n < 2 {
+			return "no matches"
+		}
+		return fmt.Sprintf("%d of a kind", n)
+	case dice.GoalUnique, dice.GoalStraight:
+		vals := append([]int(nil), faces...)
+		sort.Ints(vals)
+		parts := make([]string, len(vals))
+		for i, v := range vals {
+			parts[i] = strconv.Itoa(v)
+		}
+		return strings.Join(parts, " ")
+	case dice.GoalOdd:
+		return fmt.Sprintf("%d odd of %d", n, len(faces))
+	case dice.GoalEven:
+		return fmt.Sprintf("%d even of %d", n, len(faces))
 	}
-	return fmt.Sprintf("%d %s", n, word)
+	return fmt.Sprintf("a total of %d", n)
 }
 
 func (a *App) drawBeggarHUD(bs *proto.BeggarState) {

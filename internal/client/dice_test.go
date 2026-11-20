@@ -11,8 +11,12 @@ import (
 )
 
 func throwMsg(id, n int, seed int64, elapsed int64) proto.DiceRoll {
-	th := dice.Roll(n, seed)
-	return proto.DiceRoll{ID: id, By: "deb", Dice: n, Faces: th.Faces, MS: 1000 + int64(th.Length*1000), ShakeMS: 1000,
+	return throwOf(id, 6, n, seed, elapsed)
+}
+
+func throwOf(id, sides, n int, seed int64, elapsed int64) proto.DiceRoll {
+	th := dice.Roll(sides, n, seed)
+	return proto.DiceRoll{ID: id, By: "deb", Dice: n, Sides: sides, Faces: th.Faces, MS: 1000 + int64(th.Length*1000), ShakeMS: 1000,
 		Track: th.Track, Elapsed: elapsed}
 }
 
@@ -26,8 +30,9 @@ func TestDiceReplay(t *testing.T) {
 	a := New(fakePlatform{}, &Config{}, assets)
 	a.now = time.Now()
 	for seed := int64(1); seed <= 20; seed++ {
-		n := int(seed%dice.MaxDice) + 1
-		m := throwMsg(int(seed), n, seed, 0)
+		sides := dice.Sides[seed%4]
+		n := int(seed%4) + 1
+		m := throwOf(int(seed), sides, n, seed, 0)
 		a.onDice(m)
 		r := a.roll
 		if r == nil {
@@ -35,7 +40,7 @@ func TestDiceReplay(t *testing.T) {
 		}
 		ps, _ := r.poses(a.now.Add(time.Duration(m.MS+500) * time.Millisecond))
 		for i, p := range ps {
-			b := dice.Body{Rot: p.Rot}
+			b := dice.Body{S: dice.ShapeFor(sides), Rot: p.Rot}
 			if f, _ := b.Up(); f != m.Faces[i] {
 				t.Errorf("seed %d die %d ends on %d, server says %d", seed, i, f, m.Faces[i])
 			}

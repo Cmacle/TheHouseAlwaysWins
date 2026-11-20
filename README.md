@@ -266,13 +266,31 @@ they come to rest on are the result, and the client replays the recorded
 throw exactly. (A die that ends up propped on its edge gets jostled until it
 lies flat.)
 
-**The goal** is picked from the table's `odds` setting: the server tries
-every number of dice up to 10 with two kinds of goal, a total of N or more,
-or at least K dice showing a face or higher (sixes, fives or sixes...), and
-takes the one closest to the setting, with each extra die needing to buy a
-clearly closer match. The table shows the goal and its real chance. For the
-default 1 in 1,000, that's 9 dice needing 8 or more fives or sixes: really
-1 in 1,036 (0.097%).
+**The goal changes after every win.** Goals come in many kinds, each with
+its exact chance worked out for fair dice:
+
+| Kind | Example |
+|---|---|
+| A high total | 5 D6: TOTAL 28 OR MORE |
+| A low total | 4 D20: TOTAL 12 OR LESS |
+| An exact total | 3 D12: TOTAL EXACTLY 30 |
+| Several high faces | 9 D6: 8+ 5S OR 6S, or 3 D20: ALL 19S OR 20S |
+| Matching dice | 6 D8: 4 OF A KIND, or ALL MATCHING |
+| All different | 6 D6: ALL DIFFERENT |
+| A straight | 5 D8: A STRAIGHT (5 IN A ROW) |
+| All odd or all even | 8 D12: ALL ODD |
+
+The dice change too: six-sided (ivory, with pips), eight-sided (blue),
+twelve-sided (green) and twenty-sided (orange), all fair solids whose top
+face is the roll, numbered with opposite faces adding to sides+1. Up to 10
+d6, 8 d8, 6 d12 or 5 d20 at a time.
+
+A new goal is picked near the table's `odds` setting (between about three
+quarters and one and a third of it, wider only if nothing fits), never the
+same kind of goal as the last, and usually with different dice. The kind is
+picked first, evenly, so every kind turns up, not just the ones with the
+most variations. The table always shows the goal's real chance, and the
+news line announces each new goal.
 
 **A winning throw pays everyone** at the table who is under the limit at that
 moment, not just whoever threw it. The prize is a handout: it isn't counted
@@ -282,10 +300,11 @@ can throw with fewer chips than this; 0, the default, means the refill
 amount). Tables from before 1.9.6 still on the old default of 50 move to the
 refill amount once, on the first start.
 
-The dice collide as true cubes: besides corner contacts, every pair is
-checked with an exact cube-against-cube test (including edge against edge),
-and any overlap is pushed apart at every step, so dice never sink into each
-other.
+The dice collide as their true shapes: besides corner contacts, every pair
+is checked with an exact solid-against-solid test (separating axes: every
+face direction of both dice and every pairing of their edges), and any
+overlap is pushed apart at every step, so dice never sink into each other.
+The tests check every kind of die for fairness, settling, and overlap.
 
 ## How a hand of blackjack works
 

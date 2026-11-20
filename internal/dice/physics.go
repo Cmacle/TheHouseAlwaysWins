@@ -9,7 +9,7 @@ import (
 
 // The throw is a small rigid-body simulation: unit cubes in an open tray,
 // with gravity, bounces off the felt and walls, friction, and dice knocking
-// into each other. Contacts are found at the cubes' corners (against the
+// into each other. Contacts are found at the dice's corners (against the
 // tray and inside other dice), with an overlap check between centres to
 // catch edge-on-edge hits. Lengths are in die widths.
 
@@ -94,24 +94,9 @@ func Slerp(a, b Quat, t float64) Quat {
 // Opposite faces add to seven.
 var FaceAxes = [7]V3{{}, {0, 0, 1}, {0, -1, 0}, {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, 0, -1}}
 
-var corners = func() (c [8]V3) {
-	for i := range c {
-		c[i] = V3{half, half, half}
-		if i&1 != 0 {
-			c[i].X = -half
-		}
-		if i&2 != 0 {
-			c[i].Y = -half
-		}
-		if i&4 != 0 {
-			c[i].Z = -half
-		}
-	}
-	return
-}()
-
 // Body is one die in the simulation.
 type Body struct {
+	S   *Shape // which die; nil is a d6
 	Pos V3
 	Rot Quat
 	Vel V3
@@ -126,12 +111,19 @@ type Body struct {
 	anchorT float64
 }
 
-// Up says which face points up and how squarely (1 = flat).
+func (b *Body) shape() *Shape {
+	if b.S == nil {
+		return shapes[6]
+	}
+	return b.S
+}
+
+// Up says which number is on top and how squarely (1 = flat).
 func (b *Body) Up() (int, float64) {
 	best, bd := 1, -2.0
-	for f := 1; f <= 6; f++ {
-		if d := b.Rot.Rotate(FaceAxes[f]).Z; d > bd {
-			best, bd = f, d
+	for _, f := range b.shape().Faces {
+		if d := b.Rot.Rotate(f.N).Z; d > bd {
+			best, bd = f.Val, d
 		}
 	}
 	return best, bd
@@ -172,17 +164,25 @@ type Hit struct {
 // tipped, and the dice start packed just inside it.
 var CupMouth = V3{TrayW - 3.0, TrayD / 2, 4.0}
 
-// NewWorld pours n dice out of the cup, flying left.
-func NewWorld(n int, seed int64) *World {
+// NewWorld pours n dice with the given number of sides out of the cup,
+// flying left.
+func NewWorld(sides, n int, seed int64) *World {
 	rng := rand.New(rand.NewSource(seed))
 	w := &World{rng: rng}
+	sh := ShapeFor(sides)
+	gap := 2*sh.Radius*0.82 + 0.06 // packed snugly; any overlap pops apart at once
+	across := 3
+	if gap > 1.25 {
+		across = 2
+	}
 	for i := 0; i < n; i++ {
-		// packed 2 deep, 3 across, 2 high, with a little jitter
-		col, row, layer := i%2, (i/2)%3, i/6
+		// packed 2 deep, a few across, in layers, with a little jitter
+		col, row, layer := i%2, (i/2)%across, i/(2*across)
 		b := Body{
-			Pos: V3{CupMouth.X + 0.9 + float64(col)*1.08 + rng.Float64()*0.04,
-				CupMouth.Y + float64(row-1)*1.08 + rng.Float64()*0.04,
-				CupMouth.Z - 0.4 + float64(layer)*1.08 + rng.Float64()*0.04},
+			S: sh,
+			Pos: V3{CupMouth.X + 0.9 + float64(col)*gap + rng.Float64()*0.04,
+				CupMouth.Y + (float64(row)-float64(across-1)/2)*gap + rng.Float64()*0.04,
+				CupMouth.Z - 0.4 + float64(layer)*gap + rng.Float64()*0.04},
 			Rot: randomRot(rng),
 			Vel: V3{-(18 + rng.Float64()*14), (rng.Float64()*2 - 1) * 7, 1 + rng.Float64()*6},
 			Ang: V3{rng.NormFloat64(), rng.NormFloat64(), rng.NormFloat64()}.Norm().Mul(14 + rng.Float64()*20),
@@ -214,7 +214,7 @@ func (w *World) Settled() bool { return w.calm > 0 || w.T >= maxTime }
 // impulse applies an impulse j at world point p to body b.
 func (b *Body) impulse(j, p V3) {
 	b.Vel = b.Vel.Add(j.Mul(invMass))
-	b.Ang = b.Ang.Add(p.Sub(b.Pos).Cross(j).Mul(invInert))
+	b.Ang = b.Ang.Add(p.Sub(b.Pos).Cross(j).Mul(b.shape().invI))
 }
 
 func (b *Body) pointVel(p V3) V3 { return b.Vel.Add(b.Ang.Cross(p.Sub(b.Pos))) }
@@ -237,10 +237,10 @@ func (w *World) contact(a, b *Body, p, n V3, e, mu float64) {
 		e = 0 // no bouncing at a crawl, so dice can come to rest
 	}
 	ra := p.Sub(a.Pos).Cross(n)
-	k := invMass + ra.Dot(ra)*invInert
+	k := invMass + ra.Dot(ra)*a.shape().invI
 	if b != nil {
 		rb := p.Sub(b.Pos).Cross(n)
-		k += invMass + rb.Dot(rb)*invInert
+		k += invMass + rb.Dot(rb)*b.shape().invI
 	}
 	jn := -(1 + e) * vn / k
 	J := n.Mul(jn)
@@ -249,10 +249,10 @@ func (w *World) contact(a, b *Body, p, n V3, e, mu float64) {
 	if s := vt.Len(); s > 1e-6 {
 		t := vt.Mul(1 / s)
 		rta := p.Sub(a.Pos).Cross(t)
-		kt := invMass + rta.Dot(rta)*invInert
+		kt := invMass + rta.Dot(rta)*a.shape().invI
 		if b != nil {
 			rtb := p.Sub(b.Pos).Cross(t)
-			kt += invMass + rtb.Dot(rtb)*invInert
+			kt += invMass + rtb.Dot(rtb)*b.shape().invI
 		}
 		jt := math.Min(s/kt, mu*jn)
 		J = J.Sub(t.Mul(jt))
@@ -309,7 +309,7 @@ func (w *World) Step() {
 					}
 					continue
 				}
-				for _, c := range corners {
+				for _, c := range b.shape().Verts {
 					p := b.Pos.Add(b.Rot.Rotate(c))
 					if p.Dot(pl.n) < pl.d {
 						if pl.n.Z != 0 {
@@ -346,7 +346,7 @@ func (w *World) Step() {
 		// push out of the tray's walls and felt
 		for _, pl := range walls {
 			deep := 0.0
-			for _, c := range corners {
+			for _, c := range b.shape().Verts {
 				if d := pl.d - b.Pos.Add(b.Rot.Rotate(c)).Dot(pl.n); d > deep {
 					deep = d
 				}
@@ -404,7 +404,7 @@ func (w *World) Step() {
 		for i := range w.Dice {
 			for j := i + 1; j < len(w.Dice); j++ {
 				a, b := &w.Dice[i], &w.Dice[j]
-				if a.Pos.Sub(b.Pos).Len() > 1.75 {
+				if a.Pos.Sub(b.Pos).Len() > a.shape().Radius+b.shape().Radius {
 					continue
 				}
 				if d, n, _, ok := overlap(a, b); ok && d > 0.002 {
@@ -425,12 +425,12 @@ func (w *World) Step() {
 }
 
 // diePair handles two dice touching. Corners of one inside the other give
-// the resting contacts; on top of that, an exact cube-against-cube test
-// (separating axes: the six face directions and the nine edge-by-edge
-// directions) finds any overlap at all, edge against edge included, and
-// pushes the dice apart along the shallowest way out.
+// the resting contacts; on top of that, an exact solid-against-solid test
+// (separating axes: every face direction of both dice and every pairing
+// of their edges) finds any overlap at all, edge against edge included,
+// and pushes the dice apart along the shallowest way out.
 func (w *World) diePair(a, b *Body) {
-	if a.Pos.Sub(b.Pos).Len() > 1.75 { // farther than two half-diagonals
+	if a.Pos.Sub(b.Pos).Len() > a.shape().Radius+b.shape().Radius {
 		return
 	}
 	w.cornersInto(a, b)
@@ -441,118 +441,114 @@ func (w *World) diePair(a, b *Body) {
 	}
 }
 
-// axes are a die's three face directions in the world.
-func (b *Body) axes() [3]V3 {
-	return [3]V3{b.Rot.Rotate(V3{X: 1}), b.Rot.Rotate(V3{Y: 1}), b.Rot.Rotate(V3{Z: 1})}
+// span is how far the die reaches along dir, both ways, from the origin.
+func (b *Body) span(dir V3) (lo, hi float64) {
+	lo, hi = math.Inf(1), math.Inf(-1)
+	inv := b.Rot.Inv().Rotate(dir)
+	for _, v := range b.shape().Verts {
+		d := v.Dot(inv)
+		lo, hi = math.Min(lo, d), math.Max(hi, d)
+	}
+	c := b.Pos.Dot(dir)
+	return c + lo, c + hi
 }
 
 // support is the corner of b farthest along dir.
-func (b *Body) support(dir V3, ax [3]V3) V3 {
-	p := b.Pos
-	for _, e := range ax {
-		if e.Dot(dir) >= 0 {
-			p = p.Add(e.Mul(half))
-		} else {
-			p = p.Sub(e.Mul(half))
+func (b *Body) support(dir V3) V3 {
+	inv := b.Rot.Inv().Rotate(dir)
+	best, bd := V3{}, math.Inf(-1)
+	for _, v := range b.shape().Verts {
+		if d := v.Dot(inv); d > bd {
+			best, bd = v, d
 		}
 	}
-	return p
+	return b.Pos.Add(b.Rot.Rotate(best))
 }
 
-// Overlap says how deep two dice overlap, the direction to push a out of
+// overlap says how deep two dice overlap, the direction to push a out of
 // b, and where they touch. ok is false when they don't overlap.
 func overlap(a, b *Body) (depth float64, n, point V3, ok bool) {
-	A, B := a.axes(), b.axes()
-	d := a.Pos.Sub(b.Pos)
 	best := math.Inf(1)
-	bestKind, bi, bj := 0, 0, 0
-	try := func(L V3, kind, i, j int) bool {
+	kind := 0
+	try := func(L V3, k int) bool {
 		l := L.Len()
 		if l < 1e-6 {
 			return true // parallel edges: covered by the face directions
 		}
 		L = L.Mul(1 / l)
-		ra, rb := 0.0, 0.0
-		for k := 0; k < 3; k++ {
-			ra += half * math.Abs(A[k].Dot(L))
-			rb += half * math.Abs(B[k].Dot(L))
+		alo, ahi := a.span(L)
+		blo, bhi := b.span(L)
+		o1, o2 := ahi-blo, bhi-alo // a pushed back along -L, or along +L
+		o, dir := o2, L
+		if o1 < o2 {
+			o, dir = o1, L.Mul(-1)
 		}
-		dist := d.Dot(L)
-		o := ra + rb - math.Abs(dist)
 		if o <= 0 {
 			return false // a gap along this direction: no overlap
 		}
-		if kind == 2 {
+		if k == 2 {
 			o += 1e-4 // prefer a face direction when it's a tie
 		}
 		if o < best {
-			best, bestKind, bi, bj = o, kind, i, j
-			if dist < 0 {
-				L = L.Mul(-1)
-			}
-			n = L
+			best, kind, n = o, k, dir
 		}
 		return true
 	}
-	for i := 0; i < 3; i++ {
-		if !try(A[i], 0, i, 0) || !try(B[i], 1, i, 0) {
+	sa, sb := a.shape(), b.shape()
+	for _, f := range sa.Faces {
+		if !try(a.Rot.Rotate(f.N), 0) {
 			return 0, V3{}, V3{}, false
 		}
 	}
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
-			if !try(A[i].Cross(B[j]), 2, i, j) {
+	for _, f := range sb.Faces {
+		if !try(b.Rot.Rotate(f.N), 1) {
+			return 0, V3{}, V3{}, false
+		}
+	}
+	for _, ea := range sa.Edges {
+		wa := a.Rot.Rotate(ea)
+		for _, eb := range sb.Edges {
+			if !try(wa.Cross(b.Rot.Rotate(eb)), 2) {
 				return 0, V3{}, V3{}, false
 			}
 		}
 	}
-	switch bestKind {
-	case 0: // a face of a: b's deepest corner
-		point = b.support(n, B)
-	case 1: // a face of b: a's deepest corner
-		point = a.support(n.Mul(-1), A)
-	default:
-		// edge against edge: the nearest points of the two edges
-		pa, pb := a.support(n.Mul(-1), A), b.support(n, B)
-		ea, eb := A[bi], B[bj]
-		// the edges run along ea through pa's middle and eb through pb's
-		ca := pa.Sub(ea.Mul(ea.Dot(pa.Sub(a.Pos))))
-		cb := pb.Sub(eb.Mul(eb.Dot(pb.Sub(b.Pos))))
-		r := ca.Sub(cb)
-		k := ea.Dot(eb)
-		den := 1 - k*k
-		s, t := 0.0, 0.0
-		if den > 1e-6 {
-			s = (k*eb.Dot(r) - ea.Dot(r)) / den
-			t = (eb.Dot(r) - k*ea.Dot(r)) / den
-		}
-		s, t = math.Max(-half, math.Min(half, s)), math.Max(-half, math.Min(half, t))
-		point = ca.Add(ea.Mul(s)).Add(cb.Add(eb.Mul(t))).Mul(0.5)
+	switch kind {
+	case 0: // a face of a: b's deepest corner into it
+		point = b.support(n)
+	case 1: // a face of b: a's deepest corner into it
+		point = a.support(n.Mul(-1))
+	default: // edge against edge: between the two edges' nearest corners
+		point = a.support(n.Mul(-1)).Add(b.support(n)).Mul(0.5)
+	}
+	if kind == 2 {
+		best -= 1e-4
 	}
 	return best, n, point, true
 }
 
 // cornersInto pushes a's corners out of b.
 func (w *World) cornersInto(a, b *Body) {
+	sb := b.shape()
 	inv := b.Rot.Inv()
-	for _, c := range corners {
+	for _, c := range a.shape().Verts {
 		p := a.Pos.Add(a.Rot.Rotate(c))
 		l := inv.Rotate(p.Sub(b.Pos))
-		ax, ay, az := half-math.Abs(l.X), half-math.Abs(l.Y), half-math.Abs(l.Z)
-		if ax <= 0 || ay <= 0 || az <= 0 {
+		depth, face := math.Inf(1), -1
+		for i, f := range sb.Faces {
+			d := f.D - l.Dot(f.N)
+			if d <= 0 {
+				face = -1
+				break // outside this face, so outside the die
+			}
+			if d < depth {
+				depth, face = d, i
+			}
+		}
+		if face < 0 {
 			continue
 		}
-		var n V3
-		depth := ax
-		switch {
-		case ax <= ay && ax <= az:
-			n = V3{math.Copysign(1, l.X), 0, 0}
-		case ay <= az:
-			n, depth = V3{0, math.Copysign(1, l.Y), 0}, ay
-		default:
-			n, depth = V3{0, 0, math.Copysign(1, l.Z)}, az
-		}
-		n = b.Rot.Rotate(n)
+		n := b.Rot.Rotate(sb.Faces[face].N)
 		w.contact(a, b, p, n, 0.3, 0.3)
 		separate(a, b, n.Mul(depth*0.8))
 	}
@@ -576,7 +572,7 @@ func separate(a, b *Body, push V3) {
 // lowest is the height of the die's lowest corner.
 func (b *Body) lowest() float64 {
 	low := math.Inf(1)
-	for _, c := range corners {
+	for _, c := range b.shape().Verts {
 		low = math.Min(low, b.Pos.Z+b.Rot.Rotate(c).Z)
 	}
 	return low

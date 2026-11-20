@@ -132,8 +132,20 @@ func TestPreviewBeggar(t *testing.T) {
 	a.onBeggar(bs)
 	frame()
 	save(t, dir, "51_beggar_idle.png", a.fb)
+	for i, g := range []dice.Goal{
+		{Dice: 5, Sides: 20, Kind: dice.GoalKind, Need: 3},
+		{Dice: 6, Sides: 12, Kind: dice.GoalOdd},
+		{Dice: 8, Sides: 8, Kind: dice.GoalStraight},
+	} {
+		bs.Dice, bs.Sides, bs.GoalKind, bs.GoalNeed, bs.GoalFace = g.Dice, g.Sides, g.Kind, g.Need, g.Face
+		bs.Chance = 0.001
+		a.onDice(throwOf(10+i, g.Sides, g.Dice, int64(5+i), 0))
+		a.roll.start = time.Now().Add(-time.Duration(1.5*float64(time.Second)) - time.Duration(a.roll.track.Length()*float64(time.Second)))
+		frame()
+		save(t, dir, fmt.Sprintf("55_beggar_d%d.png", g.Sides), a.fb)
+	}
 	g := dice.Plan(1000)
-	bs.Dice, bs.GoalKind, bs.GoalNeed, bs.GoalFace, bs.Chance = g.Dice, g.Kind, g.Need, g.Face, g.P
+	bs.Dice, bs.Sides, bs.GoalKind, bs.GoalNeed, bs.GoalFace, bs.Chance = g.Dice, 6, g.Kind, g.Need, g.Face, g.P
 	roll := throwMsg(1, g.Dice, 42, 0)
 	roll.ShakeMS = 1400
 	for i, at := range []float64{0.1, 0.6, 1.25, 1.55, 2.0, 2.35, 2.7, 11} {
