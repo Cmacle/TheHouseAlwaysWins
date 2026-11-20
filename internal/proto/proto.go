@@ -442,19 +442,26 @@ type PokerState struct {
 	Reveal         *PokerReveal `json:"reveal,omitempty"`
 }
 
-// BeggarState is the Beggars Table: anyone nearly broke can roll five dice,
-// and five sixes pays out.
+// BeggarState is the Beggars Table: one shared tray. Anyone nearly broke can
+// throw when the dice are still, and when a throw makes the goal everyone at
+// the table who is under the limit gets the prize.
 type BeggarState struct {
 	Table      string   `json:"table"`
 	Name       string   `json:"name"`
-	Odds       int      `json:"odds"`        // 1 in this many rolls wins
+	Odds       int      `json:"odds"`        // the chance the table is set to: 1 in this many
+	Dice       int      `json:"dice"`        // how many dice are thrown
+	GoalKind   string   `json:"goal_kind"`   // "sum" or "faces"
+	GoalNeed   int      `json:"goal_need"`   // the total, or how many dice must count
+	GoalFace   int      `json:"goal_face"`   // faces: the lowest face that counts
+	Chance     float64  `json:"chance"`      // the goal's real chance with fair dice
 	Prize      int64    `json:"prize"`       // what a win pays
 	MaxBalance int64    `json:"max_balance"` // you can roll with fewer chips than this
 	Balance    int64    `json:"balance"`     // yours
 	CanRoll    bool     `json:"can_roll"`
-	Reason     string   `json:"reason,omitempty"` // why you can't
-	Rolling    bool     `json:"rolling,omitempty"`
-	Rolls      int64    `json:"rolls"` // yours, all time
+	Reason     string   `json:"reason,omitempty"`  // why you can't
+	Rolling    bool     `json:"rolling,omitempty"` // the table's dice are in the air
+	Roller     string   `json:"roller,omitempty"`  // who threw them
+	Rolls      int64    `json:"rolls"`             // yours, all time
 	Wins       int64    `json:"wins"`
 	TableRolls int64    `json:"table_rolls"` // everyone's, since the server started
 	Players    []string `json:"players,omitempty"`
@@ -472,14 +479,22 @@ type BeggarState struct {
 	HouseTier      int          `json:"house_tier"`
 }
 
-// DiceRoll is a roll in progress: the client throws the dice and they land
-// on Faces after about MS milliseconds.
+// DiceRoll is a throw in progress. The server simulated it; Track is the
+// recorded motion (dice.TrackHz poses a second of every die) for the client
+// to replay after a ShakeMS rattle, and Faces is what the dice came to rest
+// on. The whole roll, rattle included, ends after MS milliseconds.
 type DiceRoll struct {
-	ID    int   `json:"id"`
-	Faces []int `json:"faces"`
-	Win   bool  `json:"win"`
-	MS    int64 `json:"ms"`
-	Seed  int64 `json:"seed"`
+	ID      int     `json:"id"`
+	By      string  `json:"by"`      // who threw
+	Elapsed int64   `json:"elapsed"` // ms already played, for someone arriving mid-throw
+	Dice    int     `json:"dice"`
+	Faces   []int   `json:"faces"`
+	Win     bool    `json:"win"`
+	MS      int64   `json:"ms"`
+	ShakeMS int64   `json:"shake_ms"`
+	Track   []byte  `json:"track"`
+	Hits    []int   `json:"hits,omitempty"`   // when dice knock, ms into the track
+	HitsK   []uint8 `json:"hits_k,omitempty"` // how hard, 0-255
 }
 
 // Console is the output of a server command run from the client.

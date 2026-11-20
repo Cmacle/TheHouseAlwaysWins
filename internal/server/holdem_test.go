@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/dice"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
 )
 
@@ -449,7 +450,7 @@ func TestBeggarTable(t *testing.T) {
 		t.Fatal("no Beggars Table by default")
 	}
 	b := tb.t.(beggarTable)
-	b.DoWait(func() { b.instant = true; b.bc.Odds = 1 })
+	b.DoWait(func() { b.instant = true; b.bc.Odds = 1; b.goal = dice.Plan(1) })
 	if _, _, err := s.Store.Register("poorguy", "pass1234", nil, 10, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -481,13 +482,68 @@ func TestBeggarTable(t *testing.T) {
 		t.Fatalf("roll sent %v, refusal sent %v", gotDice, gotErr)
 	}
 	// losing rolls at real odds land later and pay nothing
-	b.DoWait(func() { b.instant = false; b.bc.Odds = 1000000; b.bc.RollMinMS, b.bc.RollMaxMS = 500, 500 })
+	b.DoWait(func() { b.instant = false; b.bc.Odds = 1000000; b.goal = dice.Plan(1000000) })
 	s.Store.AdminAdjust("poorguy", -30)
 	s.Lobby.route(c, mkMsg(proto.CDice, nil))
-	time.Sleep(700 * time.Millisecond)
-	b.DoWait(func() {})
-	if p, _ := s.Store.Profile("poorguy"); p.Balance != 30 || p.BeggarRolls != 2 {
+	rolling := true
+	for end := time.Now().Add(20 * time.Second); rolling && time.Now().Before(end); {
+		time.Sleep(100 * time.Millisecond)
+		b.DoWait(func() { rolling = b.cur != nil })
+	}
+	if p, _ := s.Store.Profile("poorguy"); rolling || p.Balance != 30 || p.BeggarRolls != 2 {
 		t.Fatalf("after a losing roll: %d chips, %d rolls", p.Balance, p.BeggarRolls)
+	}
+}
+
+// Everyone at the Beggars Table shares the dice: one throw at a time, all
+// of them see it, and a win pays everyone under the limit.
+func TestBeggarShared(t *testing.T) {
+	dir := t.TempDir()
+	cfg := DefaultConfig()
+	cfg.DataDir = dir
+	s, err := New(cfg, dir, log.New(io.Discard, "", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	defer close(stop)
+	s.Lobby.start(stop)
+	b := s.Lobby.find("beggars").t.(beggarTable)
+	var conns []*conn
+	for i, chips := range []int64{10, 20, 500} { // the last one is too rich to collect
+		name := fmt.Sprintf("bum%d", i)
+		if _, _, err := s.Store.Register(name, "pass1234", nil, chips, ""); err != nil {
+			t.Fatal(err)
+		}
+		c := testConn()
+		c.user = name
+		s.Lobby.join(c, "beggars", 0)
+		conns = append(conns, c)
+	}
+	b.DoWait(func() { b.bc.Odds = 1; b.goal = dice.Plan(1) })
+	s.Lobby.route(conns[0], mkMsg(proto.CDice, nil))
+	s.Lobby.route(conns[1], mkMsg(proto.CDice, nil)) // dice already in the air
+	b.DoWait(func() {})
+	if p, _ := s.Store.Profile("bum1"); p.BeggarRolls != 0 {
+		t.Fatal("a second throw went in while the dice were rolling")
+	}
+	for i, c := range conns {
+		got := false
+		for len(c.out) > 0 {
+			var m proto.Msg
+			if json.Unmarshal(<-c.out, &m) == nil && m.Type == proto.SDice {
+				got = true
+			}
+		}
+		if !got {
+			t.Fatalf("player %d didn't see the throw", i)
+		}
+	}
+	b.DoWait(func() { b.landed(&bgPlayer{user: "bum0"}, b.cur.ID, b.goal, b.cur.Faces, true) })
+	for name, want := range map[string]int64{"bum0": 60, "bum1": 70, "bum2": 500} {
+		if p, _ := s.Store.Profile(name); p.Balance != want {
+			t.Errorf("%s has %d, want %d", name, p.Balance, want)
+		}
 	}
 }
 

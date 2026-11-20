@@ -22,9 +22,10 @@ Discord.
 - **Table leaderboards:** every table keeps its own board of who has won and
   lost the most there (the THIS TABLE tab in the leaderboard).
 - **The Beggars Table:** broke and nobody to buy you back in? With fewer than
-  50 chips you can roll five dice as often as you like. Five sixes (1 in
-  1,000, a setting) pays 50 chips. It's a handout, so it doesn't count toward
-  lifetime winnings.
+  50 chips you can throw real 3D physics dice as often as you like. One shared
+  tray: when a throw makes the goal (picked to match the odds setting, about
+  1 in 1,000), everyone at the table under the limit gets 50 chips. It's a
+  handout, so it doesn't count toward lifetime winnings.
 
 - **Server** (`HouseServer.exe`, or a Linux binary) built to run 24/7.
   With nobody connected the table stops and the process just waits. On a
@@ -247,16 +248,32 @@ all keep one.
 
 ## The Beggars Table
 
-For anyone with fewer than 50 chips (counting chips at another table). Press
-**ROLL THE DICE** (or Space) and five dice tumble across the tray, bouncing off
-the walls and each other, for 3 to 5 seconds. Five sixes wins 50 chips. The
-odds are 1 in 1,000, so it's a grind, but it never runs out, and it's a way
-back to the tables when you're broke and nobody buys you back in.
+For anyone with fewer than 50 chips (counting chips at another table).
+Everyone at the table shares one tray of dice. Whenever the dice are still,
+anyone under the limit can press **THROW THE DICE** (or Space). The dice
+rattle in the cup for a second, then fly into the tray, tumbling, knocking
+into each other and bouncing off the walls until they settle. Everyone at the
+table sees the same throw, and anyone who arrives mid-throw sees it from
+where it is.
 
-The prize is a handout: it isn't counted in your lifetime gain/loss or your
-winnings. Dale has plenty to say about it. Table settings: `odds` (1 in this
-many), `prize`, `max_balance` (you can roll with fewer chips than this),
-`roll_min_ms` and `roll_max_ms`.
+The dice are a real 3D rigid-body simulation run on the server: the faces
+they come to rest on are the result, and the client replays the recorded
+throw exactly. (A die that ends up propped on its edge gets jostled until it
+lies flat.)
+
+**The goal** is picked from the table's `odds` setting: the server tries
+every number of dice up to 10 with two kinds of goal, a total of N or more,
+or at least K dice showing a face or higher (sixes, fives or sixes...), and
+takes the one closest to the setting, with each extra die needing to buy a
+clearly closer match. The table shows the goal and its real chance. For the
+default 1 in 1,000, that's 9 dice needing 8 or more fives or sixes: really
+1 in 1,036 (0.097%).
+
+**A winning throw pays everyone** at the table who is under the limit at that
+moment, not just whoever threw it. The prize is a handout: it isn't counted
+in anyone's lifetime gain/loss or winnings. Dale has plenty to say about it.
+Table settings: `odds` (aim for 1 in this many), `prize`, `max_balance` (you
+can throw with fewer chips than this).
 
 ## How a hand of blackjack works
 

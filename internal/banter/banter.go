@@ -135,7 +135,7 @@ const (
 	EvBgHello   = "bg_hello"    // {name} came begging
 	EvBgRoll    = "bg_roll"     // {name} rolls again (now and then)
 	EvBgMany    = "bg_many"     // {name} has rolled {amount} times
-	EvBgWin     = "bg_win"      // {name} rolled five sixes and gets {amount}
+	EvBgWin     = "bg_win"      // {name} made the number and gets {amount}
 	EvBgTooRich = "bg_too_rich" // {name} has {amount} chips: too many to beg
 
 	// between hands, other ways to run his mouth

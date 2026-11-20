@@ -233,9 +233,7 @@ func TestPokerEndToEnd(t *testing.T) {
 func TestBeggarEndToEnd(t *testing.T) {
 	s := startServerS(t, 39520, func(c *server.Config) { c.RefillAmount = 20 })
 	var out strings.Builder
-	for _, kv := range []string{"odds 1", "roll_min_ms 600", "roll_max_ms 600"} {
-		s.Exec("table set beggars "+kv, &out)
-	}
+	s.Exec("table set beggars odds 1", &out)
 	a := newTestApp(t, s.Addr().String(), "pauper")
 	apps := []*App{a}
 	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 5 }, "lobby")
@@ -243,14 +241,12 @@ func TestBeggarEndToEnd(t *testing.T) {
 	pump(t, apps, nil, func() bool { return a.screen == scrBeggar && a.bs != nil && a.bs.CanRoll }, "at the Beggars Table")
 	pump(t, apps, map[*App]Input{a: {Keys: []Key{KeySpace}}}, func() bool { return true }, "")
 	pump(t, apps, nil, func() bool { return a.roll != nil }, "dice thrown")
-	pump(t, apps, nil, func() bool { return a.roll.done && a.profile.Balance == 70 }, "five sixes paid")
+	pump(t, apps, nil, func() bool { return a.roll.done && a.profile.Balance == 70 }, "win paid")
 	if a.profile.Net != 0 || a.profile.BeggarWins != 1 {
 		t.Fatalf("net %d, wins %d", a.profile.Net, a.profile.BeggarWins)
 	}
-	for i, d := range a.roll.dice {
-		if d.face != 6 {
-			t.Fatalf("die %d shows %d", i, d.face)
-		}
+	if !a.roll.win || a.roll.by != "pauper" || len(a.roll.faces) != a.bs.Dice {
+		t.Fatalf("throw %+v", a.roll)
 	}
 	pump(t, apps, nil, func() bool { return a.bs != nil && !a.bs.CanRoll }, "too rich to beg")
 }

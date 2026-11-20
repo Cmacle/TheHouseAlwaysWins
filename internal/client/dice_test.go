@@ -3,36 +3,51 @@
 package client
 
 import (
-	"math"
 	"testing"
+	"time"
 
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/dice"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
 )
 
-// The dice land on the server's faces, inside the tray, when the server
-// says the roll ends.
-func TestDiceSettleOnTime(t *testing.T) {
+func throwMsg(id, n int, seed int64, elapsed int64) proto.DiceRoll {
+	th := dice.Roll(n, seed)
+	return proto.DiceRoll{ID: id, By: "deb", Dice: n, Faces: th.Faces, MS: 1000 + int64(th.Length*1000), ShakeMS: 1000,
+		Track: th.Track, Elapsed: elapsed}
+}
+
+// The replayed throw ends on the server's faces, and someone arriving
+// mid-throw picks it up where it is.
+func TestDiceReplay(t *testing.T) {
 	assets, err := LoadAssets("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := New(fakePlatform{}, &Config{}, assets)
-	for seed := int64(1); seed <= 60; seed++ {
-		ms := int64(3000 + seed*33%2001)
-		faces := []int{int(seed%6) + 1, 2, 6, int(seed*7%6) + 1, 4}
-		a.onDice(proto.DiceRoll{ID: int(seed), Faces: faces, MS: ms, Seed: seed})
+	a.now = time.Now()
+	for seed := int64(1); seed <= 20; seed++ {
+		n := int(seed%dice.MaxDice) + 1
+		m := throwMsg(int(seed), n, seed, 0)
+		a.onDice(m)
 		r := a.roll
-		end := r.settleTime()
-		if math.Abs(end-float64(ms)/1000) > 0.45 {
-			t.Errorf("seed %d: settled at %.2fs, roll is %dms (friction %.2f)", seed, end, ms, r.fric)
+		if r == nil {
+			t.Fatal("throw not taken")
 		}
-		for i, d := range r.dice {
-			if d.face != faces[i] {
-				t.Errorf("seed %d die %d shows %d, want %d", seed, i, d.face, faces[i])
-			}
-			if d.x < float64(r.tray.Min.X) || d.x > float64(r.tray.Max.X) || d.y < float64(r.tray.Min.Y) || d.y > float64(r.tray.Max.Y) {
-				t.Errorf("seed %d die %d left the tray at %.0f,%.0f", seed, i, d.x, d.y)
+		ps, _ := r.poses(a.now.Add(time.Duration(m.MS+500) * time.Millisecond))
+		for i, p := range ps {
+			b := dice.Body{Rot: p.Rot}
+			if f, _ := b.Up(); f != m.Faces[i] {
+				t.Errorf("seed %d die %d ends on %d, server says %d", seed, i, f, m.Faces[i])
 			}
 		}
+	}
+	m := throwMsg(99, 5, 99, 1800)
+	a.onDice(m)
+	if _, at := a.roll.poses(a.now); at < 0.7 || at > 0.9 {
+		t.Errorf("joining 1.8s in should be 0.8s into the throw, got %.2f", at)
+	}
+	a.onDice(proto.DiceRoll{ID: 100, Dice: 3, Faces: []int{1, 2}, Track: []byte{1, 2, 3}})
+	if a.roll.id != 99 {
+		t.Error("a bad throw replaced the good one")
 	}
 }

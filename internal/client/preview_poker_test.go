@@ -10,6 +10,7 @@ import (
 	"time"
 
 	bj "github.com/Cmacle/TheHouseAlwaysWins/internal/blackjack"
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/dice"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
 )
 
@@ -123,22 +124,25 @@ func TestPreviewBeggar(t *testing.T) {
 	save(t, dir, "50_lobby_beggar.png", a.fb)
 	a.onJoined(proto.Joined{ID: "beggars", Game: proto.GameBeggar, Name: "Beggars Table"})
 	bs := &proto.BeggarState{Table: "beggars", Name: "Beggars Table", Odds: 1000, Prize: 50, MaxBalance: 50, Balance: 12, CanRoll: true,
-		Rolls: 241, TableRolls: 1302, Players: []string{"You_There", "Deb"}, Feed: []string{"Deb rolled FIVE SIXES and won 50!"},
+		Rolls: 241, TableRolls: 1302, Players: []string{"You_There", "Deb"}, Feed: []string{"Deb rolled 8+ 5s or 6s on 9 dice: 50 chips each for 2 players!"},
 		Settings: proto.Settings{TableChat: true, DealerTrashTalk: true}, HouseNet: 1520, HouseTier: 1, ServerTime: time.Now().UnixMilli(),
 		DealerSay: "Again, You_There? Persistence. Or a problem.", DealerSayID: 4, DealerSayUntil: time.Now().Add(5 * time.Second).UnixMilli()}
 	a.onBeggar(bs)
 	frame()
 	save(t, dir, "51_beggar_idle.png", a.fb)
-	roll := proto.DiceRoll{ID: 1, Faces: []int{6, 3, 6, 1, 5}, MS: 4000, Seed: 42}
-	for i, at := range []float64{0.25, 0.9, 2.0, 4.2} {
+	g := dice.Plan(1000)
+	bs.Dice, bs.GoalKind, bs.GoalNeed, bs.GoalFace, bs.Chance = g.Dice, g.Kind, g.Need, g.Face, g.P
+	roll := throwMsg(1, g.Dice, 42, 0)
+	for i, at := range []float64{0.4, 1.25, 1.7, 9} {
 		a.onDice(roll)
 		a.roll.start = time.Now().Add(-time.Duration(at * float64(time.Second)))
 		frame()
 		save(t, dir, fmt.Sprintf("52_beggar_roll_%d.png", i), a.fb)
 	}
-	win := proto.DiceRoll{ID: 2, Faces: []int{6, 6, 6, 6, 6}, Win: true, MS: 3500, Seed: 7}
+	win := throwMsg(2, g.Dice, 7, 0)
+	win.Win = true
 	a.onDice(win)
-	a.roll.start = time.Now().Add(-5 * time.Second)
+	a.roll.start = time.Now().Add(-12 * time.Second)
 	frame()
 	save(t, dir, "53_beggar_win.png", a.fb)
 	bs.CanRoll, bs.Balance, bs.Reason = false, 80, "This table is for players with fewer than 50 chips. You have 80."

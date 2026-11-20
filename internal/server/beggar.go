@@ -14,23 +14,31 @@ import (
 	"unicode"
 
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/banter"
+	"github.com/Cmacle/TheHouseAlwaysWins/internal/dice"
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
 )
 
 // The Beggars Table: for anyone (nearly) broke with nobody to buy them back
-// in. Roll five dice; five sixes pays a small handout. Long odds, but it
-// never runs out, so a player can always grind their way back to a table.
+// in. Throw the dice and make the goal for a small handout. Long odds, but
+// it never runs out, so a player can always grind their way back to a table.
+//
+// The goal (how many dice, and what they must show) is picked from the
+// table's odds setting to come as close to it as a sensible number of dice
+// allows. Every throw is a 3D physics simulation run here; the faces the
+// dice come to rest on decide the roll, and the client replays the recorded
+// throw.
+
+// shakeMS is the rattle in the cup before the dice leave it.
+const shakeMS = 1000
 
 type beggarCfg struct {
-	Odds       int   `json:"odds"`        // 1 in this many rolls wins
+	Odds       int   `json:"odds"`        // aim for 1 in this many rolls winning
 	Prize      int64 `json:"prize"`       // what a win pays
 	MaxBalance int64 `json:"max_balance"` // you can roll with fewer chips than this
-	RollMinMS  int   `json:"roll_min_ms"` // a roll takes between these
-	RollMaxMS  int   `json:"roll_max_ms"`
 }
 
 func defaultBeggar() beggarCfg {
-	return beggarCfg{Odds: 1000, Prize: 50, MaxBalance: 50, RollMinMS: 3000, RollMaxMS: 5000}
+	return beggarCfg{Odds: 1000, Prize: 50, MaxBalance: 50}
 }
 
 func (c *beggarCfg) validate() {
@@ -44,8 +52,6 @@ func (c *beggarCfg) validate() {
 	if c.MaxBalance < 1 {
 		c.MaxBalance = d.MaxBalance
 	}
-	c.RollMinMS = min(max(c.RollMinMS, 500), 20000)
-	c.RollMaxMS = min(max(c.RollMaxMS, c.RollMinMS), 20000)
 }
 
 // beggarConfig is the defaults with a table's settings.
@@ -64,8 +70,6 @@ func beggarConfig(d TableDef) (beggarCfg, error) {
 type bgPlayer struct {
 	user     string
 	conn     *conn
-	rolling  bool
-	rollID   int
 	lastTalk time.Time
 	hello    bool
 	chatAt   []time.Time
@@ -76,6 +80,7 @@ type Beggar struct {
 	id, name string
 	cfg      *Config
 	bc       beggarCfg
+	goal     dice.Goal
 	store    *Store
 	notify   Notifier
 	log      *log.Logger
@@ -87,6 +92,8 @@ type Beggar struct {
 	feed     []string
 	rolls    int64
 	nextID   int
+	cur      *proto.DiceRoll // the throw in the air, nil when the dice are still
+	curAt    time.Time
 	info     atomic.Pointer[proto.TableInfo]
 	// tests: rolls land at once
 	instant bool
@@ -99,7 +106,7 @@ func newBeggar(id, name string, cfg *Config, bc beggarCfg, store *Store, n Notif
 	}
 	t := &Beggar{id: id, name: name, cfg: cfg, bc: bc, store: store, notify: n, log: lg,
 		events: make(chan event, 1024), rng: rand.New(rand.NewSource(time.Now().UnixNano())),
-		voice: newVoice(), conns: map[*conn]*bgPlayer{}}
+		voice: newVoice(), conns: map[*conn]*bgPlayer{}, goal: dice.Plan(bc.Odds)}
 	t.voice.budget = 1 << 30 // no hands here to reset his budget
 	t.updateInfo()
 	return t
@@ -137,6 +144,11 @@ func (t *Beggar) handle(ev event) {
 		t.conns[ev.c] = p
 		t.updateInfo()
 		t.send(p, true)
+		if t.cur != nil { // join the throw already in the air
+			dr := *t.cur
+			dr.Elapsed = time.Since(t.curAt).Milliseconds()
+			p.conn.send(proto.SDice, dr)
+		}
 		if t.store.Chips(p.user) < t.bc.MaxBalance {
 			t.say(banter.EvBgHello, p, banter.Vars{Amount: t.bc.Prize}, 0.9, prioNormal)
 		} else {
@@ -168,8 +180,8 @@ func (t *Beggar) handle(ev event) {
 
 // why says why a player can't roll ("" = they can).
 func (t *Beggar) why(p *bgPlayer) string {
-	if p.rolling {
-		return "Your dice are still rolling."
+	if t.cur != nil {
+		return "The dice are still rolling."
 	}
 	if chips := t.store.Chips(p.user); chips >= t.bc.MaxBalance {
 		return fmt.Sprintf("This table is for players with fewer than %s chips. You have %s.", commas(t.bc.MaxBalance), commas(chips))
@@ -179,7 +191,7 @@ func (t *Beggar) why(p *bgPlayer) string {
 
 func (t *Beggar) roll(p *bgPlayer) {
 	if r := t.why(p); r != "" {
-		if !p.rolling {
+		if t.cur == nil {
 			t.say(banter.EvBgTooRich, p, banter.Vars{Amount: t.store.Chips(p.user)}, 0.5, prioNormal)
 		}
 		p.conn.send(proto.SError, proto.ErrorMsg{Message: r})
@@ -187,34 +199,24 @@ func (t *Beggar) roll(p *bgPlayer) {
 	}
 	t.nextID++
 	t.rolls++
-	win := t.rng.Intn(t.bc.Odds) == 0
+	g := t.goal
+	th := dice.Roll(g.Dice, t.rng.Int63())
+	faces := th.Faces
+	win := g.Made(faces)
 	n := t.store.BeggarRoll(p.user)
-	prize := int64(0)
-	if win {
-		prize = t.bc.Prize
+	if !win {
+		t.store.RecordTable(p.user, t.id, 0)
 	}
-	t.store.RecordTable(p.user, t.id, prize)
-	faces := make([]int, 5)
-	for {
-		six := 0
-		for i := range faces {
-			faces[i] = 1 + t.rng.Intn(6)
-			if faces[i] == 6 {
-				six++
-			}
-		}
-		if six < 5 {
-			break
-		}
+	ms := shakeMS + int(th.Length*1000) + 250
+	dr := proto.DiceRoll{ID: t.nextID, By: p.user, Dice: g.Dice, Faces: faces, Win: win, MS: int64(ms), ShakeMS: shakeMS, Track: th.Track}
+	for _, h := range th.Hits {
+		dr.Hits = append(dr.Hits, int(h.T*1000))
+		dr.HitsK = append(dr.HitsK, uint8(h.K*255))
 	}
-	if win {
-		for i := range faces {
-			faces[i] = 6
-		}
+	t.cur, t.curAt = &dr, time.Now()
+	for c := range t.conns {
+		c.send(proto.SDice, dr)
 	}
-	ms := t.bc.RollMinMS + t.rng.Intn(t.bc.RollMaxMS-t.bc.RollMinMS+1)
-	p.rolling, p.rollID = true, t.nextID
-	p.conn.send(proto.SDice, proto.DiceRoll{ID: t.nextID, Faces: faces, Win: win, MS: int64(ms), Seed: t.rng.Int63()})
 	switch {
 	case n%100 == 0:
 		t.say(banter.EvBgMany, p, banter.Vars{Amount: n}, 1, prioHigh)
@@ -223,9 +225,9 @@ func (t *Beggar) roll(p *bgPlayer) {
 			p.lastTalk = time.Now()
 		}
 	}
-	t.send(p, false)
+	t.broadcast()
 	id := t.nextID
-	land := func() { t.landed(p, id, faces, win) }
+	land := func() { t.landed(p, id, g, faces, win) }
 	if t.instant {
 		land()
 		return
@@ -233,25 +235,43 @@ func (t *Beggar) roll(p *bgPlayer) {
 	time.AfterFunc(time.Duration(ms)*time.Millisecond, func() { t.Do(land) })
 }
 
-// landed runs when the dice stop.
-func (t *Beggar) landed(p *bgPlayer, id int, faces []int, win bool) {
-	if p.rollID != id {
+// landed runs when the dice stop. A winning throw pays everyone at the
+// table who is under the limit, not just whoever threw.
+func (t *Beggar) landed(p *bgPlayer, id int, g dice.Goal, faces []int, win bool) {
+	if t.cur == nil || t.cur.ID != id {
 		return
 	}
-	p.rolling = false
+	t.cur = nil
 	if win {
-		t.store.Handout(p.user, t.bc.Prize)
-		t.addFeed(fmt.Sprintf("%s rolled FIVE SIXES and won %s!", p.user, commas(t.bc.Prize)))
-		t.log.Printf("[%s] %s rolled five sixes (+%d)", t.id, p.user, t.bc.Prize)
+		what := fmt.Sprintf("%s on %d dice", strings.ToLower(g.Describe()), g.Dice)
+		var paid []string
+		seen := map[string]bool{}
+		for _, o := range t.conns {
+			key := strings.ToLower(o.user)
+			if seen[key] || t.store.Chips(o.user) >= t.bc.MaxBalance {
+				continue
+			}
+			seen[key] = true
+			paid = append(paid, o.user)
+			t.store.Handout(o.user, t.bc.Prize)
+			t.store.RecordTable(o.user, t.id, t.bc.Prize)
+			o.conn.event(proto.Event{Kind: "beggar_win", Seat: -1, Delta: t.bc.Prize, Text: fmt.Sprintf("WINNER! +%s CHIPS", commas(t.bc.Prize))})
+			if prof, ok := t.store.Profile(o.user); ok {
+				o.conn.send(proto.SProfile, prof)
+			}
+		}
+		switch len(paid) {
+		case 0:
+			t.addFeed(fmt.Sprintf("%s rolled %s, but nobody here was broke enough to collect.", p.user, what))
+		case 1:
+			t.addFeed(fmt.Sprintf("%s rolled %s: %s chips for %s!", p.user, what, commas(t.bc.Prize), paid[0]))
+		default:
+			t.addFeed(fmt.Sprintf("%s rolled %s: %s chips each for %d players!", p.user, what, commas(t.bc.Prize), len(paid)))
+		}
+		t.log.Printf("[%s] %s threw %v (%s): paid %d to %s", t.id, p.user, faces, what, t.bc.Prize, strings.Join(paid, ", "))
 		t.say(banter.EvBgWin, p, banter.Vars{Amount: t.bc.Prize}, 1, prioHigh)
 		for c := range t.conns {
-			c.event(proto.Event{Kind: "info", Seat: -1, Text: fmt.Sprintf("%s rolled five sixes!", p.user)})
-		}
-		if t.conns[p.conn] != nil {
-			p.conn.event(proto.Event{Kind: "beggar_win", Seat: -1, Delta: t.bc.Prize, Text: fmt.Sprintf("FIVE SIXES! +%s CHIPS", commas(t.bc.Prize))})
-			if prof, ok := t.store.Profile(p.user); ok {
-				p.conn.send(proto.SProfile, prof)
-			}
+			c.event(proto.Event{Kind: "info", Seat: -1, Text: fmt.Sprintf("%s made the number at the Beggars Table!", p.user)})
 		}
 	}
 	t.broadcast()
@@ -323,12 +343,17 @@ func (t *Beggar) onChat(p *bgPlayer, text string) {
 }
 
 func (t *Beggar) view(p *bgPlayer, withLog bool) proto.BeggarState {
+	g := t.goal
 	st := proto.BeggarState{Table: t.id, Name: t.name, Odds: t.bc.Odds, Prize: t.bc.Prize, MaxBalance: t.bc.MaxBalance,
-		Balance: t.store.Chips(p.user), Rolling: p.rolling, TableRolls: t.rolls, Feed: t.feed,
+		Dice: g.Dice, GoalKind: g.Kind, GoalNeed: g.Need, GoalFace: g.Face, Chance: g.P,
+		Balance: t.store.Chips(p.user), Rolling: t.cur != nil, TableRolls: t.rolls, Feed: t.feed,
 		ServerTime: time.Now().UnixMilli(),
 		Settings: proto.Settings{ServerName: t.cfg.ServerName, RefillAmount: t.cfg.RefillAmount,
 			DealerTrashTalk: t.cfg.DealerTrashTalk, DealerVulgar: t.cfg.DealerTrashTalk && t.cfg.DealerVulgar,
 			ChipGifts: t.cfg.ChipGifts && t.cfg.RefillAmount > 0, TableChat: t.cfg.TableChat}}
+	if t.cur != nil {
+		st.Roller = t.cur.By
+	}
 	st.Reason = t.why(p)
 	st.CanRoll = st.Reason == ""
 	if prof, ok := t.store.Profile(p.user); ok {
@@ -398,6 +423,7 @@ func (b beggarTable) reconfigure(global *Config, d TableDef) {
 	}
 	b.Do(func() {
 		b.cfg, b.bc, b.name = global, bc, d.Name
+		b.goal = dice.Plan(bc.Odds)
 		b.updateInfo()
 		b.broadcast()
 	})
@@ -405,11 +431,7 @@ func (b beggarTable) reconfigure(global *Config, d TableDef) {
 func (b beggarTable) inHand(user string) bool {
 	in := false
 	b.DoWait(func() {
-		for _, p := range b.conns {
-			if strings.EqualFold(p.user, user) && p.rolling {
-				in = true
-			}
-		}
+		in = b.cur != nil && strings.EqualFold(b.cur.By, user)
 	})
 	return in
 }
@@ -419,12 +441,13 @@ func (b beggarTable) players() []string {
 	b.DoWait(func() {
 		for _, p := range b.conns {
 			st := "begging"
-			if p.rolling {
+			if b.cur != nil && b.cur.By == p.user {
 				st = "rolling"
 			}
 			out = append(out, fmt.Sprintf("%-16s %s, %d chips", p.user, st, b.store.Chips(p.user)))
 		}
-		out = append(out, fmt.Sprintf("rolls since start: %d, odds 1 in %d", b.rolls, b.bc.Odds))
+		out = append(out, fmt.Sprintf("rolls since start: %d, goal %s on %d dice: 1 in %.1f (set to 1 in %d)",
+			b.rolls, b.goal.Describe(), b.goal.Dice, b.goal.Odds(), b.bc.Odds))
 	})
 	return out
 }
