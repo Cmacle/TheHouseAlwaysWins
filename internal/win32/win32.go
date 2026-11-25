@@ -407,12 +407,10 @@ func (w *window) layout() {
 	s := min(float64(cw)/float64(w.lw), float64(ch)/float64(w.lh))
 	w.dw = max(1, int(float64(w.lw)*s+0.5))
 	w.dh = max(1, int(float64(w.lh)*s+0.5))
-	if w.dw > cw {
-		w.dw = cw
-	}
-	if w.dh > ch {
-		w.dh = ch
-	}
+	// a minimized window is 0x0: keep the sizes at least 1 so nothing
+	// divides by zero
+	w.dw = max(1, min(w.dw, cw))
+	w.dh = max(1, min(w.dh, ch))
 	w.k = max(1, int(s))
 	w.ox, w.oy = (cw-w.dw)/2, (ch-w.dh)/2
 }
@@ -710,8 +708,8 @@ func RunApp(title string, cfg *client.Config, icon []byte, mk func(client.Platfo
 		w.layout()
 		app.SetSize(w.lw, w.lh)
 		in := w.in
-		in.MX = (int(pt.X) - w.ox) * w.lw / w.dw
-		in.MY = (int(pt.Y) - w.oy) * w.lh / w.dh
+		in.MX = (int(pt.X) - w.ox) * w.lw / max(1, w.dw)
+		in.MY = (int(pt.Y) - w.oy) * w.lh / max(1, w.dh)
 		fg, _, _ := pGetForegroundWnd.Call()
 		in.MouseInside = fg == hwnd && in.MX >= 0 && in.MY >= 0 && in.MX < w.lw && in.MY < w.lh
 		in.Shift = keyDown(0x10)

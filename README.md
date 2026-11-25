@@ -875,7 +875,8 @@ by you alone. Turn Remember me off and log in once to forget it.
 ### If the window stays blank (Windows)
 
 The Windows client writes `client.log` next to `TheHouseAlwaysWins.exe` (or to
-the temp folder if that folder can't be written). It records the Windows
+the temp folder if that folder can't be written), and keeps the run before as
+`client-previous.log`, so a crash's log survives starting the game again. It records the Windows
 version and screen setup, how start-up went, any drawing failures, crashes,
 and, if the window stops updating for 8 seconds, exactly where the game is
 stuck. If smooth scaling or scaling in general fails on a graphics driver, the

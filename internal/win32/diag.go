@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -29,14 +30,19 @@ var (
 	stage     atomic.Value // string: what the main loop is doing
 )
 
-// OpenLog starts client.log in dir, replacing the previous run's log.
+// OpenLog starts client.log in dir. The previous run's log is kept as
+// client-previous.log, so a crash's log survives starting the game again.
+// A crash anywhere in the game (any goroutine, which a recover can't catch)
+// also writes its details into the log.
 func OpenLog(dir string) string {
 	logMu.Lock()
 	defer logMu.Unlock()
 	for _, d := range []string{dir, os.TempDir()} {
 		p := filepath.Join(d, "client.log")
+		_ = os.Rename(p, filepath.Join(d, "client-previous.log"))
 		if f, err := os.Create(p); err == nil {
 			logFile, logPath = f, p
+			_ = debug.SetCrashOutput(f, debug.CrashOptions{})
 			return p
 		}
 	}
