@@ -107,6 +107,9 @@ func TestPreview(t *testing.T) {
 
 	a.setStatus("Unknown username or wrong password", true)
 	save(t, dir, "01_login.png", frame())
+	a.Cfg.RememberMe, a.Cfg.Username, a.Cfg.Server, a.Cfg.Token = true, "You_There", "play.example.com:7777", "tok"
+	save(t, dir, "01b_saved_login.png", frame())
+	a.Cfg.RememberMe, a.Cfg.Token = false, ""
 	a.loginMode = modeRegister
 	a.fPass, a.fPass2 = "abcd", "abcd"
 	a.setStatus("", false)

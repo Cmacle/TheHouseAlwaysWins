@@ -865,9 +865,11 @@ settings (`volume`, `effects_volume`, `voice_volume`, `reveal_volume`, 0-100),
 `window_scale` (0 = automatic) and `fullscreen`.
 
 With **Remember me** on, the game keeps a revocable login token and your
-password. The password is filled in on the login screen after a restart or a
-log out, and if the saved token stops working the game logs in with the
-password by itself. On Windows the password is encrypted for your Windows
+password, and skips the login screen: it just shows "Connecting as ..." and
+logs you in, retrying every few seconds if the server can't be reached. If
+the saved login is turned down (a changed password, say) the login form
+comes back; logging out also goes to the form, to switch accounts. If the
+saved token stops working, the game logs in with the password by itself. On Windows the password is encrypted for your Windows
 user (DPAPI), so copying `client.json` to another PC or user doesn't reveal
 it. On Linux and Android it's only scrambled, and `client.json` is readable
 by you alone. Turn Remember me off and log in once to forget it.

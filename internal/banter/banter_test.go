@@ -54,3 +54,17 @@ func TestTier(t *testing.T) {
 		}
 	}
 }
+
+// Lines about counts (rolls, wins in a row, a natural 8 or 9) never use
+// {amount}, which is written as money ("$241").
+func TestCountsAreNotMoney(t *testing.T) {
+	for _, ev := range []string{EvBgMany, EvBacStreak, EvBacNatural} {
+		for _, pool := range []map[string][]string{clean, vulgar} {
+			for _, l := range pool[ev] {
+				if strings.Contains(l, "{amount}") {
+					t.Errorf("%s: %q writes a count as money", ev, l)
+				}
+			}
+		}
+	}
+}

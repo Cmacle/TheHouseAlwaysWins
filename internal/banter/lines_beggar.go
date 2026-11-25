@@ -41,14 +41,14 @@ func init() {
 	)
 
 	more(clean, EvBgMany,
-		"{name} has rolled {amount} times. That's dedication. Misplaced, but dedication.",
-		"{amount} rolls, {name}. Ray the Ferret would've given up and sold you a ferret by now.",
-		"That's {amount} rolls for {name}. At this point I'm rooting for you. Don't tell anybody.",
-		"{amount} rolls. {name}, I've had shorter marriages. All three of them.",
+		"{name} has rolled {streak} times. That's dedication. Misplaced, but dedication.",
+		"{streak} rolls, {name}. Ray the Ferret would've given up and sold you a ferret by now.",
+		"That's {streak} rolls for {name}. At this point I'm rooting for you. Don't tell anybody.",
+		"{streak} rolls. {name}, I've had shorter marriages. All three of them.",
 	)
 	more(vulgar, EvBgMany,
-		"{amount} rolls, {name}? Get a job. I'm kidding. I don't have one either. I have this.",
-		"{name}'s at {amount} rolls. That's the saddest number I've ever heard, and I've seen my bank statement.",
+		"{streak} rolls, {name}? Get a job. I'm kidding. I don't have one either. I have this.",
+		"{name}'s at {streak} rolls. That's the saddest number I've ever heard, and I've seen my bank statement.",
 	)
 
 	more(clean, EvBgWin,

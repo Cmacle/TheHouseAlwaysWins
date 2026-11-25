@@ -34,14 +34,14 @@ func init() {
 		"Cards coming. Pucker up.",
 	)
 	more(clean, EvBacNatural,
-		"A natural {amount} for the {item}! That's the hand. Nobody draws.",
-		"{item} turns over a natural {amount}. Game over, man.",
-		"Natural {amount}! The {item} doesn't even break a sweat.",
-		"{amount} in two cards for the {item}. The tuxedos used to clap for that. Politely. With gloves on.",
+		"A natural {total} for the {item}! That's the hand. Nobody draws.",
+		"{item} turns over a natural {total}. Game over, man.",
+		"Natural {total}! The {item} doesn't even break a sweat.",
+		"{total} in two cards for the {item}. The tuxedos used to clap for that. Politely. With gloves on.",
 	)
 	more(vulgar, EvBacNatural,
-		"Natural {amount} for the {item}. Bam. Done. Suck it.",
-		"{item} flips a natural {amount}. Somebody's eating good tonight. Somebody isn't.",
+		"Natural {total} for the {item}. Bam. Done. Suck it.",
+		"{item} flips a natural {total}. Somebody's eating good tonight. Somebody isn't.",
 	)
 	more(clean, EvBacPlayer,
 		"Player wins.",
@@ -94,13 +94,13 @@ func init() {
 		"{amount} down the drain, {name}. Should've bet the other one, dummy.",
 	)
 	more(clean, EvBacStreak,
-		"{item} has won {amount} in a row. Somebody's going to tell you it's due to change. They're wrong. Cards don't remember.",
-		"That's {amount} straight for the {item}. Ride it or fight it. I don't care. I get paid either way. I don't, actually.",
-		"{amount} {item} wins in a row. The tuxedos would be sweating through their cummerbunds.",
+		"{item} has won {streak} in a row. Somebody's going to tell you it's due to change. They're wrong. Cards don't remember.",
+		"That's {streak} straight for the {item}. Ride it or fight it. I don't care. I get paid either way. I don't, actually.",
+		"{streak} {item} wins in a row. The tuxedos would be sweating through their cummerbunds.",
 	)
 	more(vulgar, EvBacStreak,
-		"{amount} in a row for the {item}. Somebody's gonna lose their shirt betting against that.",
-		"{item}, {amount} straight. The streak's hot. Like my trailer in July.",
+		"{streak} in a row for the {item}. Somebody's gonna lose their shirt betting against that.",
+		"{item}, {streak} straight. The streak's hot. Like my trailer in July.",
 	)
 
 	// ---------------------------------------------------------- Red Dog

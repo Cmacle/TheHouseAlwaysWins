@@ -728,6 +728,7 @@ func (a *App) logout() {
 	a.send(proto.CLogout, nil)
 	a.Cfg.Token = ""
 	a.Cfg.Save()
+	a.loginForm = true // logging out is how you switch accounts: show the form
 	if a.Cfg.RememberMe {
 		a.fPass = a.Cfg.Password() // filled in, ready to log back in
 	}

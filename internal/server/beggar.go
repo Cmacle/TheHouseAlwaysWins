@@ -224,7 +224,7 @@ func (t *Beggar) roll(p *bgPlayer) {
 	}
 	switch {
 	case n%100 == 0:
-		t.say(banter.EvBgMany, p, banter.Vars{Amount: n}, 1, prioHigh)
+		t.say(banter.EvBgMany, p, banter.Vars{Streak: int(n)}, 1, prioHigh)
 	case time.Since(p.lastTalk) > 25*time.Second:
 		if t.say(banter.EvBgRoll, p, banter.Vars{Amount: t.bc.Prize}, 0.15, prioLow) {
 			p.lastTalk = time.Now()

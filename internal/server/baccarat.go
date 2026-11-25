@@ -89,7 +89,7 @@ func (b *Baccarat) thirdCards(t *Casino) {
 		if bt > pt {
 			item, amt = "Banker", bt
 		}
-		t.say(banter.EvBacNatural, nil, banter.Vars{Item: item, Amount: int64(amt)}, 0.7, prioNormal)
+		t.say(banter.EvBacNatural, nil, banter.Vars{Item: item, Total: amt}, 0.7, prioNormal)
 		b.finish(t)
 		return
 	}
@@ -143,7 +143,7 @@ func (b *Baccarat) finish(t *Casino) {
 			if b.winner == bacBanker {
 				name = "Banker"
 			}
-			t.say(banter.EvBacStreak, nil, banter.Vars{Item: name, Amount: int64(run)}, 0.5, prioLow)
+			t.say(banter.EvBacStreak, nil, banter.Vars{Item: name, Streak: run}, 0.5, prioLow)
 		}
 	}
 	t.settle()

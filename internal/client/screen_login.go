@@ -5,6 +5,8 @@ package client
 import (
 	"image"
 	"regexp"
+	"strings"
+	"time"
 
 	"github.com/Cmacle/TheHouseAlwaysWins/internal/proto"
 )
@@ -54,7 +56,11 @@ func (a *App) drawLogin() {
 	oy := max(0, (ScreenH-360)/2) // center the whole thing on tall screens
 	blit(a.fb, a.A.Logo, ScreenW/2-lw/2, 10+oy)
 
-	busy := a.connecting || a.tokenTry
+	busy := a.connecting || a.tokenTry || a.passTry
+	if a.loginMode == modeLogin && !a.loginForm && a.savedLogin() {
+		a.drawSavedLogin(oy, busy)
+		return
+	}
 	var pr image.Rectangle
 	if a.loginMode == modeLogin {
 		pr = image.Rect(ScreenW/2-140, 108+oy, ScreenW/2+140, 306+oy)
@@ -205,6 +211,31 @@ func (a *App) doRegister() {
 		a.send(proto.CRegister, reg)
 		a.setStatus("Creating account...", false)
 	})
+}
+
+// drawSavedLogin is what shows instead of the login screen with Remember
+// Me on: it just connects and logs in, retrying until the server answers.
+// If the saved login is turned down, the full form takes over; logging out
+// (to switch accounts) also goes to the form.
+func (a *App) drawSavedLogin(oy int, busy bool) {
+	y := 120 + oy
+	msg := "Connecting as " + a.Cfg.Username + "..."
+	a.text(ScreenW/2, y, fitText(a.A.Font, msg, ScreenW-20), a.A.C("gold"), alignCenter)
+	dots := strings.Repeat(".", int(a.now.UnixMilli()/400)%4)
+	a.text(ScreenW/2, y+12, fitText(a.A.Font, a.Cfg.Server+" "+dots, ScreenW-20), a.A.C("text_dim"), alignCenter)
+	if !busy && a.reconnectAt.IsZero() {
+		// nothing under way (it gave up): start again
+		a.tokenLogin()
+	}
+	if a.statusErr && a.status != "" {
+		a.drawStatus(ScreenW/2-150, ScreenW/2+150, y+30)
+		// the server may have moved: a way to the form, only once it's failing
+		r := image.Rect(ScreenW/2-60, y+64, ScreenW/2+60, y+80)
+		if a.button("otheracct", r, "CHANGE SERVER", btn{enabled: true}) {
+			a.loginForm, a.reconnectAt = true, time.Time{}
+			a.setStatus("", false)
+		}
+	}
 }
 
 func (a *App) rememberLabel() string {

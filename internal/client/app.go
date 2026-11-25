@@ -153,6 +153,8 @@ type App struct {
 	tokenTry     bool
 	passTry      bool   // logging in with the saved password after the token failed
 	lastPass     string // the password just used to log in or sign up
+	autoTry      bool   // logging in with the saved login, not the form
+	loginForm    bool   // show the full login form even with a saved login
 	reconnectAt  time.Time
 
 	// session
@@ -273,7 +275,7 @@ func New(p Platform, cfg *Config, assets *Assets) *App {
 		fUser:      cfg.Username,
 	}
 	a.fServer, a.fPort = splitServer(cfg.Server)
-	if cfg.RememberMe && cfg.Token != "" && cfg.Username != "" && cfg.Server != "" {
+	if cfg.RememberMe && (cfg.Token != "" || cfg.SavedPassword != "") && cfg.Username != "" && cfg.Server != "" {
 		a.reconnectAt = time.Now()
 	}
 	if cfg.RememberMe {
@@ -466,7 +468,12 @@ func (a *App) pollNet() {
 		if r.err != nil {
 			a.setStatus("Could not connect: "+shortErr(r.err), true)
 			a.afterDial = nil
-			a.tokenTry = false
+			if a.autoTry && !a.loginForm {
+				// logging in by itself: keep trying until the server's back
+				a.reconnectAt = a.now.Add(5 * time.Second)
+				a.setStatus("Can't reach the server ("+shortErr(r.err)+"). Trying again...", true)
+			}
+			a.tokenTry, a.passTry, a.autoTry = false, false, false
 		} else {
 			a.net = r.n
 			a.setStatus("Connected.", false)
@@ -519,22 +526,43 @@ func (a *App) onDisconnect() {
 	wasPlaying := a.screen == scrTable || a.screen == scrLobby || a.screen == scrPoker || a.screen == scrBeggar || a.screen == scrCasino || a.screen == scrSports
 	a.screen = scrLogin
 	a.overlay = ovNone
+	if a.kicked {
+		a.loginForm = true // kicked or banned: don't log straight back in
+	}
 	if !a.kicked {
 		if wasPlaying {
 			a.setStatus("Disconnected from the server.", true)
 		}
-		if wasPlaying && a.Cfg.RememberMe && a.Cfg.Token != "" {
+		if wasPlaying && a.savedLogin() {
 			a.reconnectAt = a.now.Add(3 * time.Second)
 			a.setStatus("Disconnected - reconnecting...", true)
 		}
 	}
 }
 
+// savedLogin says Remember Me has a login to use: a token or a password.
+func (a *App) savedLogin() bool {
+	c := a.Cfg
+	return c.RememberMe && c.Username != "" && c.Server != "" && (c.Token != "" || c.SavedPassword != "")
+}
+
+// tokenLogin logs in with the saved login: the token, or failing that the
+// remembered password.
 func (a *App) tokenLogin() {
-	a.tokenTry = true
 	user, tok := a.Cfg.Username, a.Cfg.Token
+	pw := ""
+	if tok == "" {
+		if pw = a.Cfg.Password(); pw == "" {
+			a.loginForm = true
+			return
+		}
+	}
+	a.autoTry, a.tokenTry = true, tok != ""
+	if tok == "" {
+		a.passTry, a.lastPass = true, pw
+	}
 	a.connect(a.Cfg.Server, func() {
-		a.send(proto.CLogin, proto.Login{Username: user, Token: tok})
+		a.send(proto.CLogin, proto.Login{Username: user, Token: tok, Password: pw})
 		a.setStatus("Logging in...", false)
 	})
 }
@@ -565,7 +593,7 @@ func (a *App) handleMsg(m proto.Msg) {
 			a.Cfg.Token = ""
 			a.Cfg.SetPassword("")
 		}
-		a.lastPass, a.passTry = "", false
+		a.lastPass, a.passTry, a.autoTry, a.loginForm = "", false, false, false
 		a.Cfg.Save()
 		a.screen = scrLobby
 		a.st, a.ps, a.bs, a.roll, a.game, a.lobbyKnown = nil, nil, nil, nil, "", false
@@ -595,7 +623,10 @@ func (a *App) handleMsg(m proto.Msg) {
 				return
 			}
 		}
-		a.passTry, a.lastPass = false, ""
+		if a.autoTry {
+			a.loginForm = true // the saved login didn't work: show the form to fix it
+		}
+		a.passTry, a.lastPass, a.autoTry = false, "", false
 		a.setStatus(f.Reason, true)
 		a.sound("error")
 	case proto.SState:

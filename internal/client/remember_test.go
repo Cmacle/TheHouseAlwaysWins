@@ -40,4 +40,18 @@ func TestRememberPassword(t *testing.T) {
 	if a := New(fakePlatform{}, c, assets); a.fPass != "pw1234" {
 		t.Fatalf("login form has %q", a.fPass)
 	}
+
+	// with a saved login there's no login screen: it logs in by itself
+	c.Server = "play.example.com:7777"
+	a := New(fakePlatform{}, c, assets)
+	if !a.savedLogin() || a.loginForm {
+		t.Fatal("a saved login should skip the form")
+	}
+	if a.reconnectAt.IsZero() {
+		t.Fatal("a saved password alone should log in at start")
+	}
+	c.RememberMe = false
+	if New(fakePlatform{}, c, assets).savedLogin() {
+		t.Fatal("without Remember me, the form shows")
+	}
 }

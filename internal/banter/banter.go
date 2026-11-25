@@ -112,13 +112,13 @@ const (
 	// baccarat
 	EvBacHello   = "bac_hello"    // {name} sat down at baccarat
 	EvBacDeal    = "bac_deal"     // betting's closed, here come the cards
-	EvBacNatural = "bac_natural"  // {item} (Player or Banker) has a natural {amount}
+	EvBacNatural = "bac_natural"  // {item} (Player or Banker) has a natural {total}
 	EvBacPlayer  = "bac_player"   // Player wins
 	EvBacBanker  = "bac_banker"   // Banker wins
 	EvBacTie     = "bac_tie"      // a tie
 	EvBacBigWin  = "bac_big_win"  // {name} won {amount}
 	EvBacBigLose = "bac_big_lose" // {name} lost {amount}
-	EvBacStreak  = "bac_streak"   // {item} has won {amount} in a row
+	EvBacStreak  = "bac_streak"   // {item} has won {streak} in a row
 
 	// Red Dog
 	EvRdHello   = "rd_hello"   // {name} sat down at Red Dog
@@ -134,7 +134,7 @@ const (
 	// the Beggars Table
 	EvBgHello   = "bg_hello"    // {name} came begging
 	EvBgRoll    = "bg_roll"     // {name} rolls again (now and then)
-	EvBgMany    = "bg_many"     // {name} has rolled {amount} times
+	EvBgMany    = "bg_many"     // {name} has rolled {streak} times
 	EvBgWin     = "bg_win"      // {name} made the number and gets {amount}
 	EvBgTooRich = "bg_too_rich" // {name} has {amount} chips: too many to beg
 
