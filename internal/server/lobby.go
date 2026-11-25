@@ -84,6 +84,7 @@ func defaultTables(cfg *Config) []TableDef {
 		{ID: "holdem", Name: "Texas Hold'em", Game: proto.GameHoldem},
 		{ID: "baccarat", Name: "Baccarat", Game: proto.GameBaccarat},
 		{ID: "reddog", Name: "Red Dog", Game: proto.GameRedDog},
+		{ID: "sportsbook", Name: "Sportsbook", Game: proto.GameSports},
 		{ID: "beggars", Name: "Beggars Table", Game: proto.GameBeggar},
 	}
 }
@@ -290,6 +291,19 @@ func (l *Lobby) open(d TableDef) (*tableRec, error) {
 		b := newBeggar(d.ID, d.Name, s.cfg(), bc, s.Store, s.notifier(), s.Log)
 		b.exec = s.Exec
 		t = beggarTable{b}
+	case proto.GameSports:
+		sc, err := sportsConfig(d)
+		if err != nil {
+			return nil, err
+		}
+		sp := newSports(d.ID, d.Name, s.cfg(), sc, s.Store, s.notifier(), s.Log)
+		sp.exec = s.Exec
+		sp.tell = func(user, text string) {
+			if s.Lobby != nil {
+				s.Lobby.NotifyUser(user, text)
+			}
+		}
+		t = sportsTable{sp}
 	case proto.GameBaccarat, proto.GameRedDog:
 		cc, err := casinoConfig(d)
 		if err != nil {
@@ -781,6 +795,8 @@ func (l *Lobby) AddTable(game, name string) (string, error) {
 		game = proto.GameBaccarat
 	case "reddog", "red-dog", "red_dog", "acey", "acey-deucey":
 		game = proto.GameRedDog
+	case "sports", "sportsbook", "esports", "bets", "betting":
+		game = proto.GameSports
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -884,6 +900,11 @@ func (l *Lobby) TableSettings(id string) ([]proto.SettingInfo, error) {
 		for _, st := range settingsOfValue(reflect.ValueOf(&bc).Elem(), "", "") {
 			out = append(out, proto.SettingInfo{Key: st.Key, Label: LabelOf(st.Key), Kind: st.Kind, Value: st.Value})
 		}
+	case proto.GameSports:
+		sc, _ := sportsConfig(r.def)
+		for _, st := range settingsOfValue(reflect.ValueOf(&sc).Elem(), "", "") {
+			out = append(out, proto.SettingInfo{Key: st.Key, Label: LabelOf(st.Key), Kind: st.Kind, Value: st.Value})
+		}
 	case proto.GameBaccarat, proto.GameRedDog:
 		for _, st := range settingsOfValue(reflect.ValueOf(casinoSettingsOf(r.def)).Elem(), "", "") {
 			out = append(out, proto.SettingInfo{Key: st.Key, Label: LabelOf(st.Key), Kind: st.Kind, Value: st.Value})
@@ -944,6 +965,13 @@ func (l *Lobby) SetTableSetting(id, key, value string) error {
 					kind = st.Kind
 				}
 			}
+		case proto.GameSports:
+			sc := defaultSports()
+			for _, st := range settingsOfValue(reflect.ValueOf(&sc).Elem(), "", "") {
+				if st.Key == key {
+					kind = st.Kind
+				}
+			}
 		case proto.GameBaccarat, proto.GameRedDog:
 			for _, st := range settingsOfValue(reflect.ValueOf(casinoSettingsOf(TableDef{Game: r.def.Game})).Elem(), "", "") {
 				if st.Key == key {
@@ -972,6 +1000,10 @@ func (l *Lobby) SetTableSetting(id, key, value string) error {
 		}
 	case proto.GameBeggar:
 		if _, err := beggarConfig(def); err != nil {
+			return err
+		}
+	case proto.GameSports:
+		if _, err := sportsConfig(def); err != nil {
 			return err
 		}
 	case proto.GameBaccarat, proto.GameRedDog:

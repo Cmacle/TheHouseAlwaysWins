@@ -389,12 +389,12 @@ func TestLobbyTableCommands(t *testing.T) {
 	stop := make(chan struct{})
 	defer close(stop)
 	s.Lobby.start(stop)
-	if n := len(s.Lobby.Tables()); n != 5 {
+	if n := len(s.Lobby.Tables()); n != 6 {
 		t.Fatalf("%d default tables", n)
 	}
 	var out lineBuffer
 	s.Exec("table add holdem High Rollers", &out)
-	if len(s.Lobby.Tables()) != 6 {
+	if len(s.Lobby.Tables()) != 7 {
 		t.Fatalf("not added: %v", out.lines())
 	}
 	out = lineBuffer{}
@@ -422,14 +422,14 @@ func TestLobbyTableCommands(t *testing.T) {
 	}
 	out = lineBuffer{}
 	s.Exec("table remove high-rollers", &out)
-	if len(s.Lobby.Tables()) != 5 {
+	if len(s.Lobby.Tables()) != 6 {
 		t.Fatalf("not removed: %v", out.lines())
 	}
 	// the list survives a restart
 	s.Exec("table add blackjack Penny Slots", &out)
 	l2 := newLobby(s)
 	l2.build()
-	if len(l2.recs) != 6 {
+	if len(l2.recs) != 7 {
 		t.Fatalf("tables.json has %d tables", len(l2.recs))
 	}
 }

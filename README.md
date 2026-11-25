@@ -21,6 +21,9 @@ Discord.
   hats, frame and titles, and Dale has opinions about both.
 - **Table leaderboards:** every table keeps its own board of who has won and
   lost the most there (the THIS TABLE tab in the leaderboard).
+- **The Sportsbook:** bet chips on real Counter-Strike and League of Legends
+  matches at Polymarket's odds. Bets pay out on their own when Polymarket
+  settles the match, and everyone at the table can see everyone's bets.
 - **The Beggars Table:** broke and nobody to buy you back in? Below the daily
   refill amount you can throw real 3D physics dice as often as you like. One
   shared tray: when a throw makes the goal (picked to match the odds setting,
@@ -246,6 +249,46 @@ leaderboard at a table and pick **THIS TABLE** to see its players ranked by
 their net gain at that table, with what they've won, lost and how many rounds
 they've played. Blackjack, Hold'em, baccarat, Red Dog and the Beggars Table
 all keep one.
+
+## The Sportsbook
+
+A board of today's busiest esports markets, for chips. Counter-Strike and
+League of Legends by default; Dota 2 and Valorant can be added.
+
+- **The board** shows the busiest markets (30 by default) for matches under
+  way or starting within the next 36 hours, busiest first, with each team's
+  odds as a payout multiplier (1.61x) and as Polymarket's chance (62%).
+  Filter with ALL / CS2 / LOL; scroll with the wheel or by dragging.
+- **Betting:** click a team's odds to put it on the bet slip, choose a stake
+  (+10, +50, +100, +500, MIN, MAX, or the wheel) and press BET (or Enter).
+  The stake leaves your chips at once and the odds are locked in: the bet
+  pays stake / price, so 100 on a team at 1.61x pays 161. If the odds moved
+  more than a couple of points since your screen last updated, the bet is
+  refused so you can look again.
+- **Bets close when a match starts** (unless `live_betting` is on), and
+  whenever the odds can't be refreshed for more than 5 minutes.
+- **Payouts:** the server checks Polymarket every 3 minutes for markets with
+  open bets. When a market is decided, winners are paid automatically,
+  online or not, and told about it when they're on. A market Polymarket
+  splits 50-50 (a cancelled match) is refunded, and so is any bet still
+  undecided three weeks after its match.
+- **Everyone's bets are public:** the board shows how many bets and chips
+  are riding on each team, MY BETS lists yours (open ones with when the
+  match starts, settled ones with how they went), and TABLE BETS lists
+  everyone's at the table. The latest bet or result shows above the bet slip.
+- Bets count like hands for lifetime stats, the table leaderboard and the
+  house's totals. They're kept in `sports-bets.json` in the data folder (and
+  in backups), so they survive restarts.
+
+The odds come from Polymarket's public market data (no account or key
+needed); the server fetches them itself, so it needs internet access. The
+chips are the game's play chips, as everywhere else.
+
+Table settings: `markets` (how many to show), `hours_ahead`, `min_bet`,
+`max_bet`, `max_open` (open bets per player, 20), `live_betting` (off),
+`min_price` (no bets on outcomes priced under this; 0.04 means at most 25x),
+`games` (`cs,lol`; add `dota` or `valorant`), `refresh_seconds` (60), and
+`api` / `tag` (where the data comes from; leave these alone).
 
 ## The Beggars Table
 

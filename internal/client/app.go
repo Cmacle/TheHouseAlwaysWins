@@ -63,6 +63,7 @@ const (
 	scrPoker // a Hold'em table
 	scrBeggar
 	scrCasino // baccarat or Red Dog
+	scrSports // the Sportsbook
 )
 
 const (
@@ -128,14 +129,23 @@ type App struct {
 	kicked     bool
 
 	// login screen
-	loginMode    int
-	fServer      string
-	fPort        string
-	fUser        string
-	fPass        string
-	fPass2       string
-	fServerPass  string
-	fInvite      string
+	loginMode   int
+	fServer     string
+	fPort       string
+	fUser       string
+	fPass       string
+	fPass2      string
+	fServerPass string
+	fInvite     string
+
+	// the Sportsbook
+	sp           *proto.SportsState
+	sbTab        int
+	sbFilter     string
+	sbScroll     int
+	sbSel        sbSelection
+	sbStake      int64
+	sbDrag       sbDrag
 	regAvatar    []byte
 	regAvatarImg *image.RGBA
 	status       string
@@ -335,6 +345,8 @@ func (a *App) Frame(in Input) *image.RGBA {
 		a.drawBeggar()
 	case scrCasino:
 		a.drawCasino()
+	case scrSports:
+		a.drawSports()
 	}
 	a.blocked = false
 	a.handleTab()
@@ -504,7 +516,7 @@ func shortErr(err error) string {
 
 func (a *App) onDisconnect() {
 	a.net = nil
-	wasPlaying := a.screen == scrTable || a.screen == scrLobby || a.screen == scrPoker || a.screen == scrBeggar || a.screen == scrCasino
+	wasPlaying := a.screen == scrTable || a.screen == scrLobby || a.screen == scrPoker || a.screen == scrBeggar || a.screen == scrCasino || a.screen == scrSports
 	a.screen = scrLogin
 	a.overlay = ovNone
 	if !a.kicked {
@@ -613,6 +625,11 @@ func (a *App) handleMsg(m proto.Msg) {
 		var bs proto.BeggarState
 		if decode(m, &bs) && a.game == proto.GameBeggar {
 			a.onBeggar(&bs)
+		}
+	case proto.SSports:
+		var sp proto.SportsState
+		if decode(m, &sp) && a.game == proto.GameSports {
+			a.onSports(&sp)
 		}
 	case proto.SDice:
 		var r proto.DiceRoll

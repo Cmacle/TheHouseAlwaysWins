@@ -182,7 +182,7 @@ func TestPokerEndToEnd(t *testing.T) {
 	}
 	a := newTestApp(t, s.Addr().String(), "alice")
 	apps := []*App{a}
-	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 5 }, "lobby")
+	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 6 }, "lobby")
 	var holdem proto.TableInfo
 	for _, ti := range a.lobby.Tables {
 		if ti.Game == proto.GameHoldem {
@@ -237,7 +237,7 @@ func TestBeggarEndToEnd(t *testing.T) {
 	s.Exec("table set beggars max_balance 50", &out) // a set limit instead of the refill amount
 	a := newTestApp(t, s.Addr().String(), "pauper")
 	apps := []*App{a}
-	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 5 }, "lobby")
+	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 6 }, "lobby")
 	a.joinTable(tableOf(a, proto.GameBeggar))
 	pump(t, apps, nil, func() bool { return a.screen == scrBeggar && a.bs != nil && a.bs.CanRoll }, "at the Beggars Table")
 	pump(t, apps, map[*App]Input{a: {Keys: []Key{KeySpace}}}, func() bool { return true }, "")
@@ -262,7 +262,7 @@ func TestCasinoEndToEnd(t *testing.T) {
 	defer func() { pumpWait = 15 * time.Second }()
 	a := newTestApp(t, s.Addr().String(), "punter")
 	apps := []*App{a}
-	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 5 }, "lobby")
+	pump(t, apps, nil, func() bool { return a.screen == scrLobby && a.lobbyKnown && len(a.lobby.Tables) == 6 }, "lobby")
 	for _, game := range []string{proto.GameBaccarat, proto.GameRedDog} {
 		var ti proto.TableInfo
 		for _, x := range a.lobby.Tables {

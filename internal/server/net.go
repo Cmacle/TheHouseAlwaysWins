@@ -332,7 +332,7 @@ func (c *conn) handle(m proto.Msg) bool {
 	}
 
 	switch m.Type {
-	case proto.CBet, proto.CAction, proto.CSitOut, proto.CChat, proto.CPoker, proto.CDice, proto.CCasino:
+	case proto.CBet, proto.CAction, proto.CSitOut, proto.CChat, proto.CPoker, proto.CDice, proto.CCasino, proto.CSports:
 		s.Lobby.route(c, m)
 	case proto.CGiftInfo:
 		var gi proto.GiftInfo

@@ -64,6 +64,7 @@ const (
 	CDice        = "dice"        // roll at the Beggars Table
 	CTableBoard  = "table_board" // a table's own leaderboard
 	CCasino      = "casino"      // a bet or move at a baccarat or Red Dog table
+	CSports      = "sports"      // a bet at the Sportsbook
 	CRecords     = "records"     // who holds the record-based cosmetics
 )
 
@@ -92,6 +93,7 @@ const (
 	SDice        = "dice"   // your dice are rolling
 	STableBoard  = "table_board"
 	SCasino      = "casino" // baccarat or Red Dog table state
+	SSports      = "sports" // Sportsbook state
 	SRecords     = "records"
 )
 
@@ -329,6 +331,7 @@ const (
 	GameBeggar    = "beggar"
 	GameBaccarat  = "baccarat"
 	GameRedDog    = "reddog"
+	GameSports    = "sports" // the Sportsbook: chips on real esports, at Polymarket's odds
 )
 
 // TableInfo describes a table in the lobby.
@@ -768,4 +771,75 @@ type CasinoState struct {
 	DealerLog      []DealerLine `json:"dealer_log,omitempty"`
 	HouseNet       int64        `json:"house_net"`
 	HouseTier      int          `json:"house_tier"`
+}
+
+// ---------------------------------------------------------------- Sportsbook
+
+// SportsOutcome is one side of a market, with its odds.
+type SportsOutcome struct {
+	Name  string  `json:"name"`
+	Price float64 `json:"price"` // Polymarket's price, 0-1: the chance it wins; a bet pays stake / price
+	Bets  int     `json:"bets"`  // open bets on it at this table
+	Stake int64   `json:"stake"` // chips on it at this table
+}
+
+// SportsMarket is a market the Sportsbook takes bets on.
+type SportsMarket struct {
+	ID       string          `json:"id"`
+	Game     string          `json:"game"`  // "cs", "lol", "dota", "valorant"
+	Event    string          `json:"event"` // "Vitality vs MOUZ (BO3)"
+	Label    string          `json:"label"` // "Match winner", "Map 1 winner"
+	Start    int64           `json:"start"` // unix seconds, 0 if unknown
+	Live     bool            `json:"live,omitempty"`
+	Open     bool            `json:"open"` // taking bets now
+	Outcomes []SportsOutcome `json:"outcomes"`
+	Volume   float64         `json:"volume"` // Polymarket's 24-hour volume, dollars
+}
+
+// SportsBet is a bet, open or settled.
+type SportsBet struct {
+	ID      int     `json:"id"`
+	User    string  `json:"user"`
+	Market  string  `json:"market"`
+	Game    string  `json:"game"`
+	Event   string  `json:"event"`
+	Label   string  `json:"label"`
+	Pick    string  `json:"pick"`
+	Price   float64 `json:"price"`
+	Stake   int64   `json:"stake"`
+	Payout  int64   `json:"payout"` // what it pays if it wins (stake included)
+	Status  string  `json:"status"` // "open", "won", "lost", "refunded"
+	Placed  int64   `json:"placed"`
+	Settled int64   `json:"settled,omitempty"`
+}
+
+// SportsState is the Sportsbook as one player sees it.
+type SportsState struct {
+	Table      string         `json:"table"`
+	Name       string         `json:"name"`
+	Markets    []SportsMarket `json:"markets"`
+	Updated    int64          `json:"updated"` // when the odds were last fetched, unix seconds
+	Error      string         `json:"error,omitempty"`
+	Mine       []SportsBet    `json:"mine"`   // your bets: open ones, then the latest settled
+	Others     []SportsBet    `json:"others"` // everyone's: open ones, then the latest settled
+	Balance    int64          `json:"balance"`
+	MinBet     int64          `json:"min_bet"`
+	MaxBet     int64          `json:"max_bet"`
+	Live       bool           `json:"live"` // bets are taken on matches already under way
+	Players    []string       `json:"players,omitempty"`
+	Feed       []string       `json:"feed,omitempty"`
+	ServerTime int64          `json:"server_time"`
+	Settings   Settings       `json:"settings"`
+	HouseNet   int64          `json:"house_net"`
+	HouseTier  int            `json:"house_tier"`
+}
+
+// SportsAct is a bet at the Sportsbook. Price is the price the player saw:
+// if the odds have since moved, the bet is refused so they can look again.
+type SportsAct struct {
+	Action  string  `json:"action"` // "bet" or "refresh"
+	Market  string  `json:"market,omitempty"`
+	Outcome int     `json:"outcome,omitempty"`
+	Stake   int64   `json:"stake,omitempty"`
+	Price   float64 `json:"price,omitempty"`
 }
